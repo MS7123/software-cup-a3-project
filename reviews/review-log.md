@@ -351,6 +351,111 @@ Remaining Issues：
 - Task Manager 可以将 `IMPL-003` 从 `Current` 移动到 `Done`，但 Done 说明必须限定为“学生画像与课程知识点 API”。
 - 不得将完整 AC2、AC3 或完整 MVP 产品功能标记为 Done。
 
+## 2026-06-03 Review & Test Agent Review: IMPL-004
+
+范围：
+
+- 查看当前 `git status --short`、`git diff --stat` 和 `git diff --`。
+- 阅读 `tasks/current.md`，确认当前任务为 `IMPL-004: 实现学习路径与 Planner Agent 最小流程`。
+- 阅读 `docs/02-acceptance-criteria.md`。
+- 阅读 `docs/03-architecture.md`。
+- 审查 `src/backend/app/services/learning_path_service.py`。
+- 审查 `src/backend/app/agents/orchestrator.py`。
+- 审查 `src/backend/app/services/agent_run_service.py`。
+- 审查 `src/backend/app/api/v1/router.py`。
+- 审查 `tests/test_learning_path_api.py`。
+
+结论：
+
+- 通过。
+- 当前 `IMPL-004` 可以标记为 Done，范围限定为“学习路径与 Planner Agent 最小流程”。
+- 不代表完整 MVP 产品功能 Done。
+
+验证命令：
+
+```powershell
+$env:PYTHONPATH='src/backend'
+python -m compileall -q src/backend tests
+python -m unittest discover -s tests -v
+```
+
+验证结果：
+
+- `python -m compileall -q src/backend tests`：通过。
+- `python -m unittest discover -s tests -v`：通过，14 个测试全部通过。
+- `tests/test_learning_path_api.py` 覆盖学习路径创建、Planner step 记录、路径详情、Agent run 详情和缺失输入 404。
+- 本轮测试产生的 `__pycache__` 已清理。
+
+Acceptance Criteria 覆盖：
+
+- AC4：Partial / 当前任务范围通过。`POST /api/v1/learning-paths` 能基于学生画像、课程和目标生成阶段化学习路径；返回步骤、关联知识点、路径依据和 `Planner Agent` rationale。完整 AC4 中更完整的多 Agent 学习流程仍待后续任务扩展。
+- AC9：Partial / 当前任务范围通过。已写入并返回 `agent_runs` / `agent_run_steps`，包含 `planner` 的调用顺序、状态、输入摘要、输出摘要和关键决策依据。完整 AC9 要求一次完整学习闭环至少展示 4 个 Agent，仍待后续 `Resource`、`Tutor`、`Quiz`、`Evaluator` 任务补齐。
+- AC13：通过当前任务范围。API handler 调用 orchestrator / service，未直接拼学习路径或绕过 service 边界；service / orchestrator 未直接依赖具体 LLM、VectorStore、TaskQueue SDK。
+- AC18：通过当前任务范围。Rule-based Planner 逻辑位于 `LearningPathService` / `AgentOrchestrator` 边界内，未写在 API handler 或 frontend。
+- AC20：Implementation Boundary Review = Pass。
+
+Blocking Issues：
+
+- 无。
+
+Non-blocking Issues：
+
+- `AgentOrchestrator.run_learning_flow()` 先创建学习路径，再创建 `agent_run`。如果后续 run 记录失败，可能出现有路径但无 run 的不一致状态；当前测试未覆盖该失败路径。后续可考虑把路径创建和 run 记录放入同一 transaction 或增加补偿逻辑。
+- 当前 Planner 路径生成按 concept id 顺序遍历知识点，尚未显式使用 `concept_relations` 计算先修顺序；seed data 当前顺序与演示链路一致，因此本任务范围可接受，后续若知识点顺序变化需补排序逻辑。
+- `datetime.utcnow()` 触发 Python 3.13 deprecation warning，后续建议改为 timezone-aware UTC。
+- 当前仓库仍缺少 `.gitignore`，后续运行测试仍可能生成 `__pycache__` / `.pyc`。
+
+Missing Tests：
+
+- 缺少 run 记录失败时路径/Agent run 一致性的测试。
+- 缺少根据 `concept_relations` 而不是 concept id 生成学习顺序的测试。
+- 缺少多次创建学习路径后 agent run / path 关联一致性的测试。
+- 缺少 `GET /api/v1/agent-runs?student_profile_id=&agent_type=` 列表接口测试；该接口在架构文档中列出，但本轮尚未实现。
+
+建议：
+
+- Task Manager 可以将 `IMPL-004` 从 `Current` 移动到 `Done`，但 Done 说明必须限定为“学习路径与 Planner Agent 最小流程”。
+- 不得将完整 AC4、AC9 或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-03 Targeted Boundary Review: IMPL-002 to IMPL-004
+
+范围：
+
+- 本次不是重新验收全部功能，也不要求大规模重构。
+- 只针对 `IMPL-002` 到 `IMPL-004` 做轻量 implementation boundary review。
+- 检查目标：是否存在明显 hardcoded demo、边界绕过或 API contract 风险。
+- 阅读依据：`docs/02-acceptance-criteria.md`、`docs/03-architecture.md`、`docs/06-project-state.md`、`tasks/done.md`、本文件以及相关代码和测试。
+
+结论：
+
+- Pass。
+- 允许进入 `IMPL-005`：Yes。
+- 本结论只代表边界补审通过，不代表完整 MVP 或完整 AC1-AC13 已完成。
+
+### Checklist
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | `src/backend/app/api/v1/router.py` 只调用 service / orchestrator 并做 HTTP 错误转换；`src/frontend` 仅有 `.gitkeep`，未发现 frontend hardcoded result。 |
+| Service/orchestrator boundary | Pass | `ProfileService`、`CourseService`、`LearningPathService` 分别承载画像、课程图、学习路径逻辑；`AgentOrchestrator.run_learning_flow()` 通过 `LearningPathService` 和 `AgentRunService` 接入 Planner 最小流程。 |
+| Adapter/provider boundary | N/A | `IMPL-002` 到 `IMPL-004` 未实现 mock LLM / RAG / VectorStore / TaskQueue provider；`tests/test_backend_contracts.py` 已禁止 service 直接 import `openai`、`chroma`、`redis`、`rq`、`fastapi`、`httpexception`。 |
+| Hardcoded demo/mock risk | Pass | Demo data 集中在 `src/backend/app/seed/demo_data.py`，由 `DemoDataService` 加载；router 未写死 profiles / concepts / path；Planner 使用数据库中的 profile、course、concepts 生成路径。 |
+| API contract stability | Pass | request / response schema 集中在 `src/backend/app/schemas.py`；后续替换 LLM / RAG / VectorStore 大概率可保持 `/api/v1` schema 和 `agent_runs` / `agent_run_steps` 结构稳定。 |
+
+### Findings
+
+1. 文件路径：`src/backend/app/services/learning_path_service.py`
+   - 问题：Planner 当前按 `Concept.id` 顺序生成路径，未显式使用 `concept_relations` 计算先修顺序。
+   - 影响：如果后续 seed data 或真实课程数据的插入顺序变化，路径顺序可能与先修关系不一致。
+   - 最小修复建议：在后续 Planner 增强任务中基于 `concept_relations` 做拓扑排序或至少按 relation-derived order 排序。
+   - 是否阻塞进入 `IMPL-005`：No。
+
+2. 文件路径：`src/backend/app/services/profile_service.py`
+   - 问题：`list_demo_profiles()` 当前返回所有 `StudentProfile`，不是只返回 demo profiles。
+   - 影响：默认持久数据库中若已有用户创建画像，`GET /student-profiles` 可能不再只返回 3 个 demo profiles，和“demo profile list”的命名 / 预期不完全一致。
+   - 最小修复建议：明确该 API 是“所有画像列表”还是“demo 画像列表”；若是 demo-only，则加过滤条件或 demo marker。
+   - 是否阻塞进入 `IMPL-005`：No。
+
 ## 2026-06-03 State Manager Update After IMPL-001 Review
 
 依据：
@@ -421,3 +526,61 @@ Remaining Issues：
 
 - 未将完整 AC2、AC3 或完整 MVP 产品功能标记为 Done。
 - 未将前端选择/编辑体验、完整课程知识点维护能力、学习路径、Agent 实际执行闭环、RAG、Quiz、Evaluator、前端或部署标记为 Done。
+
+## Review Output Template: Implementation Boundary Review
+
+后续每个 IMPL-* Review 都必须包含本小节。该模板从 `IMPL-005` 起强制适用，并建议用于 `IMPL-002` 到 `IMPL-004` 的补审。
+
+### Implementation Boundary Review
+
+| 检查项 | 结论 | 证据 | 严重级别 |
+|---|---|---|---|
+| Demo data 是否集中在 seed / fixture / demo data service 中 | Pass / Needs Fix / Blocking | 文件、测试或代码引用 |  |
+| Mock provider 是否实现正式 adapter / protocol 契约 | Pass / Needs Fix / Blocking | 文件、测试或代码引用 |  |
+| Rule-based logic 是否隔离在 Agent / strategy / service 边界内 | Pass / Needs Fix / Blocking | 文件、测试或代码引用 |  |
+| API handler 是否只负责 request / response、依赖注入、错误转换和调用 service | Pass / Needs Fix / Blocking | 文件、测试或代码引用 |  |
+| Frontend 是否只消费 API、未硬编码核心 demo result | Pass / Needs Fix / Blocking | 文件、测试或代码引用 |  |
+| Service / adapter / orchestrator 契约是否保持清晰 | Pass / Needs Fix / Blocking | 文件、测试或代码引用 |  |
+| 替换真实 LLM / RAG / VectorStore 时是否不破坏现有契约 | Pass / Needs Fix / Blocking | 文件、测试或代码引用 |  |
+
+Boundary 结论：
+
+- `Pass` / `Needs Fix` / `Blocking`
+- 是否允许任务进入 Done：
+- 如需修复，建议拆分任务：
+
+判定规则：
+
+- `Pass`：边界清晰，允许进入 Done。
+- `Needs Fix`：存在局部边界问题，修复后复测。
+- `Blocking`：存在 hardcoded demo、handler 承载业务规则、frontend 模拟核心结果、service 直连 provider 或破坏 adapter 契约等问题，不得进入 Done。
+
+## Implementation Boundary Check
+
+- Controller/frontend business logic: Pass / Needs Fix / N/A
+- Service/orchestrator boundary: Pass / Needs Fix / N/A
+- Adapter/provider boundary: Pass / Needs Fix / N/A
+- Hardcoded demo/mock risk: Pass / Needs Fix / N/A
+- API contract stability: Pass / Needs Fix / N/A
+
+Conclusion: Pass / Needs Fix / Blocking
+
+## 2026-06-03 State Manager Update After IMPL-004 Review
+
+依据：
+
+- Review & Test Agent 已在本文件中明确给出 `IMPL-004` 通过结论。
+- 通过范围限定为“学习路径与 Planner Agent 最小流程”。
+- Targeted Boundary Review 对 `IMPL-002` 到 `IMPL-004` 的结论为 `Pass`。
+- State Manager Agent / Task Manager 未执行测试，只引用 Review & Test Agent 已记录的测试和验收结果。
+
+任务状态更新：
+
+- `IMPL-004` 从 `tasks/current.md` 移入 `tasks/done.md`。
+- `IMPL-005` 从 `tasks/backlog.md` 移入 `tasks/current.md`，作为下一阶段实现任务。
+- `tasks/backlog.md` 保留 `IMPL-006` 及后续任务。
+
+限制说明：
+
+- 未将完整 AC4、AC9 或完整 MVP 产品功能标记为 Done。
+- 未将 Resource / Tutor / Quiz / Evaluator、RAG、前端或部署标记为 Done。

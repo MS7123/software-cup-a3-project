@@ -9,6 +9,14 @@
 - 验收优先依据可运行系统、测试结果、演示脚本和项目文档，而不是主观判断。
 - 所有第三方代码和依赖必须可追溯来源、用途和 license。
 
+## Implementation Boundary Check / 实现边界检查
+
+- API handler / frontend 不应承载核心业务逻辑。
+- Business logic 应通过 service / orchestrator 组织。
+- External dependency、mock provider、demo provider 应通过 adapter / provider contract 接入。
+- Demo / mock / rule-based 数据或逻辑应集中管理，避免散落 hardcoded response。
+- 后续替换真实 LLM / RAG / VectorStore 时，应尽量保持 API request / response schema 稳定。
+
 ## MVP 验收标准
 
 | 编号 | 对应需求 | 验收标准 | 当前状态 |
@@ -28,6 +36,59 @@
 | AC13 | R13 | 关键外部能力必须通过 adapter 封装；业务服务不得直接依赖具体 LLM SDK、向量库 SDK 或任务队列细节 | Partial |
 | AC14 | R14 | 第一阶段验收不要求教师端、管理端、真实学生数据或 A6 校园事务流程；若出现相关入口，应标注为后续版本或演示占位 | Not Started |
 | AC15 | R15 | 需求文档应记录架构影响分析，但不得要求 Requirement Agent 直接修改架构文档或 ADR | Confirmed |
+| AC16 | R1-R13 | Demo data 必须集中隔离在 seed、fixture 或 demo data service 中，不得散落在 API handler、frontend、Agent prompt 或业务分支中 | Active |
+| AC17 | R11, R13 | Mock provider 必须实现正式 adapter 契约；service / orchestrator 不得直接依赖具体 mock 类 | Active |
+| AC18 | R4-R9, R13 | Rule-based `Planner` / `Tutor` / `Quiz` / `Evaluator` logic 必须隔离在 Agent、strategy 或 service 边界内，返回标准 domain result，不得写在 API handler 或 frontend | Active |
+| AC19 | R11, R13 | 后续替换真实 LLM / RAG / VectorStore 时，不得破坏 `/api/v1` schema、service contract、adapter contract 和 `agent_runs` / `agent_run_steps` 记录结构 | Active |
+| AC20 | R1-R13 | 每个后续 IMPL-* Review 必须包含 `Implementation Boundary Review` 结论，并能判定 `Pass`、`Needs Fix` 或 `Blocking` | Active |
+
+## MVP Implementation Boundary Standard
+
+本标准从 `IMPL-005` 起作为所有 IMPL-* 任务的常规 Review 检查项，并建议对 `IMPL-002` 到 `IMPL-004` 做一次边界补审。它不修改已 Accepted 的架构基线，不新增 ADR，不引入新技术栈。
+
+### Demo Data 隔离
+
+- Demo data 必须集中在 seed、fixture 或 `DemoDataService` 等明确边界内。
+- Demo data 可以包含数据结构课程、5 个 MVP 知识点、3 个模拟学生画像、模拟资料 chunk。
+- Demo data 不得散落在 API handler、frontend component、Agent prompt 或 service 的临时分支中。
+- Demo data 必须通过明确入口加载，例如 `POST /api/v1/demo-data/load` 或 seed script。
+- Demo data 加载应尽量幂等，不应依赖“全新空数据库”才能正常运行。
+
+### Mock Provider 隔离
+
+- Mock LLM、mock VectorStore、mock TaskQueue、mock DocumentParser 必须实现正式 adapter / protocol 契约。
+- Service 和 orchestrator 只能依赖 `LLMProvider`、`VectorStore`、`TaskQueue`、`DocumentParser` 抽象。
+- Mock provider 不得通过分散的 `if demo_mode` 分支嵌入业务 service。
+- 替换真实 provider 时，不应修改 API schema、domain service 公共契约和 Agent run 记录结构。
+
+### Rule-based Logic 隔离
+
+- Rule-based `Planner` / `Tutor` / `Quiz` / `Evaluator` 允许用于 MVP，但必须放在 Agent implementation、strategy 或 service 边界内。
+- `AgentOrchestrator` 负责编排调用顺序和记录 run / step，不应堆积大量具体生成规则。
+- Rule-based 输出必须使用与未来 LLM 输出一致的 domain result，例如 `LearningPathResult`、`TutorAnswer`、`QuizResult`、`EvaluationResult`。
+- Rule-based 逻辑必须使用数据库中的 profile、concept、relation、chunk，不得只按固定字符串返回固定结果。
+
+### API Handler 和 Frontend 禁止事项
+
+- API handler 不得直接写 demo data、调用 mock provider、调用具体 LLM / VectorStore SDK、拼学习路径、生成 Quiz 或计算掌握度。
+- API handler 只负责 request / response、依赖注入、错误转换和调用 service。
+- Frontend 不得硬编码 3 个画像、5 个知识点、学习路径、Quiz 答案或 Agent steps。
+- Frontend 不得模拟 `Planner` / `Tutor` / `Quiz` / `Evaluator` 结果；核心数据必须来自 API。
+
+### Allowed / Not Allowed
+
+| 允许的实现方式 | 不允许的实现方式 | 原因 |
+|---|---|---|
+| Demo data 集中在 seed 文件和 `DemoDataService` | API handler 里写死 demo profiles / concepts | Handler 会变成不可复用 demo script |
+| Mock LLM 实现 `LLMProvider` 契约 | Service 直接调用 `MockLLMProvider` 具体类 | 后续替换真实 LLM 会改业务层 |
+| Rule-based Planner 返回标准 `LearningPath` 结构 | Planner 直接返回前端展示用固定 JSON | 会绑定 UI，破坏 domain contract |
+| Tutor 基于 `KnowledgeBaseService.search()` 的 chunk 生成回答 | Tutor 根据问题关键词直接返回硬编码答案 | 无法替换真实 RAG |
+| Quiz 基于 `concept_id`、`difficulty` 生成题目 | Frontend 或 handler 按知识点名称拼题目 | 逻辑位置错误，后续不可测试 |
+| Evaluator 通过 `AssessmentService` 更新 mastery | API handler 直接修改 mastery score | 绕过领域规则和测试边界 |
+| Agent steps 由 `AgentRunService` 统一记录 | 每个 Agent 自己随意写日志字段 | Review 无法稳定检查 AC9 |
+| Demo SQLite 明确为 dev/demo 配置 | 把 SQLite 当成正式数据库方向 | ADR 已明确业务数据库方向为 `PostgreSQL` |
+| Frontend 从 API 获取 demo data | Frontend 本地维护一份 demo data | 前后端状态会漂移 |
+| 使用配置或依赖注入切换 mock / real provider | 用分散的 `if DEMO_MODE` 分支切换 | 分支污染业务代码 |
 
 ## 数据结构 MVP 场景验收
 
@@ -71,4 +132,4 @@ Then 应能看到需求侧架构影响分析，但不应将其视为已修改的
 
 ## 当前不可验收项
 
-截至 2026-06-03，仓库尚无实现代码、测试配置、依赖配置和部署配置，因此除调研、合规文档、架构文档和 ADR 外，任何产品功能都不能标记为 Done。
+截至 2026-06-03，仓库已有后端基础结构和部分测试，但完整 MVP 产品功能仍不能标记为 Done。`IMPL-001` 到 `IMPL-004` 的阶段性通过仅代表对应任务范围内的能力通过，不代表完整 AC1-AC13 或完整学生端闭环已完成。

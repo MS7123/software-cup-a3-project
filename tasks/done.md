@@ -35,3 +35,8 @@
   - Review 来源：`reviews/review-log.md` 的 `2026-06-03 Review & Test Agent Retest: IMPL-003`。
   - 已验证范围：学生画像列表、详情和创建 API；课程知识点图查询 API；3 个 seed 画像可返回；数据结构课程、5 个 MVP 知识点和知识点关系可查询；HTTP 错误码转换位于 API layer；service 层不直接依赖 FastAPI。
   - 明确非 Done：完整 AC2、完整 AC3、前端选择/编辑体验、完整课程知识点维护能力、完整 MVP 产品功能。
+- [x] `IMPL-004`：实现学习路径与 `Planner Agent` 最小流程。
+  - Review 结论：通过，仅限 `IMPL-004` 的任务范围。
+  - Review 来源：`reviews/review-log.md` 的 `2026-06-03 Review & Test Agent Review: IMPL-004`。
+  - 已验证范围：学习路径创建 API、路径详情 API、Planner 最小流程、`agent_runs` / `agent_run_steps` 摘要记录、Agent run 详情 API。
+  - 明确非 Done：完整 AC4、完整 AC9、完整多 Agent 学习闭环、Resource / Tutor / Quiz / Evaluator、RAG、前端页面、完整 MVP 产品功能。

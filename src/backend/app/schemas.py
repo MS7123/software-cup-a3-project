@@ -276,6 +276,11 @@ class AgentRunResponse(BaseModel):
     steps: list[AgentRunStepResponse] = Field(default_factory=list)
 
 
+class LearningFlowResponse(BaseModel):
+    learning_path: LearningPathResponse
+    agent_run: AgentRunResponse
+
+
 class DemoDataStatusResponse(BaseModel):
     is_loaded: bool
     course_title: str = "数据结构"

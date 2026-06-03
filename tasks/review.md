@@ -7,6 +7,7 @@
 `IMPL-001` 已由 Review & Test Agent 验收通过，并已移入 `tasks/done.md`。
 `IMPL-002` 已由 Review & Test Agent 复测通过，并已移入 `tasks/done.md`。
 `IMPL-003` 已由 Review & Test Agent 复测通过，并已移入 `tasks/done.md`。
+`IMPL-004` 已由 Review & Test Agent 验收通过，并已移入 `tasks/done.md`。
 
 规则：
 
