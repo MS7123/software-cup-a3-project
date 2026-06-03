@@ -10,25 +10,48 @@ import type {
   EvaluationResult,
   GeneratedResource,
   LearningFlow,
+  LearningPathItem,
   Quiz,
   StudentProfile,
   TutorAnswer
 } from "./api/types";
 
+type BusyAction =
+  | "boot"
+  | "load-demo"
+  | "create-path"
+  | "generate-resource"
+  | "ask-tutor"
+  | "generate-quiz"
+  | "submit-attempt";
+
 const profileLabels: Record<string, string> = {
-  weak_foundation: "基础薄弱型",
-  exam_sprint: "考试冲刺型",
-  algorithm_practice: "算法实践型"
+  weak_foundation: "Foundation repair",
+  exam_sprint: "Exam sprint",
+  algorithm_practice: "Algorithm practice"
+};
+
+const agentTone: Record<string, string> = {
+  planner: "Path design",
+  resource: "Learning asset",
+  tutor: "Grounded answer",
+  quiz: "Assessment item",
+  evaluator: "Mastery signal"
 };
 
 function labelProfile(type: string): string {
-  return profileLabels[type] ?? type;
+  return profileLabels[type] ?? type.replaceAll("_", " ");
 }
 
-function firstSourceRef(sourceRefs: Array<Record<string, unknown>>): string {
+function sourceLabel(sourceRefs: Array<Record<string, unknown>>): string {
   const source = sourceRefs[0];
-  if (!source) return "暂无引用";
+  if (!source) return "No source returned";
   return String(source.source_ref ?? source.chunk_id ?? "source");
+}
+
+function toErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return "Request failed";
 }
 
 export function App() {
@@ -36,32 +59,40 @@ export function App() {
   const [profiles, setProfiles] = useState<StudentProfile[]>([]);
   const [graph, setGraph] = useState<ConceptGraph | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
-  const [goal, setGoal] = useState("复习树与图遍历，准备一次小测");
+  const [selectedPathItemId, setSelectedPathItemId] = useState<number | null>(null);
+  const [goal, setGoal] = useState("Review tree traversal and graph search for a short quiz");
   const [flow, setFlow] = useState<LearningFlow | null>(null);
   const [resource, setResource] = useState<GeneratedResource | null>(null);
-  const [question, setQuestion] = useState("二叉树遍历和 BFS/DFS 的区别是什么？");
+  const [question, setQuestion] = useState("How are BFS and DFS different in data structures?");
   const [answer, setAnswer] = useState<TutorAnswer | null>(null);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attemptText, setAttemptText] = useState("");
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [runs, setRuns] = useState<AgentRun[]>([]);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<BusyAction | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
-  const selectedItem = flow?.learning_path.items[0] ?? null;
+  const pathItems = flow?.learning_path.items ?? [];
+  const selectedItem = pathItems.find((item) => item.id === selectedPathItemId) ?? pathItems[0] ?? null;
   const selectedConcept = useMemo<Concept | null>(() => {
-    if (!graph || !selectedItem) return graph?.concepts[0] ?? null;
-    return graph.concepts.find((concept) => concept.id === selectedItem.concept_id) ?? null;
+    if (!graph) return null;
+    if (selectedItem) {
+      return graph.concepts.find((concept) => concept.id === selectedItem.concept_id) ?? null;
+    }
+    return graph.concepts[0] ?? null;
   }, [graph, selectedItem]);
 
-  async function runTask(taskName: string, task: () => Promise<void>) {
-    setBusy(taskName);
+  const canCreatePath = Boolean(selectedProfileId && status?.course_id);
+  const canUseLoop = Boolean(selectedProfileId && status?.course_id && selectedConcept);
+
+  async function runTask(action: BusyAction, task: () => Promise<void>) {
+    setBusy(action);
     setError(null);
     try {
       await task();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "请求失败");
+      setError(toErrorMessage(err));
     } finally {
       setBusy(null);
     }
@@ -70,198 +101,250 @@ export function App() {
   async function refreshBaseData() {
     const nextStatus = await api.getDemoStatus();
     setStatus(nextStatus);
+
     const nextProfiles = await api.listProfiles();
     setProfiles(nextProfiles);
     setSelectedProfileId((current) => current ?? nextProfiles[0]?.id ?? null);
+
     if (nextStatus.course_id) {
-      setGraph(await api.getCourseGraph(nextStatus.course_id));
+      const nextGraph = await api.getCourseGraph(nextStatus.course_id);
+      setGraph(nextGraph);
+    } else {
+      setGraph(null);
     }
   }
 
   async function appendRun(runId: number | null) {
     if (!runId) return;
     const run = await api.getAgentRun(runId);
-    setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 6));
+    setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 8));
+  }
+
+  function resetLoopOutputs() {
+    setResource(null);
+    setAnswer(null);
+    setQuiz(null);
+    setAttemptText("");
+    setEvaluation(null);
   }
 
   useEffect(() => {
-    void runTask("初始化", refreshBaseData);
+    void runTask("boot", refreshBaseData);
   }, []);
 
-  const canCreateFlow = Boolean(selectedProfileId !== null && status?.course_id);
-  const canUseLoop = Boolean(selectedProfileId && status?.course_id && selectedConcept);
-
   return (
-    <main className="min-h-screen bg-paper text-ink">
-      <section className="border-b border-ink/10 bg-[radial-gradient(circle_at_top_left,#e9dfc7,transparent_28rem)]">
+    <main className="min-h-screen bg-slate-950 text-slate-100">
+      <section className="border-b border-white/10 bg-[linear-gradient(135deg,#0f172a_0%,#19352e_54%,#b9432f_100%)]">
         <div className="mx-auto grid max-w-7xl gap-8 px-5 py-8 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-moss">A3 Student Console</p>
-            <h1 className="mt-4 max-w-3xl font-display text-5xl leading-tight text-ink md:text-6xl">
-              数据结构学习闭环工作台
+            <p className="text-xs font-semibold uppercase tracking-[0.26em] text-emerald-200">A3 Student Console</p>
+            <h1 className="mt-4 max-w-3xl font-display text-5xl leading-tight text-white md:text-6xl">
+              Data structures learning loop
             </h1>
-            <p className="mt-5 max-w-2xl text-base leading-7 text-graphite/80">
-              学生端只消费后端 `/api/v1` 契约，展示画像、路径、资源、问答、测验和 Agent run 摘要。
+            <p className="mt-5 max-w-2xl text-base leading-7 text-slate-200">
+              A student-facing workspace for profile selection, path planning, resources, tutor answers, quiz attempts,
+              evaluator feedback, and agent run review. All domain output is loaded from the backend API.
             </p>
           </div>
           <div className="grid content-end gap-3 sm:grid-cols-2">
-            <Metric label="Demo data" value={status?.is_loaded ? "Loaded" : "Pending"} />
-            <Metric label="Concepts" value={String(status?.concept_count ?? 0)} />
-            <Metric label="Profiles" value={String(status?.profile_count ?? 0)} />
-            <Metric label="Chunks" value={String(status?.chunk_count ?? 0)} />
+            <Metric label="Demo data" value={status?.is_loaded ? "Loaded" : "Pending"} dark />
+            <Metric label="Profiles" value={String(status?.profile_count ?? 0)} dark />
+            <Metric label="Concepts" value={String(status?.concept_count ?? 0)} dark />
+            <Metric label="Agent runs" value={String(runs.length)} dark />
           </div>
         </div>
       </section>
 
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[320px_1fr] lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[340px_1fr] lg:px-8">
         <aside className="space-y-5">
-          <Panel title="数据入口" kicker="Demo contract">
+          <Panel title="Session setup" kicker="Demo contract">
             <button
-              className="w-full rounded-md bg-ink px-4 py-3 text-sm font-semibold text-paper transition hover:bg-graphite disabled:cursor-not-allowed disabled:opacity-55"
+              className="action-button w-full"
               disabled={busy !== null}
               onClick={() =>
-                void runTask("加载 demo data", async () => {
+                void runTask("load-demo", async () => {
                   await api.loadDemoData();
                   await refreshBaseData();
                 })
               }
             >
-              {busy === "加载 demo data" ? "加载中..." : "加载 / 刷新 demo data"}
+              {busy === "load-demo" ? "Loading demo data" : "Load or refresh demo data"}
             </button>
-            {error ? <p className="mt-3 rounded-md bg-signal/10 p-3 text-sm text-signal">{error}</p> : null}
+            <StatusLine busy={busy === "boot"} error={error} />
           </Panel>
 
-          <Panel title="学生画像" kicker="Profile">
+          <Panel title="Student profile" kicker="Persona">
             <div className="space-y-3">
               {profiles.map((profile) => (
                 <button
                   key={profile.id}
-                  className={`w-full rounded-md border p-3 text-left transition ${
-                    profile.id === selectedProfileId
-                      ? "border-signal bg-signal/10"
-                      : "border-ink/10 bg-white/45 hover:border-moss"
-                  }`}
-                  onClick={() => setSelectedProfileId(profile.id)}
+                  className={`profile-option ${profile.id === selectedProfileId ? "profile-option-active" : ""}`}
+                  onClick={() => {
+                    setSelectedProfileId(profile.id);
+                    resetLoopOutputs();
+                  }}
                 >
                   <span className="block text-sm font-semibold">{labelProfile(profile.profile_type)}</span>
-                  <span className="mt-1 block text-xs text-graphite/70">{profile.level} · {profile.time_budget}</span>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    {profile.level} / {profile.time_budget}
+                  </span>
+                  <span className="mt-2 line-clamp-3 block text-xs leading-5 text-slate-600">{profile.goal}</span>
                 </button>
               ))}
+              {profiles.length === 0 ? <EmptyState text="Load demo data to fetch profiles from the backend." /> : null}
+            </div>
+          </Panel>
+
+          <Panel title="Course graph" kicker="Concepts">
+            <div className="space-y-2">
+              {(graph?.concepts ?? []).map((concept) => (
+                <div
+                  key={concept.id}
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    concept.id === selectedConcept?.id ? "border-signal bg-signal/10" : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <p className="font-semibold text-slate-900">{concept.name}</p>
+                  <p className="text-xs text-slate-500">{concept.difficulty}</p>
+                </div>
+              ))}
+              {!graph ? <EmptyState text="Course graph is loaded from /api/v1 after demo data is available." /> : null}
             </div>
           </Panel>
         </aside>
 
         <section className="space-y-5">
-          <Panel title="学习路径" kicker="Planner output">
+          <Panel title="Learning path" kicker="Planner">
             <div className="grid gap-3 md:grid-cols-[1fr_auto]">
               <input
-                className="rounded-md border border-ink/10 bg-white/70 px-4 py-3 text-sm outline-none focus:border-signal"
+                className="field"
                 value={goal}
                 onChange={(event) => setGoal(event.target.value)}
-                aria-label="学习目标"
+                aria-label="Learning goal"
               />
               <button
-                className="rounded-md bg-signal px-5 py-3 text-sm font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-55"
-                disabled={!canCreateFlow || busy !== null}
+                className="primary-button"
+                disabled={!canCreatePath || busy !== null}
                 onClick={() =>
-                  void runTask("生成路径", async () => {
+                  void runTask("create-path", async () => {
                     const nextFlow = await api.createLearningPath(selectedProfileId as number, status?.course_id as number, goal);
                     setFlow(nextFlow);
+                    setSelectedPathItemId(nextFlow.learning_path.items[0]?.id ?? null);
+                    resetLoopOutputs();
                     await appendRun(nextFlow.agent_run.id);
                   })
                 }
               >
-                {busy === "生成路径" ? "生成中..." : "生成路径"}
+                {busy === "create-path" ? "Creating path" : "Create path"}
               </button>
             </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
-              {(flow?.learning_path.items ?? []).map((item) => (
-                <div key={item.id} className="rounded-md border border-ink/10 bg-white/55 p-4">
-                  <p className="text-xs font-semibold text-moss">Step {item.order_index + 1}</p>
-                  <h3 className="mt-1 text-base font-semibold">{item.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-graphite/75">{item.objective}</p>
-                </div>
+            <div className="mt-4 grid gap-3 xl:grid-cols-2">
+              {pathItems.map((item) => (
+                <PathItemCard
+                  key={item.id}
+                  item={item}
+                  concept={graph?.concepts.find((concept) => concept.id === item.concept_id) ?? null}
+                  selected={item.id === selectedItem?.id}
+                  onSelect={() => {
+                    setSelectedPathItemId(item.id);
+                    resetLoopOutputs();
+                  }}
+                />
               ))}
-              {!flow ? <EmptyState text="生成学习路径后，这里会显示后端返回的 path items。" /> : null}
+              {pathItems.length === 0 ? (
+                <EmptyState text="Create a learning path to receive ordered path items from the backend." />
+              ) : null}
             </div>
           </Panel>
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Panel title="资源生成" kicker="Resource Agent">
+          <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+            <Panel title="Resource" kicker="Resource Agent">
+              <NodeSummary item={selectedItem} concept={selectedConcept} />
               <button
-                className="rounded-md bg-ink px-4 py-2.5 text-sm font-semibold text-paper disabled:cursor-not-allowed disabled:opacity-55"
+                className="action-button mt-4"
                 disabled={!selectedItem || busy !== null}
                 onClick={() =>
-                  void runTask("生成资源", async () => {
+                  void runTask("generate-resource", async () => {
                     const nextResource = await api.generateResource(selectedItem!.id, "guided_note");
                     setResource(nextResource);
                     await appendRun(nextResource.agent_run_id);
                   })
                 }
               >
-                生成当前节点资源
+                {busy === "generate-resource" ? "Generating resource" : "Generate resource for selected node"}
               </button>
               {resource ? (
-                <Output title={resource.resource_type} text={resource.content} footnote={firstSourceRef(resource.source_refs)} />
+                <OutputBlock title={resource.resource_type} text={resource.content} source={sourceLabel(resource.source_refs)} />
               ) : (
-                <EmptyState text="选择路径节点后，从后端生成学习资源。" />
+                <EmptyState text="The generated resource will appear here after the backend Resource Agent responds." />
               )}
             </Panel>
 
-            <Panel title="Tutor 问答" kicker="Grounded answer">
+            <Panel title="Tutor" kicker="Grounded Q&A">
               <textarea
-                className="h-24 w-full resize-none rounded-md border border-ink/10 bg-white/70 p-3 text-sm outline-none focus:border-signal"
+                className="field min-h-28 resize-none"
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                aria-label="Tutor 问题"
+                aria-label="Tutor question"
               />
               <button
-                className="mt-3 rounded-md bg-ink px-4 py-2.5 text-sm font-semibold text-paper disabled:cursor-not-allowed disabled:opacity-55"
+                className="action-button mt-3"
                 disabled={!canUseLoop || busy !== null}
                 onClick={() =>
-                  void runTask("Tutor 回答", async () => {
+                  void runTask("ask-tutor", async () => {
                     const nextAnswer = await api.askTutor(selectedProfileId as number, status?.course_id as number, question);
                     setAnswer(nextAnswer);
                     await appendRun(nextAnswer.agent_run_id);
                   })
                 }
               >
-                提问
+                {busy === "ask-tutor" ? "Asking tutor" : "Ask tutor"}
               </button>
-              {answer ? <Output title="Answer" text={answer.answer} footnote={firstSourceRef(answer.source_refs)} /> : null}
+              {answer ? (
+                <OutputBlock title="Tutor answer" text={answer.answer} source={sourceLabel(answer.source_refs)} />
+              ) : (
+                <EmptyState text="Tutor answers are grounded by backend document chunks and include returned source refs." />
+              )}
             </Panel>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Panel title="Quiz" kicker="Quiz Agent">
+          <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+            <Panel title="Quiz attempt" kicker="Quiz Agent">
               <button
-                className="rounded-md bg-ink px-4 py-2.5 text-sm font-semibold text-paper disabled:cursor-not-allowed disabled:opacity-55"
+                className="action-button"
                 disabled={!canUseLoop || busy !== null}
                 onClick={() =>
-                  void runTask("生成 Quiz", async () => {
+                  void runTask("generate-quiz", async () => {
                     const nextQuiz = await api.generateQuiz(selectedProfileId as number, selectedConcept!.id, "medium");
                     setQuiz(nextQuiz);
                     setAttemptText("");
+                    setEvaluation(null);
                     await appendRun(nextQuiz.agent_run_id);
                   })
                 }
               >
-                生成测验
+                {busy === "generate-quiz" ? "Generating quiz" : "Generate quiz for selected concept"}
               </button>
+
               {quiz?.items[0] ? (
                 <div className="mt-4 space-y-3">
-                  <p className="text-sm font-semibold">{quiz.items[0].question}</p>
+                  <div className="rounded-md border border-slate-200 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Question</p>
+                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-900">{quiz.items[0].question}</p>
+                    <p className="mt-3 text-xs text-slate-500">{quiz.items[0].concept_tags.join(" / ")}</p>
+                  </div>
                   <textarea
-                    className="h-24 w-full resize-none rounded-md border border-ink/10 bg-white/70 p-3 text-sm outline-none focus:border-signal"
+                    className="field min-h-28 resize-none"
                     value={attemptText}
                     onChange={(event) => setAttemptText(event.target.value)}
-                    aria-label="测验作答"
+                    aria-label="Quiz answer"
+                    placeholder="Type your answer and submit it to the evaluator."
                   />
                   <button
-                    className="rounded-md bg-signal px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
-                    disabled={!attemptText || busy !== null}
+                    className="primary-button"
+                    disabled={!attemptText.trim() || busy !== null}
                     onClick={() =>
-                      void runTask("提交作答", async () => {
+                      void runTask("submit-attempt", async () => {
                         const nextEvaluation = await api.submitAttempt(quiz.id, selectedProfileId as number, {
                           answer: attemptText
                         });
@@ -270,45 +353,43 @@ export function App() {
                       })
                     }
                   >
-                    提交作答
+                    {busy === "submit-attempt" ? "Submitting answer" : "Submit answer"}
                   </button>
                 </div>
               ) : (
-                <EmptyState text="从当前知识点生成测验题。" />
+                <EmptyState text="Generate a quiz after selecting a path node or concept." />
               )}
             </Panel>
 
-            <Panel title="Evaluator" kicker="Mastery signal">
+            <Panel title="Evaluator feedback" kicker="Mastery">
               {evaluation ? (
                 <div className="space-y-4">
                   <Metric label="Score" value={`${Math.round(evaluation.score * 100)}%`} />
-                  <p className="rounded-md bg-white/60 p-4 text-sm leading-6 text-graphite/80">{evaluation.feedback}</p>
+                  <p className="rounded-md bg-white p-4 text-sm leading-6 text-slate-700">{evaluation.feedback}</p>
+                  <div className="space-y-2">
+                    {evaluation.mastery_updates.map((update, index) => (
+                      <div key={index} className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
+                        <p className="font-semibold">Concept {String(update.concept_id ?? "unknown")}</p>
+                        <p className="mt-1">Mastery: {String(update.mastery_score ?? "n/a")}</p>
+                        <p className="mt-1 text-xs text-slate-500">{String(update.evidence ?? "No evidence returned")}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
-                <EmptyState text="提交作答后展示后端 evaluator 返回的评分和掌握度建议。" />
+                <EmptyState text="Submit an answer to display score, feedback, and mastery update suggestions." />
               )}
             </Panel>
           </div>
 
-          <Panel title="Agent runs" kicker="Trace">
-            <div className="space-y-3">
+          <Panel title="Agent run trace" kicker="Explainability">
+            <div className="grid gap-3 lg:grid-cols-2">
               {runs.map((run) => (
-                <div key={run.id} className="rounded-md border border-ink/10 bg-white/55 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{run.run_type}</p>
-                    <span className="rounded-full bg-moss/15 px-3 py-1 text-xs font-semibold text-moss">{run.status}</span>
-                  </div>
-                  <p className="mt-2 text-sm text-graphite/70">{run.final_summary ?? run.output_summary ?? run.input_summary}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {run.steps.map((step) => (
-                      <span key={step.id} className="rounded-full border border-ink/10 px-3 py-1 text-xs text-graphite">
-                        {step.step_order}. {step.agent_type}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+                <RunCard key={run.id} run={run} />
               ))}
-              {runs.length === 0 ? <EmptyState text="执行路径、资源、问答或测验后，这里会展示 agent run 摘要。" /> : null}
+              {runs.length === 0 ? (
+                <EmptyState text="Planner, Resource, Tutor, Quiz, and Evaluator runs will be listed here after actions complete." />
+              ) : null}
             </div>
           </Panel>
         </section>
@@ -317,35 +398,98 @@ export function App() {
   );
 }
 
+function PathItemCard({
+  item,
+  concept,
+  selected,
+  onSelect
+}: {
+  item: LearningPathItem;
+  concept: Concept | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button className={`path-card ${selected ? "path-card-active" : ""}`} onClick={onSelect}>
+      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Step {item.order_index + 1}</span>
+      <span className="mt-2 block text-left text-base font-semibold text-slate-950">{item.title}</span>
+      <span className="mt-2 block text-left text-sm leading-6 text-slate-600">{item.objective}</span>
+      <span className="mt-3 block text-left text-xs text-slate-500">{concept?.name ?? `Concept ${item.concept_id}`}</span>
+    </button>
+  );
+}
+
+function NodeSummary({ item, concept }: { item: LearningPathItem | null; concept: Concept | null }) {
+  if (!item) return <EmptyState text="Select or create a path node before generating resources." />;
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Current node</p>
+      <p className="mt-2 text-sm font-semibold text-slate-950">{item.title}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{item.objective}</p>
+      <p className="mt-3 text-xs text-slate-500">{concept?.name ?? `Concept ${item.concept_id}`}</p>
+    </div>
+  );
+}
+
+function RunCard({ run }: { run: AgentRun }) {
+  return (
+    <article className="rounded-md border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-950">{run.run_type}</h3>
+        <span className="rounded-full bg-moss/15 px-3 py-1 text-xs font-semibold text-moss">{run.status}</span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-slate-600">{run.final_summary ?? run.output_summary ?? run.input_summary}</p>
+      <div className="mt-4 space-y-2">
+        {run.steps.map((step) => (
+          <div key={step.id} className="rounded-md bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              {step.step_order}. {agentTone[step.agent_type] ?? step.agent_type}
+            </p>
+            <p className="mt-1 text-sm text-slate-700">{step.output_summary}</p>
+            <p className="mt-1 text-xs text-slate-500">{step.decision_basis}</p>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function Panel({ title, kicker, children }: { title: string; kicker: string; children: ReactNode }) {
   return (
-    <section className="rounded-md border border-ink/10 bg-chalk/55 p-5 shadow-panel backdrop-blur">
+    <section className="rounded-md border border-slate-200 bg-slate-100 p-5 shadow-panel">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-moss">{kicker}</p>
-      <h2 className="mt-1 font-display text-2xl text-ink">{title}</h2>
+      <h2 className="mt-1 font-display text-2xl text-slate-950">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, dark = false }: { label: string; value: string; dark?: boolean }) {
   return (
-    <div className="rounded-md border border-ink/10 bg-white/55 p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
+    <div className={`rounded-md border p-4 ${dark ? "border-white/15 bg-white/10" : "border-slate-200 bg-white"}`}>
+      <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${dark ? "text-emerald-200" : "text-moss"}`}>{label}</p>
+      <p className={`mt-2 text-2xl font-semibold ${dark ? "text-white" : "text-slate-950"}`}>{value}</p>
     </div>
   );
 }
 
-function Output({ title, text, footnote }: { title: string; text: string; footnote: string }) {
+function OutputBlock({ title, text, source }: { title: string; text: string; source: string }) {
   return (
-    <article className="mt-4 rounded-md border border-ink/10 bg-white/60 p-4">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-graphite/80">{text}</p>
-      <p className="mt-3 text-xs font-semibold text-moss">Source: {footnote}</p>
+    <article className="mt-4 rounded-md border border-slate-200 bg-white p-4">
+      <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{text}</p>
+      <p className="mt-3 text-xs font-semibold text-moss">Source: {source}</p>
     </article>
   );
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <p className="rounded-md border border-dashed border-ink/20 p-4 text-sm leading-6 text-graphite/60">{text}</p>;
+  return <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm leading-6 text-slate-500">{text}</p>;
+}
+
+function StatusLine({ busy, error }: { busy: boolean; error: string | null }) {
+  if (busy) return <p className="mt-3 rounded-md bg-white p-3 text-sm text-slate-600">Loading initial data...</p>;
+  if (error) return <p className="mt-3 rounded-md bg-signal/10 p-3 text-sm text-signal">{error}</p>;
+  return null;
 }

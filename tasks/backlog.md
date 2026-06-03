@@ -18,7 +18,6 @@
 
 | Task ID | 任务 | 关联需求 | 关联验收标准 | 状态 | 说明 |
 |---|---|---|---|---|---|
-| IMPL-008 | 添加自动化测试与基础验证脚本 | R1-R13 | AC1-AC13 | Backlog | 依赖首批后端实现 |
 | IMPL-009 | 添加部署配置 | R11 | AC11 | Backlog | 依赖前后端工程初始化 |
 
 ## 待修复 / 待重构任务
@@ -30,6 +29,7 @@
 | FIX-001 | 明确 `GET /student-profiles` 返回所有画像还是仅 demo 画像 | IMPL-003 Review remaining issue | Backlog | 当前 `ProfileService.list_demo_profiles()` 返回所有 `StudentProfile` |
 | REFACTOR-003 | 聚合 Resource / Tutor / Quiz / Evaluator 的统一 learning-flow run | IMPL-005 Review non-blocking issue | Backlog | 当前 4 个能力分别创建独立 `agent_run`，后续若要展示统一调用顺序需做 run 聚合或 run list API |
 | TEST-001 | 增加前后端联调 smoke test 和 browser E2E | IMPL-006 Review non-blocking issue | Backlog | 当前只有 `npm run build` 和后端单测通过，尚缺真实浏览器端到端验证 |
+| FIX-002 | 修正学生端 `PathItemCard` 步骤标签 off-by-one | IMPL-007 Review non-blocking issue | Backlog | Browser smoke 观察到页面可能显示 `STEP 2` 到 `STEP 6`，影响演示观感 |
 
 ## 已裁决事项
 
@@ -52,3 +52,5 @@
 - [x] `IMPL-006` 已推进到 `tasks/current.md`。
 - [x] `IMPL-006` 已由 Review & Test Agent 验收通过，范围仅限前端学生端工程初始化和基础页面骨架。
 - [x] `IMPL-007` 已推进到 `tasks/current.md`。
+- [x] `IMPL-007` 已由 Review & Test Agent 验收通过，范围仅限学生端 MVP 页面关键交互。
+- [x] `IMPL-008` 已推进到 `tasks/current.md`。

@@ -772,3 +772,106 @@ Missing Tests：
 限制说明：
 
 - 未将完整学生端 MVP 页面、浏览器联调、E2E 自动化、部署配置、真实 RAG / LLM / VectorStore 或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-03 Review & Test Agent Review: IMPL-007
+
+范围：
+
+- 阅读 `docs/02-acceptance-criteria.md`。
+- 阅读 `docs/03-architecture.md`。
+- 阅读 `tasks/current.md`，确认当前任务为 `IMPL-007: 实现学生端 MVP 页面`。
+- 阅读 `docs/06-project-state.md`。
+- 阅读本文件已有 Review 记录。
+- 查看当前 `git status --short` 和 `git diff`。
+- 审查 `src/frontend/src/App.tsx`、`src/frontend/src/styles.css`、`src/frontend/src/api/client.ts`、`src/frontend/src/api/types.ts`。
+- 使用 Playwright 对临时后端 + Vite 前端执行 browser smoke。
+
+结论：
+
+- 功能验收：Pass。
+- Implementation Boundary Check：Pass。
+- 允许 State Manager 移入 Done：Yes。
+- 通过范围限定为 `IMPL-007` 的“学生端 MVP 页面关键交互”，不代表部署配置、真实 RAG / LLM / VectorStore 或完整 AC1-AC13 全部完成。
+
+验证命令：
+
+```powershell
+cd src/frontend
+npm ci
+npm run build
+cd ../..
+$env:PYTHONPATH='src/backend'
+python -m compileall -q src/backend tests
+python -m unittest discover -s tests -v
+python -m playwright install chromium
+python C:\Users\32544\.agents\skills\webapp-testing\scripts\with_server.py --server "powershell -NoProfile -Command `$env:PYTHONPATH='src/backend'; python -m uvicorn app.main:app --host 127.0.0.1 --port 8000" --port 8000 --server "powershell -NoProfile -Command cd src/frontend; npm run dev -- --port 5173" --port 5173 --timeout 45 -- python .review_tmp_impl007_smoke.py
+```
+
+验证结果：
+
+- `npm ci`：通过，安装 137 个 package，`found 0 vulnerabilities`。
+- `npm run build`：通过，`tsc --noEmit && vite build` 成功，30 个 module transformed。
+- `python -m compileall -q src/backend tests`：通过。
+- `python -m unittest discover -s tests -v`：通过，16 个测试全部通过。
+- Playwright browser smoke：通过。临时启动 FastAPI `127.0.0.1:8000` 和 Vite `127.0.0.1:5173` 后，完成 demo data refresh、profile display、course graph display、learning path generation、path node selection、resource generation、Tutor Q&A、Quiz generation/submission、Evaluator feedback 和 Agent run trace 检查。
+- 首次 browser smoke 因本机缺少 Playwright Chromium 未运行，已执行 `python -m playwright install chromium` 后复测通过。
+- 本轮验证产生的临时 smoke 脚本、`src/frontend/dist`、`src/frontend/node_modules`、`data/demo.sqlite3` 和 `__pycache__` 已清理。
+
+### Implementation Boundary Check
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | `src/frontend/src/App.tsx` 通过 `api` client 发起 demo data、profile、course graph、learning path、resource、tutor、quiz、attempt、agent run 请求；页面只做状态管理、选择交互和展示，没有在 frontend 生成学习路径、resource、quiz answer、evaluation result 或 agent steps。 |
+| Service/orchestrator boundary | Pass | 当前 frontend 仍通过 `/api/v1` 访问后端能力；学习路径由 `api.createLearningPath()` 触发，资源/Tutor/Quiz/Evaluator 分别通过后端 endpoint 返回结果，没有绕过 service/orchestrator。 |
+| Adapter/provider boundary | N/A | 当前任务未新增 mock LLM / RAG / VectorStore / TaskQueue provider；frontend 只依赖 HTTP API client，不直接接入外部 provider。 |
+| Hardcoded demo/mock risk | Pass | `profileLabels` 和 `agentTone` 仅为展示 label；默认 goal/question 只是可编辑输入初值。未硬编码 3 个画像列表、5 个知识点、学习路径、resource、quiz answer、evaluator feedback 或 agent steps。 |
+| API contract stability | Pass | `src/frontend/src/api/client.ts` 集中封装 `/api/v1` endpoints，`src/frontend/src/api/types.ts` 与当前后端 schema 对齐；后续替换真实 LLM / RAG / VectorStore 大概率不需要推翻 frontend request / response contract。 |
+
+Acceptance Criteria 覆盖：
+
+- AC10：Pass for IMPL-007 scope。页面已覆盖画像选择、学习路径查看、当前节点选择、资源查看、Tutor 问答、Quiz 提交、评价反馈和 Agent run 摘要展示，并经 browser smoke 走通关键交互。
+- AC13：Pass for current scope。frontend 未直接访问 provider、数据库、向量库、Redis 或 LLM SDK。
+- AC16：Pass for current scope。frontend 未维护本地 demo data 副本。
+- AC18：Pass for current scope。frontend 未实现 Planner / Tutor / Quiz / Evaluator rule-based logic。
+- AC20：Implementation Boundary Check = Pass。
+
+Blocking Issues：
+
+- 无。
+
+Non-blocking Issues：
+
+- `src/frontend/src/App.tsx` 的 `PathItemCard` 使用 `Step {item.order_index + 1}`。Browser smoke 观察到后端返回的 path item 已显示为阶段 1-5，但 UI step label 显示为 `STEP 2` 到 `STEP 6`，存在步骤编号偏移。当前不影响关键交互闭环，但会影响演示观感。
+- 后端测试仍出现 `datetime.utcnow()` deprecation warning 和 `StarletteDeprecationWarning`，不是本轮 frontend 页面任务的阻塞项。
+- 当前 browser smoke 是临时脚本，不是持久化测试套件；后续仍应纳入正式 E2E。
+
+Missing Tests：
+
+- 缺少提交到仓库的 Playwright E2E 测试，用于持续覆盖 IMPL-007 smoke 流程。
+- 缺少 frontend component/unit tests 覆盖 loading/error/empty state、profile/path node selection reset 行为。
+- 缺少 UI step numbering 的断言，当前 off-by-one 问题未被自动测试捕获。
+
+建议：
+
+- Task Manager 可以将 `IMPL-007` 从 `Current` 移入 `Done`，但 Done 说明必须限定为“学生端 MVP 页面关键交互”。
+- 建议后续小修 `PathItemCard` step label，避免展示 `STEP 2` 到 `STEP 6`。
+- 不得将部署配置、真实 RAG / LLM / VectorStore、正式 E2E 测试套件或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-03 State Manager Update After IMPL-007 Review
+
+依据：
+
+- Review & Test Agent 已在本文件中明确给出 `IMPL-007` 通过结论。
+- 通过范围限定为“学生端 MVP 页面关键交互”。
+- `Implementation Boundary Check` 结论为 `Pass`。
+- State Manager Agent / Task Manager 未执行测试，只引用 Review & Test Agent 已记录的测试和验收结果。
+
+任务状态更新：
+
+- `IMPL-007` 从 `tasks/current.md` 移入 `tasks/done.md`。
+- `IMPL-008` 从 `tasks/backlog.md` 移入 `tasks/current.md`，作为下一阶段实现任务。
+- `tasks/backlog.md` 保留 `IMPL-009` 及后续任务，并新增 `FIX-002` 跟踪学生端步骤标签 off-by-one 问题。
+
+限制说明：
+
+- 未将正式 E2E 测试套件、部署配置、真实 RAG / LLM / VectorStore 或完整 MVP 产品功能标记为 Done。
