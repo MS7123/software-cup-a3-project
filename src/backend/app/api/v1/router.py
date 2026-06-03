@@ -4,20 +4,31 @@ from app.domain.exceptions import NotFoundError
 from app.schemas import (
     ConceptGraphResponse,
     AgentRunResponse,
+    AttemptSubmitRequest,
     DemoDataLoadResponse,
     DemoDataStatusResponse,
+    EvaluationResult,
+    GeneratedResourceResponse,
     LearningFlowResponse,
     LearningPathCreate,
     LearningPathResponse,
+    QuizGenerateRequest,
+    QuizResponse,
+    ResourceGenerateRequest,
     StudentProfileCreate,
     StudentProfileResponse,
+    TutorAskRequest,
+    TutorAskResponse,
 )
 from app.agents.orchestrator import AgentOrchestrator
 from app.services.agent_run_service import AgentRunService
+from app.services.assessment_service import AssessmentService
 from app.services.course_service import CourseService
 from app.services.demo_data_service import DemoDataService
 from app.services.learning_path_service import LearningPathService
 from app.services.profile_service import ProfileService
+from app.services.resource_service import ResourceService
+from app.services.tutor_service import TutorService
 
 api_router = APIRouter()
 
@@ -86,5 +97,37 @@ def get_learning_path(path_id: int) -> LearningPathResponse:
 def get_agent_run(run_id: int) -> AgentRunResponse:
     try:
         return AgentRunService().get_run(run_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.post("/resources/generate", response_model=GeneratedResourceResponse)
+def generate_resource(payload: ResourceGenerateRequest) -> GeneratedResourceResponse:
+    try:
+        return ResourceService().generate_resource(payload.path_item_id, payload.resource_type)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.post("/tutor/ask", response_model=TutorAskResponse)
+def ask_tutor(payload: TutorAskRequest) -> TutorAskResponse:
+    try:
+        return TutorService().ask(payload.student_profile_id, payload.course_id, payload.question)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.post("/quizzes/generate", response_model=QuizResponse)
+def generate_quiz(payload: QuizGenerateRequest) -> QuizResponse:
+    try:
+        return AssessmentService().generate_quiz(payload.student_profile_id, payload.concept_id, payload.difficulty)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.post("/quizzes/{quiz_id}/attempts", response_model=EvaluationResult)
+def submit_quiz_attempt(quiz_id: int, payload: AttemptSubmitRequest) -> EvaluationResult:
+    try:
+        return AssessmentService().submit_attempt(quiz_id, payload.student_profile_id, payload.answers)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

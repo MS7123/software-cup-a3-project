@@ -40,3 +40,8 @@
   - Review 来源：`reviews/review-log.md` 的 `2026-06-03 Review & Test Agent Review: IMPL-004`。
   - 已验证范围：学习路径创建 API、路径详情 API、Planner 最小流程、`agent_runs` / `agent_run_steps` 摘要记录、Agent run 详情 API。
   - 明确非 Done：完整 AC4、完整 AC9、完整多 Agent 学习闭环、Resource / Tutor / Quiz / Evaluator、RAG、前端页面、完整 MVP 产品功能。
+- [x] `IMPL-005`：实现资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环。
+  - Review 结论：通过，仅限 `IMPL-005` 的任务范围。
+  - Review 来源：`reviews/review-log.md` 的 `2026-06-03 Review & Test Agent Review: IMPL-005`。
+  - 已验证范围：资源生成 API、Tutor 问答 API、Quiz 生成 API、提交作答与评价 API、对应 `agent_runs` / `agent_run_steps` 记录、最小 learning loop API 测试、Implementation Boundary Check。
+  - 明确非 Done：完整前端学习闭环、真实 RAG / VectorStore、真实 LLM provider、统一多 Agent run 聚合展示、部署配置、完整 MVP 产品功能。

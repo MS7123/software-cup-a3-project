@@ -5,7 +5,7 @@
 
 ## 1. 当前项目状态摘要
 
-当前仓库处于后端 MVP 基础能力逐步落地阶段。`IMPL-001` 到 `IMPL-004` 均已由 Review & Test Agent 明确复核通过，`IMPL-005` 已进入 Current；通过范围均限定在对应阶段任务内，不代表完整 MVP 产品功能 Done。
+当前仓库处于后端 MVP 基础能力逐步落地阶段。`IMPL-001` 到 `IMPL-005` 均已由 Review & Test Agent 明确复核通过，当前已推进到前端初始化阶段；通过范围均限定在对应阶段任务内，不代表完整 MVP 产品功能 Done。
 
 用户已确认 MVP 边界：
 
@@ -36,7 +36,8 @@
 - `IMPL-003` 已通过 Review，范围限定为学生画像与课程知识点 API。
 - `IMPL-004` 已通过 Review，范围限定为学习路径与 `Planner Agent` 最小流程。
 - Targeted Boundary Review 已对 `IMPL-002` 到 `IMPL-004` 做轻量补审，结论为 Pass。
-- 下一阶段任务 `IMPL-005` 已从 Backlog 推进到 Current：实现资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环。
+- `IMPL-005` 已通过 Review，范围限定为资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环。
+- 下一阶段任务 `IMPL-006` 已从 Backlog 推进到 Current：初始化前端学生端工程。
 
 已新增实现：
 
@@ -55,11 +56,13 @@
 - `Planner Agent` 最小流程：`AgentOrchestrator.run_learning_flow()` 调用 service 生成路径，并通过 `AgentRunService` 写入 `agent_runs` / `agent_run_steps` 摘要。
 - demo data 加载实现：`src/backend/app/db/session.py`、`src/backend/app/seed/demo_data.py`、`src/backend/app/services/demo_data_service.py`。
 - 测试：`tests/test_backend_contracts.py`、`tests/test_demo_data.py`、`tests/test_profile_course_api.py`、`tests/test_learning_path_api.py`。
+- Resource / Tutor / Quiz / Evaluator 最小闭环：`src/backend/app/services/resource_service.py`、`src/backend/app/services/tutor_service.py`、`src/backend/app/services/assessment_service.py`、`src/backend/app/agents/rule_based_agents.py`。
+- 新增 API：`POST /api/v1/resources/generate`、`POST /api/v1/tutor/ask`、`POST /api/v1/quizzes/generate`、`POST /api/v1/quizzes/{quiz_id}/attempts`。
+- 新增测试：`tests/test_learning_loop_api.py`。
 
 尚未实现：
 
 - RAG / 知识库真实检索。
-- 资源生成、测验、评价闭环。
 - 前端应用和学生端 MVP 页面。
 - 部署和演示脚本。
 
@@ -82,11 +85,11 @@ Review & Test Agent 验证结论：
 | R2 | 学生画像 | Partial | `src/backend/app/services/profile_service.py`, `src/backend/app/api/v1/router.py`, Review & Test Agent IMPL-003 结论 | 已有学生画像列表、详情、创建 API，并能返回 3 个 seed 画像；前端选择/编辑体验仍未完成 |
 | R3 | 课程知识点和先修关系建模 | Partial | `src/backend/app/services/course_service.py`, `src/backend/app/api/v1/router.py`, Review & Test Agent IMPL-003 结论 | 已有课程知识点图查询 API，可返回数据结构课程、5 个 MVP 知识点和知识点关系；完整课程知识点维护能力仍未完成 |
 | R4 | 学习路径规划 Agent | Partial | `src/backend/app/services/learning_path_service.py`, `src/backend/app/agents/orchestrator.py`, Review & Test Agent IMPL-004 结论 | 已有同步学习路径创建 API 和 Planner 最小流程；完整多 Agent 学习流程仍待后续任务扩展 |
-| R5 | 学习资源生成 Agent | Not Started | 仅有调研和架构文档 | 未发现 Agent 实现 |
-| R6 | RAG Tutor Agent | Not Started | 仅有调研和架构文档 | 未发现检索或问答实现 |
-| R7 | Quiz Agent | Not Started | 仅有调研和架构文档 | 未发现测验生成实现 |
-| R8 | Evaluator Agent 和掌握度更新 | Not Started | 仅有调研和架构文档 | 未发现评价模型或记录 |
-| R9 | Agent 执行日志和可解释性 | Partial | `src/backend/app/services/agent_run_service.py`, Review & Test Agent IMPL-004 结论 | Planner 最小流程已写入 run/step 摘要；完整 AC9 要求至少 4 个 Agent，仍待 Resource / Tutor / Quiz / Evaluator 补齐 |
+| R5 | 学习资源生成 Agent | Partial | `src/backend/app/services/resource_service.py`, `src/backend/app/agents/rule_based_agents.py`, Review & Test Agent IMPL-005 结论 | 已实现面向 `path_item_id` 的最小资源生成闭环；真实 LLM / richer content generation 仍未完成 |
+| R6 | RAG Tutor Agent | Partial | `src/backend/app/services/tutor_service.py`, `src/backend/app/services/knowledge_base_service.py`, Review & Test Agent IMPL-005 结论 | 已实现基于 demo chunk 检索的 grounded tutor answer；真实 VectorStore / RAG pipeline 仍未完成 |
+| R7 | Quiz Agent | Partial | `src/backend/app/services/assessment_service.py`, Review & Test Agent IMPL-005 结论 | 已实现最小测验生成；更完整题型、策略和前端交互仍未完成 |
+| R8 | Evaluator Agent 和掌握度更新 | Partial | `src/backend/app/services/assessment_service.py`, Review & Test Agent IMPL-005 结论 | 已实现最小评分、反馈和 mastery update 建议；真实 evaluator 策略与持续追踪仍未完成 |
+| R9 | Agent 执行日志和可解释性 | Partial | `src/backend/app/services/agent_run_service.py`, Review & Test Agent IMPL-004 / IMPL-005 结论 | Planner、Resource、Tutor、Quiz、Evaluator 均有最小 `agent_runs` / `agent_run_steps` 记录；统一 learning-flow 聚合展示仍待增强 |
 | R10 | 前端核心界面 | Not Started | `src/frontend/.gitkeep` | 未发现前端项目 |
 | R11 | 后端 API、数据库、任务队列、LLM 封装 | Partial | `src/backend/app/`, `pyproject.toml`, Review & Test Agent IMPL-001 / IMPL-002 / IMPL-003 结论 | 已有 FastAPI、schema、model、demo persistence、部分 API 和 package 配置；尚未实现数据库迁移、正式 PostgreSQL 配置、队列和可替换 LLM 配置 |
 | R12 | 开源合规边界 | Partial | `docs/compliance/open-source-compliance.md`, `pyproject.toml` | 已有原则文档和基础依赖声明，但依赖 license 清单仍需补全 |
@@ -106,16 +109,16 @@ Review & Test Agent 验证结论：
 - `IMPL-002`：实现 demo data 加载能力。Review & Test Agent 复测通过，范围仅限 demo data 加载能力。
 - `IMPL-003`：实现学生画像与课程知识点 API。Review & Test Agent 复测通过，范围仅限学生画像与课程知识点 API。
 - `IMPL-004`：实现学习路径与 `Planner Agent` 最小流程。Review & Test Agent 验收通过，范围仅限学习路径与 Planner Agent 最小流程。
+- `IMPL-005`：实现资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环。Review & Test Agent 验收通过，范围仅限后端最小闭环。
 
 ## 4. 未完成任务
 
-- 执行 `IMPL-005`：实现资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环。
+- 执行 `IMPL-006`：初始化前端学生端工程。
 - 细化测试计划。
 - 更新 `docs/02-acceptance-criteria.md` 中“当前不可验收项”的过期描述。
 - 添加 `.gitignore`，避免测试缓存文件被误提交。
 - 明确默认 SQLite demo database 仅用于开发/演示，并补正式 PostgreSQL 配置路径。
 - 实现 RAG / 知识库真实检索。
-- 实现资源生成、测验、评价闭环。
 - 初始化前端项目和学生端 MVP 页面。
 - 增加部署配置和演示脚本。
 
@@ -133,15 +136,16 @@ Review & Test Agent 验证结论：
 | I8 | `IMPL-002` 到 `IMPL-004` 完成或开发时尚未应用 implementation boundary standard | 早期阶段可能存在 demo/mock/rule-based 边界遗漏 | Mitigated：Targeted Boundary Review 已补审，结论为 Pass |
 | I9 | Planner 当前按 `Concept.id` 顺序生成路径，未显式使用 `concept_relations` 计算先修顺序 | 后续真实课程数据顺序变化时，学习路径顺序可能偏离先修关系 | Backlog |
 | I10 | `AgentOrchestrator.run_learning_flow()` 先创建学习路径再创建 `agent_run` | 若 run 记录失败，可能出现有路径但无 run 的不一致状态 | Backlog |
+| I11 | Resource / Tutor / Quiz / Evaluator 当前分别创建独立 `agent_run` | 若后续要展示统一学习闭环调用顺序，当前 run 结构还不够集中 | Backlog |
 
 ## 6. 下一步建议
 
-1. Implementation Agent 执行 `tasks/current.md` 中的 `IMPL-005`。
-2. `IMPL-005` 完成后进入 Review，不得直接 Done。
-3. Review & Test Agent 必须包含 `Implementation Boundary Check`，重点检查 Resource / Tutor / Quiz / Evaluator 是否退化为 hardcoded demo。
+1. Implementation Agent 执行 `tasks/current.md` 中的 `IMPL-006`，先建立前端学生端工程骨架。
+2. 后续涉及前后端闭环的实现任务仍必须先进入 Review，不得直接 Done。
+3. Review & Test Agent 后续对所有 `IMPL-*` 任务都必须包含 `Implementation Boundary Check`。
 4. 同步处理 `PLAN-004`、`.gitignore` 和 PostgreSQL 配置路径说明，避免状态文档与工程事实继续漂移。
 5. State Manager Agent 每轮结束后更新本文件，避免上下文漂移。
 
 ## 7. 需要用户裁决的问题
 
-当前没有阻塞 `IMPL-005` 的用户裁决问题。
+当前没有新的阻塞裁决问题。

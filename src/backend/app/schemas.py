@@ -177,6 +177,7 @@ class GeneratedResourceResponse(BaseModel):
     content: str
     source_refs: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime | None = None
+    agent_run_id: int | None = None
 
 
 class TutorAskRequest(BaseModel):
@@ -218,6 +219,7 @@ class QuizResponse(BaseModel):
     status: ProcessingStatus
     items: list[QuizItemResponse] = Field(default_factory=list)
     created_at: datetime | None = None
+    agent_run_id: int | None = None
 
 
 class AttemptSubmitRequest(BaseModel):
@@ -230,6 +232,7 @@ class EvaluationResult(BaseModel):
     score: float
     feedback: str
     mastery_updates: list[dict[str, Any]] = Field(default_factory=list)
+    agent_run_id: int | None = None
 
 
 class TaskResponse(BaseModel):

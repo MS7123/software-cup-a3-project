@@ -456,6 +456,78 @@ Missing Tests：
    - 最小修复建议：明确该 API 是“所有画像列表”还是“demo 画像列表”；若是 demo-only，则加过滤条件或 demo marker。
    - 是否阻塞进入 `IMPL-005`：No。
 
+## 2026-06-03 Review & Test Agent Review: IMPL-005
+
+范围：
+
+- 阅读 `docs/02-acceptance-criteria.md`。
+- 阅读 `docs/03-architecture.md`。
+- 阅读 `tasks/current.md`，确认当前任务为 `IMPL-005: 实现资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环`。
+- 阅读 `docs/06-project-state.md`。
+- 阅读本文件已有 Review 记录。
+- 审查 `src/backend/app/agents/rule_based_agents.py`。
+- 审查 `src/backend/app/services/resource_service.py`。
+- 审查 `src/backend/app/services/tutor_service.py`。
+- 审查 `src/backend/app/services/assessment_service.py`。
+- 审查 `src/backend/app/services/knowledge_base_service.py`。
+- 审查 `src/backend/app/api/v1/router.py`。
+- 审查 `src/backend/app/schemas.py`。
+- 审查 `tests/test_learning_loop_api.py` 和 `tests/test_backend_contracts.py`。
+
+结论：
+
+- 功能验收：Pass。
+- Implementation Boundary Check：Pass。
+- 允许 State Manager 移入 Done：Yes。
+- 通过范围限定为 `IMPL-005` 的“资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环”，不代表完整 MVP 前端闭环或完整 AC1-AC13 全部完成。
+
+验证命令：
+
+```powershell
+$env:PYTHONPATH='src/backend'
+python -m compileall -q src/backend tests
+python -m unittest discover -s tests -v
+```
+
+验证结果：
+
+- `python -m compileall -q src/backend tests`：通过。
+- `python -m unittest discover -s tests -v`：通过，16 个测试全部通过。
+- `tests/test_learning_loop_api.py` 覆盖 Resource / Tutor / Quiz / Evaluator 最小闭环、Agent run step 记录和缺失记录 404。
+- 本轮测试产生的 `__pycache__` 已清理。
+
+### Implementation Boundary Check
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | `src/backend/app/api/v1/router.py` 只调用 `ResourceService`、`TutorService`、`AssessmentService` 并转换 `NotFoundError` 为 HTTP 404；未在 handler 中生成 resource / tutor answer / quiz / evaluation。`src/frontend` 未实现，无 frontend hardcoded result。 |
+| Service/orchestrator boundary | Pass | `ResourceService`、`TutorService`、`AssessmentService` 负责业务编排、持久化和 agent run 记录；rule-based agent 逻辑集中在 `src/backend/app/agents/rule_based_agents.py`。 |
+| Adapter/provider boundary | Pass | 当前任务未接入真实外部 LLM / VectorStore / TaskQueue SDK；`KnowledgeBaseService` 通过 service 边界封装 demo chunk search；`tests/test_backend_contracts.py` 禁止 service import `openai`、`chroma`、`redis`、`rq`、`fastapi`、`httpexception`。 |
+| Hardcoded demo/mock risk | Pass | Rule-based 输出依赖 DB 中的 `path_item`、`concept`、`document_chunks` 和 request 输入；未发现 router / frontend 写死完整结果。 |
+| API contract stability | Pass | 新增响应字段使用既有 schema 扩展：`agent_run_id` 被加入 `GeneratedResourceResponse`、`TutorAskResponse`、`QuizResponse`、`EvaluationResult`；后续替换真实 LLM / RAG / VectorStore 大概率不需要推翻 `/api/v1` contract。 |
+
+Acceptance Criteria 覆盖：
+
+- AC5：Pass for IMPL-005 scope。`POST /api/v1/resources/generate` 能针对 `path_item_id` 生成资源，关联 `learning_path_items`，并返回 `source_refs` 与 `agent_run_id`。
+- AC6：Pass for IMPL-005 scope。`POST /api/v1/tutor/ask` 通过 `KnowledgeBaseService` 检索 demo chunks，返回带 source refs 的 grounded answer。
+- AC7：Pass for IMPL-005 scope。`POST /api/v1/quizzes/generate` 生成题目、答案、解析、难度和 concept tags。
+- AC8：Pass for IMPL-005 scope。`POST /api/v1/quizzes/{quiz_id}/attempts` 返回 score、feedback、mastery updates 和 `agent_run_id`。
+- AC9：Partial / current scope pass。Resource、Tutor、Quiz、Evaluator 都写入各自 `agent_runs` / `agent_run_steps`，但完整 MVP 的统一多 Agent run 展示仍可后续增强。
+
+Blocking Issues：
+
+- 无。
+
+Non-blocking Issues：
+
+- Resource / Tutor / Quiz / Evaluator 当前分别创建独立 `agent_run`，不是一个统一 learning-flow run 下的 4 个连续 steps。当前 `IMPL-005` 范围可接受，但后续若要满足“完整学习闭环统一调用顺序展示”，应补统一 run 聚合或 agent run list API。
+- `datetime.utcnow()` 仍触发 Python 3.13 deprecation warning，后续可替换为 timezone-aware UTC。
+
+建议：
+
+- Task Manager 可以将 `IMPL-005` 从 `Current` 移入 `Done`，但 Done 说明必须限定为“资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环”。
+- 不得将完整 MVP 前端闭环、真实 RAG / LLM / VectorStore 或完整 AC1-AC13 全部标记为 Done。
+
 ## 2026-06-03 State Manager Update After IMPL-001 Review
 
 依据：
@@ -584,3 +656,22 @@ Conclusion: Pass / Needs Fix / Blocking
 
 - 未将完整 AC4、AC9 或完整 MVP 产品功能标记为 Done。
 - 未将 Resource / Tutor / Quiz / Evaluator、RAG、前端或部署标记为 Done。
+
+## 2026-06-03 State Manager Update After IMPL-005 Review
+
+依据：
+
+- Review & Test Agent 已在本文件中明确给出 `IMPL-005` 通过结论。
+- 通过范围限定为“资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环”。
+- `Implementation Boundary Check` 结论为 `Pass`。
+- State Manager Agent / Task Manager 未执行测试，只引用 Review & Test Agent 已记录的测试和验收结果。
+
+任务状态更新：
+
+- `IMPL-005` 从 `tasks/current.md` 移入 `tasks/done.md`。
+- `IMPL-006` 从 `tasks/backlog.md` 移入 `tasks/current.md`，作为下一阶段实现任务。
+- `tasks/backlog.md` 保留 `IMPL-007` 及后续任务，并新增 `REFACTOR-003` 跟踪统一 learning-flow run 聚合问题。
+
+限制说明：
+
+- 未将完整前端学习闭环、真实 RAG / VectorStore、真实 LLM provider、统一多 Agent run 聚合展示、部署配置或完整 MVP 产品功能标记为 Done。

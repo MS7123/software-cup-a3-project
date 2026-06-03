@@ -5,17 +5,18 @@
 
 ## 当前批准执行
 
-### IMPL-005: 实现资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环
+### IMPL-006: 初始化前端学生端工程
 
 - 状态：Current
 - 负责人角色：Implementation Agent
-- 关联需求：R5, R6, R7, R8, R9
-- 关联验收标准：AC5, AC6, AC7, AC8, AC9
+- 关联需求：R10
+- 关联验收标准：AC10
 - 前置依赖：
   - `IMPL-001` 已由 Review & Test Agent 验收通过。
   - `IMPL-002` 已由 Review & Test Agent 验收通过。
   - `IMPL-003` 已由 Review & Test Agent 验收通过。
   - `IMPL-004` 已由 Review & Test Agent 验收通过。
+  - `IMPL-005` 已由 Review & Test Agent 验收通过。
 - 输入依据：
   - `docs/01-requirements.md`
   - `docs/02-acceptance-criteria.md`
@@ -23,16 +24,14 @@
   - `tasks/done.md`
   - `reviews/review-log.md`
 - 预期输出：
-  - 实现 Resource 最小流程：针对学习路径节点生成资源，并关联到 `learning_path_items`。
-  - 实现 Tutor 最小问答：基于数据结构 demo chunk / source_ref 返回有依据的回答。
-  - 实现 Quiz 最小生成：针对知识点和难度生成题目、答案、解析和知识点标签。
-  - 实现 Evaluator 最小评价：提交答案后返回评分、反馈和掌握度更新建议。
-  - 将 Resource / Tutor / Quiz / Evaluator 的步骤写入 `agent_runs` / `agent_run_steps` 摘要记录。
-  - 遵守 `Implementation Boundary Check`：rule-based logic 不得写在 API handler 或 frontend，demo/mock 数据集中管理，adapter/provider contract 保持稳定。
-  - API handler 仍应通过 service 层访问业务逻辑，不直接绕过既有 service / adapter 边界。
+  - 初始化前端学生端工程目录、依赖配置和运行入口。
+  - 建立与当前后端 `/api/v1` 契约兼容的基础页面骨架与 API client 组织方式。
+  - 预留学生画像、学习路径、资源、问答、测验结果的页面或模块边界，但不越权实现未进入 Current 的功能任务。
+  - 前端不得硬编码核心业务结果；应消费后端 API 或为后续接线保留明确 adapter 边界。
+  - 保持 `Implementation Boundary Check`：frontend 不承载核心业务逻辑，不绕过 API contract。
 - Done 条件：
   - 任务实现完成后先进入 `tasks/review.md`，不得直接进入 `tasks/done.md`。
-  - Review & Test Agent 必须负责测试和验证，并明确结论：Resource / Tutor / Quiz / Evaluator 最小闭环可用；生成资源、问答、测验、评价输出满足当前阶段验收；Agent run 摘要记录至少覆盖 Planner 外的新增 Agent steps。
+  - Review & Test Agent 必须负责测试和验证，并明确结论：前端工程可运行、基础页面骨架可访问、与当前后端契约对齐、没有前端 hardcoded 核心结果。
   - Review & Test Agent 必须填写 `Implementation Boundary Check`，且结论不得为 `Blocking`。
   - State Manager Agent / Task Manager 不运行测试命令，只根据 Review & Test Agent 的结论移动任务状态。
 - Review 要求：

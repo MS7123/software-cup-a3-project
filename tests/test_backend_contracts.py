@@ -11,6 +11,8 @@ from app.services import (
     knowledge_base_service,
     learning_path_service,
     profile_service,
+    resource_service,
+    tutor_service,
 )
 
 
@@ -73,6 +75,8 @@ class BackendContractTests(unittest.TestCase):
             knowledge_base_service,
             learning_path_service,
             profile_service,
+            resource_service,
+            tutor_service,
         ]
         forbidden_tokens = ("openai", "chroma", "redis", "rq", "fastapi", "httpexception")
         for module in service_modules:

@@ -18,8 +18,7 @@
 
 | Task ID | 任务 | 关联需求 | 关联验收标准 | 状态 | 说明 |
 |---|---|---|---|---|---|
-| IMPL-006 | 初始化前端学生端工程 | R10 | AC10 | Backlog | 建议后端基础 API 稳定后开始 |
-| IMPL-007 | 实现学生端 MVP 页面 | R10 | AC10 | Backlog | 依赖 IMPL-003 至 IMPL-005 |
+| IMPL-007 | 实现学生端 MVP 页面 | R10 | AC10 | Backlog | 依赖 IMPL-003 至 IMPL-006 |
 | IMPL-008 | 添加自动化测试与基础验证脚本 | R1-R13 | AC1-AC13 | Backlog | 依赖首批后端实现 |
 | IMPL-009 | 添加部署配置 | R11 | AC11 | Backlog | 依赖前后端工程初始化 |
 
@@ -30,6 +29,7 @@
 | REFACTOR-001 | Planner 根据 `concept_relations` 推导学习顺序 | IMPL-004 Review non-blocking issue | Backlog | 当前按 `Concept.id` 顺序生成路径，后续真实课程数据可能顺序不稳定 |
 | REFACTOR-002 | 学习路径创建与 Agent run 记录的一致性处理 | IMPL-004 Review non-blocking issue | Backlog | 后续可考虑 transaction 或补偿逻辑，避免有 path 无 run |
 | FIX-001 | 明确 `GET /student-profiles` 返回所有画像还是仅 demo 画像 | IMPL-003 Review remaining issue | Backlog | 当前 `ProfileService.list_demo_profiles()` 返回所有 `StudentProfile` |
+| REFACTOR-003 | 聚合 Resource / Tutor / Quiz / Evaluator 的统一 learning-flow run | IMPL-005 Review non-blocking issue | Backlog | 当前 4 个能力分别创建独立 `agent_run`，后续若要展示统一调用顺序需做 run 聚合或 run list API |
 
 ## 已裁决事项
 
@@ -48,3 +48,5 @@
 - [x] `IMPL-004` 已推进到 `tasks/current.md`。
 - [x] `IMPL-004` 已由 Review & Test Agent 验收通过，范围仅限学习路径与 `Planner Agent` 最小流程。
 - [x] `IMPL-005` 已推进到 `tasks/current.md`。
+- [x] `IMPL-005` 已由 Review & Test Agent 验收通过，范围仅限资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环。
+- [x] `IMPL-006` 已推进到 `tasks/current.md`。
