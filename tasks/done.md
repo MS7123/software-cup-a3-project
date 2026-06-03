@@ -45,3 +45,8 @@
   - Review 来源：`reviews/review-log.md` 的 `2026-06-03 Review & Test Agent Review: IMPL-005`。
   - 已验证范围：资源生成 API、Tutor 问答 API、Quiz 生成 API、提交作答与评价 API、对应 `agent_runs` / `agent_run_steps` 记录、最小 learning loop API 测试、Implementation Boundary Check。
   - 明确非 Done：完整前端学习闭环、真实 RAG / VectorStore、真实 LLM provider、统一多 Agent run 聚合展示、部署配置、完整 MVP 产品功能。
+- [x] `IMPL-006`：初始化前端学生端工程。
+  - Review 结论：通过，仅限 `IMPL-006` 的任务范围。
+  - Review 来源：`reviews/review-log.md` 的 `2026-06-03 Review & Test Agent Review: IMPL-006`。
+  - 已验证范围：Vite + React + TypeScript 前端工程、`/api/v1` typed client、基础学生端页面骨架、前端 build 验证、Implementation Boundary Check。
+  - 明确非 Done：完整学生端 MVP 页面、浏览器联调、E2E 自动化、真实 RAG / LLM / VectorStore、部署配置、完整 MVP 产品功能。

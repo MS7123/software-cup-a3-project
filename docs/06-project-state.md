@@ -5,7 +5,7 @@
 
 ## 1. 当前项目状态摘要
 
-当前仓库处于后端 MVP 基础能力逐步落地阶段。`IMPL-001` 到 `IMPL-005` 均已由 Review & Test Agent 明确复核通过，当前已推进到前端初始化阶段；通过范围均限定在对应阶段任务内，不代表完整 MVP 产品功能 Done。
+当前仓库处于后端 MVP 基础能力与前端学生端骨架逐步落地阶段。`IMPL-001` 到 `IMPL-006` 均已由 Review & Test Agent 明确复核通过，当前已推进到学生端 MVP 页面实现阶段；通过范围均限定在对应阶段任务内，不代表完整 MVP 产品功能 Done。
 
 用户已确认 MVP 边界：
 
@@ -37,7 +37,8 @@
 - `IMPL-004` 已通过 Review，范围限定为学习路径与 `Planner Agent` 最小流程。
 - Targeted Boundary Review 已对 `IMPL-002` 到 `IMPL-004` 做轻量补审，结论为 Pass。
 - `IMPL-005` 已通过 Review，范围限定为资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环。
-- 下一阶段任务 `IMPL-006` 已从 Backlog 推进到 Current：初始化前端学生端工程。
+- `IMPL-006` 已通过 Review，范围限定为前端学生端工程初始化和基础页面骨架。
+- 下一阶段任务 `IMPL-007` 已从 Backlog 推进到 Current：实现学生端 MVP 页面。
 
 已新增实现：
 
@@ -59,6 +60,7 @@
 - Resource / Tutor / Quiz / Evaluator 最小闭环：`src/backend/app/services/resource_service.py`、`src/backend/app/services/tutor_service.py`、`src/backend/app/services/assessment_service.py`、`src/backend/app/agents/rule_based_agents.py`。
 - 新增 API：`POST /api/v1/resources/generate`、`POST /api/v1/tutor/ask`、`POST /api/v1/quizzes/generate`、`POST /api/v1/quizzes/{quiz_id}/attempts`。
 - 新增测试：`tests/test_learning_loop_api.py`。
+- 前端工程初始化：`src/frontend/package.json`、`src/frontend/vite.config.ts`、`src/frontend/src/api/client.ts`、`src/frontend/src/api/types.ts`、`src/frontend/src/App.tsx`。
 
 尚未实现：
 
@@ -75,6 +77,10 @@ Review & Test Agent 验证结论：
 - `IMPL-004` 已由 Review & Test Agent 验收通过：`python -m compileall -q src/backend tests` 通过；`python -m unittest discover -s tests -v` 通过，14 个测试全部通过。
 - `IMPL-004` 结论：通过，但仅限“学习路径与 Planner Agent 最小流程”；完整 AC4、AC9 和完整 MVP 产品功能仍未 Done。
 - Targeted Boundary Review 结论：`IMPL-002` 到 `IMPL-004` 边界补审 Pass；允许进入 `IMPL-005`。
+- `IMPL-005` 已由 Review & Test Agent 验收通过：`python -m compileall -q src/backend tests` 通过；`python -m unittest discover -s tests -v` 通过，16 个测试全部通过。
+- `IMPL-005` 结论：通过，但仅限“资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环”；完整前端学习闭环、真实 RAG / LLM / VectorStore 和完整 MVP 产品功能仍未 Done。
+- `IMPL-006` 已由 Review & Test Agent 验收通过：`npm ci` 通过；`npm run build` 通过；`python -m compileall -q src/backend tests` 通过；`python -m unittest discover -s tests -v` 通过，16 个测试全部通过。
+- `IMPL-006` 结论：通过，但仅限“前端学生端工程初始化和基础页面骨架”；完整学生端 MVP 页面、浏览器联调、E2E 自动化和完整 MVP 产品功能仍未 Done。
 - State Manager Agent / Task Manager 未执行测试，只引用 Review & Test Agent 已记录的测试和验收结果。
 
 ## 2. 需求覆盖矩阵
@@ -90,7 +96,7 @@ Review & Test Agent 验证结论：
 | R7 | Quiz Agent | Partial | `src/backend/app/services/assessment_service.py`, Review & Test Agent IMPL-005 结论 | 已实现最小测验生成；更完整题型、策略和前端交互仍未完成 |
 | R8 | Evaluator Agent 和掌握度更新 | Partial | `src/backend/app/services/assessment_service.py`, Review & Test Agent IMPL-005 结论 | 已实现最小评分、反馈和 mastery update 建议；真实 evaluator 策略与持续追踪仍未完成 |
 | R9 | Agent 执行日志和可解释性 | Partial | `src/backend/app/services/agent_run_service.py`, Review & Test Agent IMPL-004 / IMPL-005 结论 | Planner、Resource、Tutor、Quiz、Evaluator 均有最小 `agent_runs` / `agent_run_steps` 记录；统一 learning-flow 聚合展示仍待增强 |
-| R10 | 前端核心界面 | Not Started | `src/frontend/.gitkeep` | 未发现前端项目 |
+| R10 | 前端核心界面 | Partial | `src/frontend/src/App.tsx`, `src/frontend/src/api/client.ts`, Review & Test Agent IMPL-006 结论 | 已有可 build 的前端学生端工程和基础页面骨架；完整 MVP 页面、浏览器联调和 E2E 自动化仍未完成 |
 | R11 | 后端 API、数据库、任务队列、LLM 封装 | Partial | `src/backend/app/`, `pyproject.toml`, Review & Test Agent IMPL-001 / IMPL-002 / IMPL-003 结论 | 已有 FastAPI、schema、model、demo persistence、部分 API 和 package 配置；尚未实现数据库迁移、正式 PostgreSQL 配置、队列和可替换 LLM 配置 |
 | R12 | 开源合规边界 | Partial | `docs/compliance/open-source-compliance.md`, `pyproject.toml` | 已有原则文档和基础依赖声明，但依赖 license 清单仍需补全 |
 | R13 | 架构基线与模块边界 | Partial | `docs/03-architecture.md`, `docs/decisions/0001-architecture-baseline.md`, Review & Test Agent IMPL-003 结论 | service / API 分层边界已修正；外部能力仍为 protocol / adapter 骨架；完整业务闭环未完成 |
@@ -110,16 +116,17 @@ Review & Test Agent 验证结论：
 - `IMPL-003`：实现学生画像与课程知识点 API。Review & Test Agent 复测通过，范围仅限学生画像与课程知识点 API。
 - `IMPL-004`：实现学习路径与 `Planner Agent` 最小流程。Review & Test Agent 验收通过，范围仅限学习路径与 Planner Agent 最小流程。
 - `IMPL-005`：实现资源生成、Tutor 问答、Quiz 和 Evaluator 最小闭环。Review & Test Agent 验收通过，范围仅限后端最小闭环。
+- `IMPL-006`：初始化前端学生端工程。Review & Test Agent 验收通过，范围仅限前端工程初始化和基础页面骨架。
 
 ## 4. 未完成任务
 
-- 执行 `IMPL-006`：初始化前端学生端工程。
+- 执行 `IMPL-007`：实现学生端 MVP 页面。
 - 细化测试计划。
 - 更新 `docs/02-acceptance-criteria.md` 中“当前不可验收项”的过期描述。
 - 添加 `.gitignore`，避免测试缓存文件被误提交。
 - 明确默认 SQLite demo database 仅用于开发/演示，并补正式 PostgreSQL 配置路径。
 - 实现 RAG / 知识库真实检索。
-- 初始化前端项目和学生端 MVP 页面。
+- 实现学生端 MVP 页面和浏览器联调。
 - 增加部署配置和演示脚本。
 
 ## 5. 已知问题
@@ -137,10 +144,11 @@ Review & Test Agent 验证结论：
 | I9 | Planner 当前按 `Concept.id` 顺序生成路径，未显式使用 `concept_relations` 计算先修顺序 | 后续真实课程数据顺序变化时，学习路径顺序可能偏离先修关系 | Backlog |
 | I10 | `AgentOrchestrator.run_learning_flow()` 先创建学习路径再创建 `agent_run` | 若 run 记录失败，可能出现有路径但无 run 的不一致状态 | Backlog |
 | I11 | Resource / Tutor / Quiz / Evaluator 当前分别创建独立 `agent_run` | 若后续要展示统一学习闭环调用顺序，当前 run 结构还不够集中 | Backlog |
+| I12 | 前端当前只通过 build 验证，尚未完成真实浏览器 E2E 或前后端联调 smoke test | 基础页面骨架已通过静态构建验证，但真实交互问题仍可能滞后暴露 | Backlog |
 
 ## 6. 下一步建议
 
-1. Implementation Agent 执行 `tasks/current.md` 中的 `IMPL-006`，先建立前端学生端工程骨架。
+1. Implementation Agent 执行 `tasks/current.md` 中的 `IMPL-007`，在已建立的前端骨架上实现学生端 MVP 页面。
 2. 后续涉及前后端闭环的实现任务仍必须先进入 Review，不得直接 Done。
 3. Review & Test Agent 后续对所有 `IMPL-*` 任务都必须包含 `Implementation Boundary Check`。
 4. 同步处理 `PLAN-004`、`.gitignore` 和 PostgreSQL 配置路径说明，避免状态文档与工程事实继续漂移。

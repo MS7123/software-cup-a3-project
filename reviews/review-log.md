@@ -675,3 +675,100 @@ Conclusion: Pass / Needs Fix / Blocking
 限制说明：
 
 - 未将完整前端学习闭环、真实 RAG / VectorStore、真实 LLM provider、统一多 Agent run 聚合展示、部署配置或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-03 Review & Test Agent Review: IMPL-006
+
+范围：
+
+- 阅读 `docs/02-acceptance-criteria.md`。
+- 阅读 `docs/03-architecture.md`。
+- 阅读 `tasks/current.md`，确认当前任务为 `IMPL-006: 初始化前端学生端工程`。
+- 阅读 `docs/06-project-state.md`。
+- 阅读本文件已有 Review 记录。
+- 查看当前 `git status --short` 和 `git diff`。
+- 审查 `src/frontend/package.json`、`src/frontend/vite.config.ts`、`src/frontend/src/api/client.ts`、`src/frontend/src/api/types.ts`、`src/frontend/src/App.tsx`。
+
+结论：
+
+- 功能验收：Pass。
+- Implementation Boundary Check：Pass。
+- 允许 State Manager 移入 Done：Yes。
+- 通过范围限定为 `IMPL-006` 的“前端学生端工程初始化和基础页面骨架”，不代表完整 MVP 产品、真实 RAG / LLM / VectorStore、部署配置或完整 AC1-AC13 全部完成。
+
+验证命令：
+
+```powershell
+cd src/frontend
+npm ci
+npm run build
+cd ../..
+$env:PYTHONPATH='src/backend'
+python -m compileall -q src/backend tests
+python -m unittest discover -s tests -v
+```
+
+验证结果：
+
+- `npm ci`：通过，安装 137 个 package，`found 0 vulnerabilities`。
+- `npm run build`：通过，`tsc --noEmit && vite build` 成功，30 个 module transformed。
+- `python -m compileall -q src/backend tests`：通过。
+- `python -m unittest discover -s tests -v`：通过，16 个测试全部通过。
+- 本轮验证产生的 `src/frontend/dist`、`src/frontend/node_modules` 和 `__pycache__` 已清理。
+
+### Implementation Boundary Check
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | `src/frontend/src/App.tsx` 通过 `api` client 调用后端并展示返回结果；学习路径、资源、Tutor answer、Quiz、Evaluation、Agent run 均来自 API response，未在 frontend 拼完整业务结果。 |
+| Service/orchestrator boundary | Pass | 当前任务是 frontend 初始化；后端业务仍通过既有 `/api/v1` service / orchestrator 入口承载，frontend 不直接调用数据库、provider 或 service 内部实现。 |
+| Adapter/provider boundary | N/A | 当前任务未新增 mock LLM / RAG / VectorStore / TaskQueue provider；frontend 只通过 HTTP API contract 接入后端。 |
+| Hardcoded demo/mock risk | Pass | `App.tsx` 仅包含 profile type 展示 label、默认目标/问题输入文案和 UI empty state；未硬编码 3 个画像列表、5 个知识点、学习路径、resource、quiz answer、evaluation result 或 agent steps。 |
+| API contract stability | Pass | `src/frontend/src/api/client.ts` 集中封装 `/api/v1` endpoints；`src/frontend/src/api/types.ts` 与当前后端 Pydantic response schema 对齐，后续替换真实 LLM / RAG / VectorStore 大概率不需要推翻 frontend request / response contract。 |
+
+Acceptance Criteria 覆盖：
+
+- AC10：Partial / current scope pass。前端工程可 build，基础学生端 console 能覆盖画像选择、学习路径查看、资源查看、问答、测验、评价和 Agent run 摘要展示的模块边界；但尚未做浏览器端联调、E2E 自动化或完整演示验收。
+- AC13：Pass for current scope。frontend 没有直接访问 provider、数据库、向量库、Redis 或 LLM SDK。
+- AC16：Pass for current scope。frontend 未维护本地 demo data 副本。
+- AC18：Pass for current scope。frontend 未实现 Planner / Tutor / Quiz / Evaluator rule-based logic。
+- AC20：Implementation Boundary Check = Pass。
+
+Blocking Issues：
+
+- 无。
+
+Non-blocking Issues：
+
+- 当前未运行真实浏览器 E2E；`npm run build` 只能证明 TypeScript 和生产构建通过，不能证明所有按钮在实际后端启动后完成端到端交互。
+- `App.tsx` 默认选择 `flow.learning_path.items[0]` 作为当前资源/测验节点，当前作为骨架可接受；后续正式前端任务需要补路径节点选择交互。
+- 后端测试仍出现 `datetime.utcnow()` deprecation warning 和 `StarletteDeprecationWarning`，不是本轮 frontend 初始化的阻塞项。
+
+Missing Tests：
+
+- 缺少 frontend unit / component test，例如 API client mock、loading/error state、空数据状态。
+- 缺少 Playwright 或等价 E2E，覆盖 demo data load、profile selection、learning path generation、resource/tutor/quiz/evaluator 和 agent run trace。
+- 缺少前后端联调 smoke test，验证 Vite proxy `/api` 与本地 FastAPI 服务同时运行时的实际交互。
+
+建议：
+
+- Task Manager 可以将 `IMPL-006` 从 `Current` 移入 `Done`，但 Done 说明必须限定为“前端学生端工程初始化和基础页面骨架”。
+- 不得将完整 AC10、完整学生端闭环、部署配置、真实 RAG / LLM / VectorStore 或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-03 State Manager Update After IMPL-006 Review
+
+依据：
+
+- Review & Test Agent 已在本文件中明确给出 `IMPL-006` 通过结论。
+- 通过范围限定为“前端学生端工程初始化和基础页面骨架”。
+- `Implementation Boundary Check` 结论为 `Pass`。
+- State Manager Agent / Task Manager 未执行测试，只引用 Review & Test Agent 已记录的测试和验收结果。
+
+任务状态更新：
+
+- `IMPL-006` 从 `tasks/current.md` 移入 `tasks/done.md`。
+- `IMPL-007` 从 `tasks/backlog.md` 移入 `tasks/current.md`，作为下一阶段实现任务。
+- `tasks/backlog.md` 保留 `IMPL-008` 及后续任务，并新增 `TEST-001` 跟踪前后端联调 smoke test 和 browser E2E 缺口。
+
+限制说明：
+
+- 未将完整学生端 MVP 页面、浏览器联调、E2E 自动化、部署配置、真实 RAG / LLM / VectorStore 或完整 MVP 产品功能标记为 Done。
