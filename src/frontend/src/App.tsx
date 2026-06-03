@@ -160,6 +160,7 @@ export function App() {
           <Panel title="Session setup" kicker="Demo contract">
             <button
               className="action-button w-full"
+              data-testid="load-demo-button"
               disabled={busy !== null}
               onClick={() =>
                 void runTask("load-demo", async () => {
@@ -179,6 +180,7 @@ export function App() {
                 <button
                   key={profile.id}
                   className={`profile-option ${profile.id === selectedProfileId ? "profile-option-active" : ""}`}
+                  data-testid="profile-option"
                   onClick={() => {
                     setSelectedProfileId(profile.id);
                     resetLoopOutputs();
@@ -224,6 +226,7 @@ export function App() {
               />
               <button
                 className="primary-button"
+                data-testid="create-path-button"
                 disabled={!canCreatePath || busy !== null}
                 onClick={() =>
                   void runTask("create-path", async () => {
@@ -262,6 +265,7 @@ export function App() {
               <NodeSummary item={selectedItem} concept={selectedConcept} />
               <button
                 className="action-button mt-4"
+                data-testid="generate-resource-button"
                 disabled={!selectedItem || busy !== null}
                 onClick={() =>
                   void runTask("generate-resource", async () => {
@@ -283,12 +287,14 @@ export function App() {
             <Panel title="Tutor" kicker="Grounded Q&A">
               <textarea
                 className="field min-h-28 resize-none"
+                data-testid="tutor-question"
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 aria-label="Tutor question"
               />
               <button
                 className="action-button mt-3"
+                data-testid="ask-tutor-button"
                 disabled={!canUseLoop || busy !== null}
                 onClick={() =>
                   void runTask("ask-tutor", async () => {
@@ -312,6 +318,7 @@ export function App() {
             <Panel title="Quiz attempt" kicker="Quiz Agent">
               <button
                 className="action-button"
+                data-testid="generate-quiz-button"
                 disabled={!canUseLoop || busy !== null}
                 onClick={() =>
                   void runTask("generate-quiz", async () => {
@@ -330,11 +337,14 @@ export function App() {
                 <div className="mt-4 space-y-3">
                   <div className="rounded-md border border-slate-200 bg-white p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Question</p>
-                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-900">{quiz.items[0].question}</p>
+                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-900" data-testid="quiz-question">
+                      {quiz.items[0].question}
+                    </p>
                     <p className="mt-3 text-xs text-slate-500">{quiz.items[0].concept_tags.join(" / ")}</p>
                   </div>
                   <textarea
                     className="field min-h-28 resize-none"
+                    data-testid="quiz-answer"
                     value={attemptText}
                     onChange={(event) => setAttemptText(event.target.value)}
                     aria-label="Quiz answer"
@@ -342,6 +352,7 @@ export function App() {
                   />
                   <button
                     className="primary-button"
+                    data-testid="submit-answer-button"
                     disabled={!attemptText.trim() || busy !== null}
                     onClick={() =>
                       void runTask("submit-attempt", async () => {
@@ -365,7 +376,9 @@ export function App() {
               {evaluation ? (
                 <div className="space-y-4">
                   <Metric label="Score" value={`${Math.round(evaluation.score * 100)}%`} />
-                  <p className="rounded-md bg-white p-4 text-sm leading-6 text-slate-700">{evaluation.feedback}</p>
+                  <p className="rounded-md bg-white p-4 text-sm leading-6 text-slate-700" data-testid="evaluator-feedback">
+                    {evaluation.feedback}
+                  </p>
                   <div className="space-y-2">
                     {evaluation.mastery_updates.map((update, index) => (
                       <div key={index} className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
@@ -410,8 +423,8 @@ function PathItemCard({
   onSelect: () => void;
 }) {
   return (
-    <button className={`path-card ${selected ? "path-card-active" : ""}`} onClick={onSelect}>
-      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Step {item.order_index + 1}</span>
+    <button className={`path-card ${selected ? "path-card-active" : ""}`} data-testid="path-item-card" onClick={onSelect}>
+      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Step {item.order_index}</span>
       <span className="mt-2 block text-left text-base font-semibold text-slate-950">{item.title}</span>
       <span className="mt-2 block text-left text-sm leading-6 text-slate-600">{item.objective}</span>
       <span className="mt-3 block text-left text-xs text-slate-500">{concept?.name ?? `Concept ${item.concept_id}`}</span>
@@ -423,7 +436,7 @@ function NodeSummary({ item, concept }: { item: LearningPathItem | null; concept
   if (!item) return <EmptyState text="Select or create a path node before generating resources." />;
 
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-4">
+    <div className="rounded-md border border-slate-200 bg-white p-4" data-testid="current-node">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Current node</p>
       <p className="mt-2 text-sm font-semibold text-slate-950">{item.title}</p>
       <p className="mt-2 text-sm leading-6 text-slate-600">{item.objective}</p>
@@ -434,7 +447,7 @@ function NodeSummary({ item, concept }: { item: LearningPathItem | null; concept
 
 function RunCard({ run }: { run: AgentRun }) {
   return (
-    <article className="rounded-md border border-slate-200 bg-white p-4">
+    <article className="rounded-md border border-slate-200 bg-white p-4" data-testid="run-card">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-950">{run.run_type}</h3>
         <span className="rounded-full bg-moss/15 px-3 py-1 text-xs font-semibold text-moss">{run.status}</span>
@@ -476,7 +489,7 @@ function Metric({ label, value, dark = false }: { label: string; value: string; 
 
 function OutputBlock({ title, text, source }: { title: string; text: string; source: string }) {
   return (
-    <article className="mt-4 rounded-md border border-slate-200 bg-white p-4">
+    <article className="mt-4 rounded-md border border-slate-200 bg-white p-4" data-testid="output-block">
       <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{text}</p>
       <p className="mt-3 text-xs font-semibold text-moss">Source: {source}</p>

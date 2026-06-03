@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "test:smoke": "playwright test",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
     "autoprefixer": "^10.4.23"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@types/node": "^24.10.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3"

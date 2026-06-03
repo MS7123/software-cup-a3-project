@@ -875,3 +875,169 @@ Missing Tests：
 限制说明：
 
 - 未将正式 E2E 测试套件、部署配置、真实 RAG / LLM / VectorStore 或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-03 Review & Test Agent Review: IMPL-008
+
+范围：
+
+- 阅读 `docs/02-acceptance-criteria.md`。
+- 阅读 `docs/03-architecture.md`。
+- 阅读 `tasks/current.md`，确认当前任务为 `IMPL-008: 添加自动化测试与基础验证脚本`。
+- 阅读 `docs/06-project-state.md`。
+- 阅读本文件已有 Review 记录。
+- 查看当前 `git status --short` 和 `git diff`。
+- 审查 `scripts/verify.ps1` 和 `scripts/frontend-smoke.ps1`。
+- 运行 `./scripts/verify.ps1`。
+
+结论：
+
+- 功能验收：Needs Fix。
+- Implementation Boundary Check：Pass。
+- 允许 State Manager 移入 Done：No。
+- 原因：自动化入口可运行，且没有破坏 service / adapter / frontend 边界；但当前 `frontend-smoke.ps1` 只通过 HTTP 直接调用 `/api/v1` 验证学习闭环，前端部分仅检查 Vite 页面包含 React root，未驱动浏览器或前端 UI 完成学生端关键流程，因此没有满足本任务“补最小前端 E2E / smoke 测试，覆盖当前学生端关键闭环”的要求。
+
+验证命令：
+
+```powershell
+./scripts/verify.ps1
+```
+
+验证结果：
+
+- `Python compile check`：通过。
+- `Backend unit tests`：通过，16 个测试全部通过。
+- `Python dependency check`：通过，`No broken requirements found`。
+- `Backend wheel build`：通过。
+- `Frontend dependency install`：通过，安装 137 个 package，`found 0 vulnerabilities`。
+- `Frontend production build`：通过，`tsc --noEmit && vite build` 成功，30 个 module transformed。
+- `Frontend/backend smoke`：通过。输出 `FrontendStatus = 200`、`Profiles = 3`、`Concepts = 5`、`PathItems = 5`、`AgentRunsChecked = 5`。
+- 本轮验证产生的 `src/frontend/node_modules` 已由 Review & Test Agent 清理；`.build-verify`、`dist`、`__pycache__` 等脚本自身已清理。
+
+### Implementation Boundary Check
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | `scripts/frontend-smoke.ps1` 通过 `/api/v1` 调用现有 backend contract；未修改 router 或 frontend 业务代码，也未在测试中向生产 frontend 注入业务结果。 |
+| Service/orchestrator boundary | Pass | smoke 通过 `POST /learning-paths`、`POST /resources/generate`、`POST /tutor/ask`、`POST /quizzes/generate`、`POST /quizzes/{id}/attempts` 验证既有 service/orchestrator 输出，没有绕过 service 直接写数据库。 |
+| Adapter/provider boundary | N/A | 当前任务只新增验证脚本，未新增 mock LLM / RAG / VectorStore / TaskQueue provider。 |
+| Hardcoded demo/mock risk | Pass | 脚本使用 `POST /api/v1/demo-data/load` 加载 demo data，并使用 API 返回的 profile、course、path item、quiz 等 id 继续流程；没有在生产代码散落 demo data。 |
+| API contract stability | Pass | `scripts/frontend-smoke.ps1` 只依赖既有 `/api/v1` request / response contract；没有为测试便利修改 schema、service contract 或 frontend API client。 |
+
+Acceptance Criteria 覆盖：
+
+- AC1-AC13：Partial / test infrastructure scope only。`verify.ps1` 能复用地运行 backend unit、dependency check、wheel build、frontend build 和 smoke 验证，但不代表完整产品 AC1-AC13 全部完成。
+- AC10：Needs Fix for IMPL-008 scope。已有前端 build 与前端服务 root 检查，但缺少浏览器或 UI-level smoke 来覆盖画像选择、路径生成、资源、Tutor、Quiz、Evaluator、Agent trace 的页面交互。
+- AC20：Pass。Review 已包含 Implementation Boundary Check。
+
+Blocking Issues：
+
+- 无架构或边界类 Blocking issue。
+
+Non-blocking Issues：
+
+- `scripts/verify.ps1` 默认运行 `npm ci` 后会留下 `src/frontend/node_modules`，脚本清理逻辑清掉了 build artifact 和 `dist`，但没有清理 `node_modules`；由于仓库仍缺少 `.gitignore`，运行验证后会污染 `git status`。本轮 Review 已手动清理。
+- `scripts/frontend-smoke.ps1` 的 `Stop-PortOwner` 会强制停止默认端口 `8123` / `5174` 的占用进程；默认端口冲突概率低，但后续可以改为先失败提示或只清理本脚本启动的进程。
+- smoke 只检查 frontend HTML root，没有检查 React hydrate 后的 DOM、按钮、状态切换或 console error。
+
+Missing Tests：
+
+- 缺少正式浏览器/UI-level smoke 或 Playwright E2E，用于覆盖 IMPL-007 已验证过的学生端页面关键交互。
+- 缺少 frontend UI 断言，例如 profile/path node selection、resource/tutor/quiz/evaluator 的页面结果展示。
+- 缺少对已知 `PathItemCard` step numbering off-by-one 的自动化断言。
+
+建议：
+
+- 在 `scripts/frontend-smoke.ps1` 中加入 Playwright 或等价浏览器驱动，复用 IMPL-007 的关键路径：load demo data、选择 profile、create path、选择 path node、generate resource、ask tutor、generate quiz、submit answer、检查 evaluator 和 agent run trace。
+- 或新增独立 `scripts/frontend-e2e.ps1` / `tests/e2e`，并由 `scripts/verify.ps1` 默认调用。
+- 在完成最小 UI smoke 前，不建议 State Manager 将 `IMPL-008` 移入 Done。
+
+## 2026-06-04 Review & Test Agent Retest: IMPL-008
+
+范围：
+
+- 用户反馈已修改后，重新复测 `IMPL-008`。
+- 查看当前 `git status --short` 和 `git diff`。
+- 复查 `scripts/verify.ps1`、`scripts/frontend-smoke.ps1`。
+- 复查新增前端 smoke 配置与测试：`src/frontend/playwright.config.ts`、`src/frontend/tests/student-loop.spec.ts`。
+- 复查 `src/frontend/package.json`、`src/frontend/vite.config.ts`、`src/frontend/src/App.tsx` 中与 smoke test 相关的改动。
+- 运行 `./scripts/verify.ps1`。
+
+结论：
+
+- 功能验收：Pass。
+- Implementation Boundary Check：Pass。
+- 允许 State Manager 移入 Done：Yes。
+- 通过范围限定为 `IMPL-008` 的“自动化测试与基础验证脚本”，不代表部署配置、真实 RAG / LLM / VectorStore 或完整 MVP 产品功能全部完成。
+
+验证命令：
+
+```powershell
+./scripts/verify.ps1
+```
+
+验证结果：
+
+- `Python compile check`：通过。
+- `Backend unit tests`：通过，16 个测试全部通过。
+- `Python dependency check`：通过，`No broken requirements found`。
+- `Backend wheel build`：通过。
+- `Frontend dependency install`：通过，安装 140 个 package，`found 0 vulnerabilities`。
+- `Frontend production build`：通过，`tsc --noEmit && vite build` 成功，30 个 module transformed。
+- `Frontend/backend smoke`：通过。`npm run test:smoke -- --workers=1` 执行 Playwright，`tests/student-loop.spec.ts` 1 个测试通过。
+- smoke 输出：`FrontendStatus = 200`、`BrowserSmoke = Passed`、`BackendPort = 8123`、`FrontendPort = 5174`。
+- 脚本清理验证通过：未残留 `src/frontend/node_modules`、`src/frontend/dist`、`src/frontend/test-results`、`src/frontend/playwright-report`、`.build-verify`、`data/demo.sqlite3` 或 `__pycache__`。
+
+### Implementation Boundary Check
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | `src/frontend/tests/student-loop.spec.ts` 通过真实 UI 操作按钮、输入框和页面断言完成学习闭环；生产 frontend 只新增 `data-testid` 和 step label 修正，未在 frontend 硬编码业务结果。 |
+| Service/orchestrator boundary | Pass | `scripts/frontend-smoke.ps1` 启动临时 FastAPI 和 Vite，Playwright 通过页面触发既有 `/api/v1` contract；后端仍经 service / orchestrator 处理 learning path、resource、tutor、quiz、evaluation、agent run。 |
+| Adapter/provider boundary | N/A | 当前任务只新增验证脚本和 Playwright smoke，未新增 mock LLM / RAG / VectorStore / TaskQueue provider。 |
+| Hardcoded demo/mock risk | Pass | smoke 通过 UI 点击 `load-demo-button` 触发 `/demo-data/load`，后续使用页面展示与 API 返回结果；测试中没有把 demo profiles、concepts、path、quiz answer、evaluator result 或 agent steps 写入生产逻辑。 |
+| API contract stability | Pass | `VITE_PROXY_TARGET` 只改变 Vite dev proxy target，frontend API path 仍保持 `/api/v1`；测试依赖既有 request / response schema，没有要求修改 API contract。 |
+
+Acceptance Criteria 覆盖：
+
+- AC10：Pass for IMPL-008 scope。Playwright smoke 已覆盖 demo data load、profile selection、learning path creation、path node selection、resource generation、Tutor Q&A、Quiz generation、answer submission、Evaluator feedback 和 Agent run trace rendering。
+- AC11：Partial / test infrastructure scope。`verify.ps1` 覆盖 backend compile、unit tests、dependency check、wheel build、frontend build 和 smoke 验证；不代表数据库迁移、正式 PostgreSQL、队列和真实 LLM 配置已完成。
+- AC20：Pass。已执行 Implementation Boundary Check。
+
+Blocking Issues：
+
+- 无。
+
+Non-blocking Issues：
+
+- Playwright 配置在 Windows 默认使用 `msedge` channel；当前环境验证通过，但若其他机器未安装 Edge，需要设置 `PLAYWRIGHT_CHANNEL` 或先安装 Playwright Chromium。
+- `scripts/frontend-smoke.ps1` 使用固定默认端口 `8123` / `5174`，端口被占用时会失败并提示，而不是自动换端口；当前作为可复用 smoke 入口可接受。
+- 后端测试仍出现 `datetime.utcnow()` deprecation warning 和 `StarletteDeprecationWarning`，不是本轮测试脚本任务的阻塞项。
+
+Missing Tests：
+
+- 尚未有覆盖失败路径的 frontend E2E，例如后端不可用、demo data load 失败、quiz submit 失败。
+- 尚未有多浏览器或移动视口测试；当前 smoke 只覆盖默认 Chromium/Edge headless。
+
+建议：
+
+- Task Manager 可以将 `IMPL-008` 从 `Current` 移入 `Done`，但 Done 说明必须限定为“自动化测试与基础验证脚本”。
+- 不得将部署配置、真实 RAG / LLM / VectorStore、完整生产级测试矩阵或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-04 State Manager Update After IMPL-008 Retest
+
+依据：
+
+- Review & Test Agent 已在本文件中明确给出 `IMPL-008` 复测通过结论。
+- 通过范围限定为“自动化测试与基础验证脚本”。
+- `Implementation Boundary Check` 结论为 `Pass`。
+- State Manager Agent / Task Manager 未执行测试，只引用 Review & Test Agent 已记录的测试和验收结果。
+
+任务状态更新：
+
+- `IMPL-008` 从 `tasks/current.md` 移入 `tasks/done.md`。
+- `IMPL-009` 从 `tasks/backlog.md` 移入 `tasks/current.md`，作为下一阶段实现任务。
+- `tasks/backlog.md` 移除已被复测覆盖的旧测试缺口项，并新增 `TEST-002`、`CONFIG-001` 跟踪 IMPL-008 Review 留下的非阻塞问题。
+
+限制说明：
+
+- 未将部署配置、真实 RAG / LLM / VectorStore、完整生产级测试矩阵或完整 MVP 产品功能标记为 Done。

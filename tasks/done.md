@@ -1,6 +1,6 @@
 # Done Tasks
 
-最后更新：2026-06-03  
+最后更新：2026-06-04  
 维护角色：State Manager Agent / Task Manager
 
 规则：实现任务只有在 Review & Test Agent 明确给出“通过”结论后，才能由 Task Manager 移入本文件。State Manager Agent / Task Manager 不执行测试任务，不自行产生测试结论。
@@ -55,3 +55,8 @@
   - Review 来源：`reviews/review-log.md` 的 `2026-06-03 Review & Test Agent Review: IMPL-007`。
   - 已验证范围：学生端 MVP 页面关键交互、加载/错误/空状态、节点切换、browser smoke、Implementation Boundary Check。
   - 明确非 Done：正式 E2E 测试套件、部署配置、真实 RAG / LLM / VectorStore、完整 MVP 产品功能。
+- [x] `IMPL-008`：添加自动化测试与基础验证脚本。
+  - Review 结论：通过，仅限 `IMPL-008` 的任务范围。
+  - Review 来源：`reviews/review-log.md` 的 `2026-06-04 Review & Test Agent Retest: IMPL-008`。
+  - 已验证范围：`scripts/verify.ps1` 统一验证入口、`scripts/frontend-smoke.ps1`、Playwright smoke、frontend build、backend unit tests、`pip check`、wheel build、清理验证产物、Implementation Boundary Check。
+  - 明确非 Done：部署配置、真实 RAG / LLM / VectorStore、失败路径和多环境完整测试矩阵、完整 MVP 产品功能。

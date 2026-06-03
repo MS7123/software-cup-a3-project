@@ -1,6 +1,6 @@
 # Backlog
 
-最后更新：2026-06-03  
+最后更新：2026-06-04  
 维护角色：State Manager Agent / Task Manager
 
 ## 待规划任务
@@ -18,7 +18,6 @@
 
 | Task ID | 任务 | 关联需求 | 关联验收标准 | 状态 | 说明 |
 |---|---|---|---|---|---|
-| IMPL-009 | 添加部署配置 | R11 | AC11 | Backlog | 依赖前后端工程初始化 |
 
 ## 待修复 / 待重构任务
 
@@ -28,8 +27,8 @@
 | REFACTOR-002 | 学习路径创建与 Agent run 记录的一致性处理 | IMPL-004 Review non-blocking issue | Backlog | 后续可考虑 transaction 或补偿逻辑，避免有 path 无 run |
 | FIX-001 | 明确 `GET /student-profiles` 返回所有画像还是仅 demo 画像 | IMPL-003 Review remaining issue | Backlog | 当前 `ProfileService.list_demo_profiles()` 返回所有 `StudentProfile` |
 | REFACTOR-003 | 聚合 Resource / Tutor / Quiz / Evaluator 的统一 learning-flow run | IMPL-005 Review non-blocking issue | Backlog | 当前 4 个能力分别创建独立 `agent_run`，后续若要展示统一调用顺序需做 run 聚合或 run list API |
-| TEST-001 | 增加前后端联调 smoke test 和 browser E2E | IMPL-006 Review non-blocking issue | Backlog | 当前只有 `npm run build` 和后端单测通过，尚缺真实浏览器端到端验证 |
-| FIX-002 | 修正学生端 `PathItemCard` 步骤标签 off-by-one | IMPL-007 Review non-blocking issue | Backlog | Browser smoke 观察到页面可能显示 `STEP 2` 到 `STEP 6`，影响演示观感 |
+| TEST-002 | 补失败路径与多环境自动化测试覆盖 | IMPL-008 Review non-blocking issue | Backlog | 当前 Playwright smoke 已覆盖正向闭环，但仍缺失败路径、多浏览器和移动视口覆盖 |
+| CONFIG-001 | 明确 Playwright channel 跨机器运行策略 | IMPL-008 Review non-blocking issue | Backlog | Windows 当前默认使用 `msedge`，其他机器需要 `PLAYWRIGHT_CHANNEL` 或 Chromium 安装策略 |
 
 ## 已裁决事项
 
@@ -54,3 +53,5 @@
 - [x] `IMPL-007` 已推进到 `tasks/current.md`。
 - [x] `IMPL-007` 已由 Review & Test Agent 验收通过，范围仅限学生端 MVP 页面关键交互。
 - [x] `IMPL-008` 已推进到 `tasks/current.md`。
+- [x] `IMPL-008` 已由 Review & Test Agent 复测通过，范围仅限自动化测试与基础验证脚本。
+- [x] `IMPL-009` 已推进到 `tasks/current.md`。
