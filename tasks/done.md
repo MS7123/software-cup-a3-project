@@ -60,3 +60,8 @@
   - Review 来源：`reviews/review-log.md` 的 `2026-06-04 Review & Test Agent Retest: IMPL-008`。
   - 已验证范围：`scripts/verify.ps1` 统一验证入口、`scripts/frontend-smoke.ps1`、Playwright smoke、frontend build、backend unit tests、`pip check`、wheel build、清理验证产物、Implementation Boundary Check。
   - 明确非 Done：部署配置、真实 RAG / LLM / VectorStore、失败路径和多环境完整测试矩阵、完整 MVP 产品功能。
+- [x] `IMPL-009`：添加部署配置。
+  - Review 结论：通过，仅限 `IMPL-009` 的任务范围。
+  - Review 来源：`reviews/review-log.md` 的 `2026-06-04 Review & Test Agent Review: IMPL-009`。
+  - 已验证范围：`deployment/README.md`、`deployment/local.env.example`、`scripts/run-local.ps1`、本地 backend/frontend 启动 smoke、demo data load、Implementation Boundary Check。
+  - 明确非 Done：生产级部署、数据库迁移、Redis/RQ、真实 LLMProvider、真实 VectorStore、完整 MVP 产品功能。

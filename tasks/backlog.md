@@ -55,3 +55,5 @@
 - [x] `IMPL-008` 已推进到 `tasks/current.md`。
 - [x] `IMPL-008` 已由 Review & Test Agent 复测通过，范围仅限自动化测试与基础验证脚本。
 - [x] `IMPL-009` 已推进到 `tasks/current.md`。
+- [x] `IMPL-009` 已由 Review & Test Agent 验收通过，范围仅限本地部署与演示运行配置。
+- [x] `PLAN-004` 已推进到 `tasks/current.md`。

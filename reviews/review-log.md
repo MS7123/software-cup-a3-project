@@ -1041,3 +1041,104 @@ Missing Tests：
 限制说明：
 
 - 未将部署配置、真实 RAG / LLM / VectorStore、完整生产级测试矩阵或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-04 Review & Test Agent Review: IMPL-009
+
+范围：
+
+- 阅读 `docs/02-acceptance-criteria.md`。
+- 阅读 `docs/03-architecture.md`。
+- 阅读 `tasks/current.md`，确认当前任务为 `IMPL-009: 添加部署配置`。
+- 阅读 `docs/06-project-state.md`。
+- 阅读本文件已有 Review 记录。
+- 查看当前 `git status --short` 和 `git diff`。
+- 审查 `deployment/README.md`、`deployment/local.env.example`、`scripts/run-local.ps1`。
+- 运行 `./scripts/verify.ps1`。
+- 运行 `./scripts/run-local.ps1 -SmokeOnly -BackendPort 8231 -FrontendPort 5231`。
+
+结论：
+
+- 功能验收：Pass。
+- Implementation Boundary Check：Pass。
+- 允许 State Manager 移入 Done：Yes。
+- 通过范围限定为 `IMPL-009` 的“本地部署与演示运行配置”，不代表生产级部署、数据库迁移、Redis/RQ、真实 LLMProvider、真实 VectorStore 或完整 MVP 产品功能全部完成。
+
+验证命令：
+
+```powershell
+./scripts/verify.ps1
+./scripts/run-local.ps1 -SmokeOnly -BackendPort 8231 -FrontendPort 5231
+```
+
+验证结果：
+
+- `./scripts/verify.ps1`：通过。
+  - Python compile check：通过。
+  - Backend unit tests：通过，16 个测试全部通过。
+  - `pip check`：通过，`No broken requirements found`。
+  - Backend wheel build：通过。
+  - Frontend `npm ci`：通过，安装 140 个 package，`found 0 vulnerabilities`。
+  - Frontend production build：通过。
+  - Playwright browser smoke：通过，`tests/student-loop.spec.ts` 1 个测试通过。
+- `./scripts/run-local.ps1 -SmokeOnly -BackendPort 8231 -FrontendPort 5231`：通过。
+  - 输出 `BackendUrl = http://127.0.0.1:8231`。
+  - 输出 `FrontendUrl = http://127.0.0.1:5231`。
+  - 输出 `DatabaseUrl = sqlite:///./data/demo.sqlite3`。
+  - 输出 `DemoDataLoaded = True`。
+- 本轮验证产生的 `src/frontend/node_modules`、`data/demo.sqlite3` 和 `__pycache__` 已清理；未发现残留项目内 backend/frontend 测试进程。
+
+### Implementation Boundary Check
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | `scripts/run-local.ps1` 只启动 backend/frontend、检查端口、设置环境变量和请求 demo data load；未修改 router 或 frontend 业务逻辑。 |
+| Service/orchestrator boundary | Pass | demo data 通过 `POST /api/v1/demo-data/load` 进入既有 `DemoDataService`；脚本不直接写数据库、不拼 learning path、不生成 quiz/evaluation。 |
+| Adapter/provider boundary | N/A | 当前任务只新增本地部署文档和 PowerShell 启动脚本，未新增 mock LLM / RAG / VectorStore / TaskQueue provider。 |
+| Hardcoded demo/mock risk | Pass | `deployment/README.md` 明确 SQLite 仅用于本地开发和比赛演示；demo data 未写入部署脚本，仍通过后端 API 加载。 |
+| API contract stability | Pass | 前端仍使用 `/api/v1`；`VITE_PROXY_TARGET` 仅配置 Vite dev proxy，不改变 request / response schema。 |
+
+Acceptance Criteria 覆盖：
+
+- AC11：Partial / current scope pass。已补本地演示运行说明、环境变量样例、frontend proxy 配置说明和 `run-local.ps1`；但数据库迁移、正式 PostgreSQL 配置、Redis/RQ、真实 LLMProvider 和真实 VectorStore 仍未完成。
+- AC13：Pass for current scope。部署层没有让业务 service 直接依赖具体外部 SDK。
+- AC20：Pass。已执行 Implementation Boundary Check。
+
+Blocking Issues：
+
+- 无。
+
+Non-blocking Issues：
+
+- `deployment/local.env.example` 第 2 行写明“current scripts read process environment variables”，但 `scripts/run-local.ps1` 当前主要通过参数接收 host、port 和 database URL，并不会自动读取 `BACKEND_PORT`、`FRONTEND_PORT` 等环境变量。实际运行不受影响，因为 README 同时给出了参数用法；建议后续统一文档表述或让脚本显式读取环境变量默认值。
+- `deployment/README.md` 把 `uvicorn` 作为前置条件说明，但 `pyproject.toml` 当前未声明 `uvicorn` 依赖。当前环境验证通过；后续若希望一条 `python -m pip install -e .` 后即可运行本地 demo，应把 ASGI server 依赖纳入 dev/deploy extras 或文档明确安装命令。
+- `run-local.ps1 -SmokeOnly` 会留下默认 `data/demo.sqlite3`；本轮 Review 已手动清理。后续可考虑为 smoke 增加临时数据库参数或清理提示。
+
+Missing Tests：
+
+- 缺少对 `run-local.ps1` 的持久化自动化测试；当前由 Review & Test Agent 手动运行 `-SmokeOnly` 验证。
+- 缺少非 Windows 环境部署脚本或说明；当前明确为 Windows PowerShell。
+- 缺少生产级部署测试，例如 PostgreSQL、Redis/RQ、真实 provider 配置和迁移验证。
+
+建议：
+
+- Task Manager 可以将 `IMPL-009` 从 `Current` 移入 `Done`，但 Done 说明必须限定为“本地部署与演示运行配置”。
+- 不得将生产级部署、数据库迁移、Redis/RQ、真实 LLMProvider、真实 VectorStore 或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-04 State Manager Update After IMPL-009 Review
+
+依据：
+
+- Review & Test Agent 已在本文件中明确给出 `IMPL-009` 通过结论。
+- 通过范围限定为“本地部署与演示运行配置”。
+- `Implementation Boundary Check` 结论为 `Pass`。
+- State Manager Agent / Task Manager 未执行测试，只引用 Review & Test Agent 已记录的测试和验收结果。
+
+任务状态更新：
+
+- `IMPL-009` 从 `tasks/current.md` 移入 `tasks/done.md`。
+- 当前已无新的 `IMPL-*` 待实现任务，转入文档与仓库治理阶段。
+- `PLAN-004` 从 `tasks/backlog.md` 移入 `tasks/current.md`，用于修正 `docs/02-acceptance-criteria.md` 的过期描述。
+
+限制说明：
+
+- 未将生产级部署、数据库迁移、Redis/RQ、真实 LLMProvider、真实 VectorStore 或完整 MVP 产品功能标记为 Done。

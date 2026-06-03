@@ -5,7 +5,7 @@
 
 ## 1. 当前项目状态摘要
 
-当前仓库处于后端 MVP 基础能力、前端学生端关键交互与基础自动化验证逐步落地阶段。`IMPL-001` 到 `IMPL-008` 均已由 Review & Test Agent 明确复核通过，当前已推进到部署配置阶段；通过范围均限定在对应阶段任务内，不代表完整 MVP 产品功能 Done。
+当前仓库处于后端 MVP 基础能力、前端学生端关键交互、基础自动化验证和本地部署配置逐步落地阶段。`IMPL-001` 到 `IMPL-009` 均已由 Review & Test Agent 明确复核通过；通过范围均限定在对应阶段任务内，不代表完整 MVP 产品功能 Done。
 
 用户已确认 MVP 边界：
 
@@ -40,7 +40,7 @@
 - `IMPL-006` 已通过 Review，范围限定为前端学生端工程初始化和基础页面骨架。
 - `IMPL-007` 已通过 Review，范围限定为学生端 MVP 页面关键交互。
 - `IMPL-008` 已通过 Review，范围限定为自动化测试与基础验证脚本。
-- 下一阶段任务 `IMPL-009` 已从 Backlog 推进到 Current：添加部署配置。
+- `IMPL-009` 已通过 Review，范围限定为本地部署与演示运行配置。
 
 已新增实现：
 
@@ -65,11 +65,11 @@
 - 前端工程初始化：`src/frontend/package.json`、`src/frontend/vite.config.ts`、`src/frontend/src/api/client.ts`、`src/frontend/src/api/types.ts`、`src/frontend/src/App.tsx`。
 - 学生端 MVP 页面关键交互：`src/frontend/src/App.tsx`、`src/frontend/src/styles.css`，已覆盖画像选择、学习路径查看、节点切换、资源查看、Tutor 问答、Quiz 提交、评价反馈和 Agent run 摘要展示。
 - 自动化验证脚本：`scripts/verify.ps1`、`scripts/frontend-smoke.ps1`、`src/frontend/playwright.config.ts`、`src/frontend/tests/student-loop.spec.ts`。
+- 本地部署与演示配置：`deployment/README.md`、`deployment/local.env.example`、`scripts/run-local.ps1`。
 
 尚未实现：
 
 - RAG / 知识库真实检索。
-- 部署配置与运行说明。
 - 部署和演示脚本。
 
 Review & Test Agent 验证结论：
@@ -89,6 +89,8 @@ Review & Test Agent 验证结论：
 - `IMPL-007` 结论：通过，但仅限“学生端 MVP 页面关键交互”；正式 E2E 测试套件、部署配置、真实 RAG / LLM / VectorStore 和完整 MVP 产品功能仍未 Done。
 - `IMPL-008` 已由 Review & Test Agent 复测通过：`./scripts/verify.ps1` 通过，覆盖 Python compile、backend unit tests、`pip check`、backend wheel build、frontend build 和 Playwright browser smoke。
 - `IMPL-008` 结论：通过，但仅限“自动化测试与基础验证脚本”；部署配置、真实 RAG / LLM / VectorStore、完整生产级测试矩阵和完整 MVP 产品功能仍未 Done。
+- `IMPL-009` 已由 Review & Test Agent 验收通过：`./scripts/verify.ps1` 通过；`./scripts/run-local.ps1 -SmokeOnly` 通过，并验证本地 backend/frontend 启动、demo data load 和运行配置。
+- `IMPL-009` 结论：通过，但仅限“本地部署与演示运行配置”；生产级部署、数据库迁移、Redis/RQ、真实 LLMProvider、真实 VectorStore 和完整 MVP 产品功能仍未 Done。
 - State Manager Agent / Task Manager 未执行测试，只引用 Review & Test Agent 已记录的测试和验收结果。
 
 ## 2. 需求覆盖矩阵
@@ -105,7 +107,7 @@ Review & Test Agent 验证结论：
 | R8 | Evaluator Agent 和掌握度更新 | Partial | `src/backend/app/services/assessment_service.py`, Review & Test Agent IMPL-005 结论 | 已实现最小评分、反馈和 mastery update 建议；真实 evaluator 策略与持续追踪仍未完成 |
 | R9 | Agent 执行日志和可解释性 | Partial | `src/backend/app/services/agent_run_service.py`, Review & Test Agent IMPL-004 / IMPL-005 结论 | Planner、Resource、Tutor、Quiz、Evaluator 均有最小 `agent_runs` / `agent_run_steps` 记录；统一 learning-flow 聚合展示仍待增强 |
 | R10 | 前端核心界面 | Partial | `src/frontend/src/App.tsx`, `src/frontend/src/styles.css`, `src/frontend/tests/student-loop.spec.ts`, Review & Test Agent IMPL-006 / IMPL-007 / IMPL-008 结论 | 已有可 build 的前端学生端工程、关键交互和 Playwright smoke；更完整失败路径覆盖和生产级测试矩阵仍未完成 |
-| R11 | 后端 API、数据库、任务队列、LLM 封装 | Partial | `src/backend/app/`, `pyproject.toml`, Review & Test Agent IMPL-001 / IMPL-002 / IMPL-003 结论 | 已有 FastAPI、schema、model、demo persistence、部分 API 和 package 配置；尚未实现数据库迁移、正式 PostgreSQL 配置、队列和可替换 LLM 配置 |
+| R11 | 后端 API、数据库、任务队列、LLM 封装 | Partial | `src/backend/app/`, `pyproject.toml`, `deployment/README.md`, `deployment/local.env.example`, `scripts/run-local.ps1`, Review & Test Agent IMPL-001 / IMPL-002 / IMPL-003 / IMPL-009 结论 | 已有 FastAPI、schema、model、demo persistence、部分 API、package 配置和本地演示部署说明；尚未实现数据库迁移、正式 PostgreSQL 配置、队列和可替换 LLM 配置 |
 | R12 | 开源合规边界 | Partial | `docs/compliance/open-source-compliance.md`, `pyproject.toml` | 已有原则文档和基础依赖声明，但依赖 license 清单仍需补全 |
 | R13 | 架构基线与模块边界 | Partial | `docs/03-architecture.md`, `docs/decisions/0001-architecture-baseline.md`, Review & Test Agent IMPL-003 结论 | service / API 分层边界已修正；外部能力仍为 protocol / adapter 骨架；完整业务闭环未完成 |
 
@@ -127,17 +129,17 @@ Review & Test Agent 验证结论：
 - `IMPL-006`：初始化前端学生端工程。Review & Test Agent 验收通过，范围仅限前端工程初始化和基础页面骨架。
 - `IMPL-007`：实现学生端 MVP 页面。Review & Test Agent 验收通过，范围仅限学生端 MVP 页面关键交互。
 - `IMPL-008`：添加自动化测试与基础验证脚本。Review & Test Agent 复测通过，范围仅限自动化验证入口与 browser smoke。
+- `IMPL-009`：添加部署配置。Review & Test Agent 验收通过，范围仅限本地部署与演示运行配置。
 
 ## 4. 未完成任务
 
-- 执行 `IMPL-009`：添加部署配置。
 - 细化测试计划。
 - 更新 `docs/02-acceptance-criteria.md` 中“当前不可验收项”的过期描述。
 - 添加 `.gitignore`，避免测试缓存文件被误提交。
 - 明确默认 SQLite demo database 仅用于开发/演示，并补正式 PostgreSQL 配置路径。
 - 实现 RAG / 知识库真实检索。
 - 补失败路径和多环境覆盖的自动化测试。
-- 增加部署配置和演示脚本。
+- 增加生产级部署配置和演示脚本。
 
 ## 5. 已知问题
 
@@ -146,7 +148,7 @@ Review & Test Agent 验证结论：
 | I1 | A6 讨论材料仍存在，但项目简介、ADR 和用户确认均明确当前仓库按 A3 推进 | 新 Agent 可能误读 A6 材料为当前方向 | Mitigated |
 | I2 | `docs/02-acceptance-criteria.md` 的“当前不可验收项”描述已过期 | 新 Agent 可能误以为仓库仍无实现代码、依赖配置和测试文件 | Backlog |
 | I3 | 当前仓库缺少 `.gitignore` | 测试运行可能生成 `__pycache__` / `.pyc` 并被误提交 | Backlog |
-| I4 | 默认 SQLite demo database 需明确为开发/演示用途 | ADR 业务数据库方向为 PostgreSQL，后续需要正式配置路径 | Backlog |
+| I4 | 默认 SQLite demo database 需明确为开发/演示用途 | ADR 业务数据库方向为 PostgreSQL，后续需要正式配置路径 | Mitigated：IMPL-009 部署说明已标注 SQLite 仅用于本地开发和演示 |
 | I5 | `ProfileService.list_demo_profiles()` 当前返回所有 `StudentProfile` | 若默认数据库中已有用户创建画像，列表可能不再只包含 3 个 demo profiles | Backlog |
 | I6 | `IMPL-001` 到 `IMPL-004` 均只完成阶段范围 | 不得将完整 MVP、完整 AC1/AC2/AC3/AC4/AC9 标记为 Done | Tracked |
 | I7 | Demo data、mock provider 和 rule-based logic 此前没有进入常规 Review 检查项 | 后续 Resource / Tutor / Quiz / Evaluator 容易退化为 hardcoded demo，影响真实 LLM / RAG / VectorStore 替换 | Mitigated：已写入 `docs/02-acceptance-criteria.md` 和 `tasks/README.md` |
@@ -159,7 +161,7 @@ Review & Test Agent 验证结论：
 
 ## 6. 下一步建议
 
-1. Implementation Agent 执行 `tasks/current.md` 中的 `IMPL-009`，补部署配置和运行说明。
+1. 优先处理仓库治理项：`PLAN-004` 更新过期验收描述，`PLAN-005` 添加 `.gitignore`，`PLAN-006` 明确正式 PostgreSQL 配置路径。
 2. 后续涉及前后端闭环的实现任务仍必须先进入 Review，不得直接 Done。
 3. Review & Test Agent 后续对所有 `IMPL-*` 任务都必须包含 `Implementation Boundary Check`。
 4. 同步处理 `PLAN-004`、`.gitignore` 和 PostgreSQL 配置路径说明，避免状态文档与工程事实继续漂移。
