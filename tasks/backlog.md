@@ -10,9 +10,6 @@
 | PLAN-001 | 细化数据结构课程演示脚本 | R1-R10 | AC1-AC10 | Backlog | 需要 Requirement Agent 可建议内容，Task Manager 决定是否进入 Current |
 | PLAN-002 | 编写测试计划 | R1-R13 | AC1-AC13 | Backlog | 由 Review & Test Agent 负责；State Manager 只记录任务状态 |
 | PLAN-003 | 设计开源依赖清单模板 | R12 | AC12 | Backlog | 随实现依赖逐步补全 |
-| PLAN-004 | 更新 `docs/02-acceptance-criteria.md` 的过期“当前不可验收项”描述 | R1-R13 | AC1-AC13 | Backlog | Review & Test Agent 指出该段仍写着仓库无实现代码、测试配置、依赖配置，已与当前事实不符 |
-| PLAN-005 | 添加 `.gitignore` 仓库卫生规则 | R11 | AC11 | Backlog | Review 多次指出测试可能生成 `__pycache__` / `.pyc` |
-| PLAN-006 | 明确 demo SQLite 与正式 PostgreSQL 配置路径 | R11, R13 | AC11, AC13 | Backlog | 默认 SQLite 可用于 dev/demo，但需补正式 PostgreSQL 配置说明 |
 
 ## 待实现任务
 
@@ -57,3 +54,6 @@
 - [x] `IMPL-009` 已推进到 `tasks/current.md`。
 - [x] `IMPL-009` 已由 Review & Test Agent 验收通过，范围仅限本地部署与演示运行配置。
 - [x] `PLAN-004` 已推进到 `tasks/current.md`。
+- [x] `PLAN-004` 已完成，用于修正过期的“当前不可验收项”描述。
+- [x] `PLAN-005` 已完成，用于补充 `.gitignore` 仓库卫生规则。
+- [x] `PLAN-006` 已完成，用于明确 SQLite demo / PostgreSQL 正式配置路径边界。

@@ -134,9 +134,6 @@ Review & Test Agent 验证结论：
 ## 4. 未完成任务
 
 - 细化测试计划。
-- 更新 `docs/02-acceptance-criteria.md` 中“当前不可验收项”的过期描述。
-- 添加 `.gitignore`，避免测试缓存文件被误提交。
-- 明确默认 SQLite demo database 仅用于开发/演示，并补正式 PostgreSQL 配置路径。
 - 实现 RAG / 知识库真实检索。
 - 补失败路径和多环境覆盖的自动化测试。
 - 增加生产级部署配置和演示脚本。
@@ -146,9 +143,9 @@ Review & Test Agent 验证结论：
 | 编号 | 问题 | 影响 | 状态 |
 |---|---|---|---|
 | I1 | A6 讨论材料仍存在，但项目简介、ADR 和用户确认均明确当前仓库按 A3 推进 | 新 Agent 可能误读 A6 材料为当前方向 | Mitigated |
-| I2 | `docs/02-acceptance-criteria.md` 的“当前不可验收项”描述已过期 | 新 Agent 可能误以为仓库仍无实现代码、依赖配置和测试文件 | Backlog |
-| I3 | 当前仓库缺少 `.gitignore` | 测试运行可能生成 `__pycache__` / `.pyc` 并被误提交 | Backlog |
-| I4 | 默认 SQLite demo database 需明确为开发/演示用途 | ADR 业务数据库方向为 PostgreSQL，后续需要正式配置路径 | Mitigated：IMPL-009 部署说明已标注 SQLite 仅用于本地开发和演示 |
+| I2 | `docs/02-acceptance-criteria.md` 的“当前不可验收项”描述曾过期 | 新 Agent 可能误以为仓库仍无实现代码、依赖配置和测试文件 | Mitigated：`PLAN-004` 已更新为 2026-06-04 的当前事实 |
+| I3 | 仓库此前缺少 `.gitignore` | 测试运行可能生成 `__pycache__` / `.pyc` 并被误提交 | Mitigated：`PLAN-005` 已补充 Python、frontend、build 和 demo database ignore 规则 |
+| I4 | 默认 SQLite demo database 需明确为开发/演示用途 | ADR 业务数据库方向为 PostgreSQL，后续需要正式配置路径 | Mitigated：`PLAN-006` 已在部署文档和示例环境变量中明确 SQLite 仅用于 demo / local，正式路径通过 `APP_DATABASE_URL` 切换到 PostgreSQL |
 | I5 | `ProfileService.list_demo_profiles()` 当前返回所有 `StudentProfile` | 若默认数据库中已有用户创建画像，列表可能不再只包含 3 个 demo profiles | Backlog |
 | I6 | `IMPL-001` 到 `IMPL-004` 均只完成阶段范围 | 不得将完整 MVP、完整 AC1/AC2/AC3/AC4/AC9 标记为 Done | Tracked |
 | I7 | Demo data、mock provider 和 rule-based logic 此前没有进入常规 Review 检查项 | 后续 Resource / Tutor / Quiz / Evaluator 容易退化为 hardcoded demo，影响真实 LLM / RAG / VectorStore 替换 | Mitigated：已写入 `docs/02-acceptance-criteria.md` 和 `tasks/README.md` |
@@ -161,10 +158,10 @@ Review & Test Agent 验证结论：
 
 ## 6. 下一步建议
 
-1. 优先处理仓库治理项：`PLAN-004` 更新过期验收描述，`PLAN-005` 添加 `.gitignore`，`PLAN-006` 明确正式 PostgreSQL 配置路径。
+1. 优先推进测试与基础设施后续项：`PLAN-002` 细化测试计划，`TEST-002` 补失败路径和多环境自动化覆盖，`CONFIG-001` 明确 Playwright 跨机器策略。
 2. 后续涉及前后端闭环的实现任务仍必须先进入 Review，不得直接 Done。
 3. Review & Test Agent 后续对所有 `IMPL-*` 任务都必须包含 `Implementation Boundary Check`。
-4. 同步处理 `PLAN-004`、`.gitignore` 和 PostgreSQL 配置路径说明，避免状态文档与工程事实继续漂移。
+4. 后续若启动真实数据库迁移，应保持 `APP_DATABASE_URL` 作为统一配置入口，不改变 `/api/v1` contract。
 5. State Manager Agent 每轮结束后更新本文件，避免上下文漂移。
 
 ## 7. 需要用户裁决的问题

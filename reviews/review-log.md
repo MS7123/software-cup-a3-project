@@ -1142,3 +1142,21 @@ Missing Tests：
 限制说明：
 
 - 未将生产级部署、数据库迁移、Redis/RQ、真实 LLMProvider、真实 VectorStore 或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-04 State Manager Update After PLAN-004 to PLAN-006
+
+依据：
+
+- `PLAN-004`、`PLAN-005`、`PLAN-006` 属于 State Manager / Task Manager 可直接维护的文档与仓库治理任务，不涉及功能代码验收。
+- 当前项目事实已由 `docs/06-project-state.md`、`reviews/review-log.md` 和 `tasks/done.md` 明确记录，可作为文档校准依据。
+
+任务状态更新：
+
+- `PLAN-004` 已完成：更新 `docs/02-acceptance-criteria.md` 中过期的“当前不可验收项”描述。
+- `PLAN-005` 已完成：新增 `.gitignore`，补充 Python、frontend、build 和 demo database ignore 规则。
+- `PLAN-006` 已完成：在部署文档、示例环境变量和项目状态中明确 SQLite 仅用于 demo / local，正式数据库统一通过 `APP_DATABASE_URL` 切换到 PostgreSQL。
+- 当前任务推进到 `PLAN-002`：编写测试计划。
+
+限制说明：
+
+- 本次更新不新增任何功能通过结论，不扩大既有 Done 范围。

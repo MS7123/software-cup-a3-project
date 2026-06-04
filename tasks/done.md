@@ -17,6 +17,15 @@
 - [x] 建立 `docs/06-project-state.md`。
 - [x] 建立任务状态文件：`tasks/backlog.md`、`tasks/current.md`、`tasks/done.md`、`tasks/blocked.md`。
 - [x] 建立 `reviews/review-log.md`。
+- [x] `PLAN-004`：更新 `docs/02-acceptance-criteria.md` 的过期“当前不可验收项”描述。
+  - 完成范围：将“当前不可验收项”更新到 2026-06-04 当前事实，明确 `IMPL-001` 到 `IMPL-009` 的已通过范围，以及当前仍不可标记为完整 Done 的能力边界。
+  - 维护来源：State Manager Agent / Task Manager 文档治理更新。
+- [x] `PLAN-005`：添加 `.gitignore` 仓库卫生规则。
+  - 完成范围：新增 Python、frontend、build、SQLite demo database 等常见本地产物忽略规则。
+  - 维护来源：State Manager Agent / Task Manager 文档与仓库治理更新。
+- [x] `PLAN-006`：明确 demo SQLite 与正式 PostgreSQL 配置路径。
+  - 完成范围：在部署文档、示例环境变量和项目状态中明确 SQLite 仅用于 demo / local，正式数据库统一通过 `APP_DATABASE_URL` 切换到 `postgresql+psycopg://...`。
+  - 维护来源：State Manager Agent / Task Manager 文档治理更新。
 
 ## 已通过 Review 的实现任务
 

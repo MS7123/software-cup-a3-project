@@ -4,6 +4,14 @@
 
 本文档只覆盖当前 MVP 阶段可运行的本地开发和演示配置。当前后端默认使用 SQLite demo database；`PostgreSQL`、`Redis/RQ`、真实 `LLMProvider` 和真实 `VectorStore` 仍是架构目标，后续应通过独立任务补迁移、队列和真实外部能力配置。
 
+## Current vs Target
+
+- 当前本地演示数据库：`sqlite:///./data/demo.sqlite3`
+- 当前用途：本地开发、比赛演示、`run-local.ps1` smoke
+- 正式数据库方向：`PostgreSQL`
+- 正式配置路径：后续统一通过环境变量 `APP_DATABASE_URL` 切换到 `postgresql+psycopg://...`
+- 当前仓库状态：尚未提供 PostgreSQL migration、seed、运维脚本或生产级连接配置
+
 ## Prerequisites
 
 - Python 3.11+
@@ -24,7 +32,7 @@ $env:PLAYWRIGHT_CHANNEL='chromium'
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `APP_DATABASE_URL` | `sqlite:///./data/demo.sqlite3` | 当前演示数据库连接。SQLite 仅用于本地开发和比赛演示。 |
+| `APP_DATABASE_URL` | `sqlite:///./data/demo.sqlite3` | 当前演示数据库连接。SQLite 仅用于本地开发和比赛演示；正式环境应改为 `postgresql+psycopg://...`。 |
 | `PYTHONPATH` | `src/backend` | 让 `uvicorn` 找到 `app.main:app`。 |
 | `BACKEND_HOST` | `127.0.0.1` | 本地后端监听地址。 |
 | `BACKEND_PORT` | `8000` | 本地后端监听端口。 |
@@ -46,6 +54,8 @@ cd ../..
 ```
 
 如果当前 Python 环境没有 `uvicorn`，需要在本地环境安装 ASGI server 后再启动后端。该项属于运行环境准备，不改变后端 service / adapter 边界。
+
+当前 `pyproject.toml` 还没有声明 `uvicorn` 依赖；若希望新环境一条命令即可启动本地 demo，后续应补 dev/deploy 依赖或明确独立安装命令。
 
 ## Local Demo Run
 
@@ -97,3 +107,4 @@ cd ../..
 - Demo data 仍通过 `POST /api/v1/demo-data/load` 进入 `DemoDataService`，没有写入部署脚本或前端组件。
 - 前端继续通过 `/api/v1` contract 调用后端；Vite proxy 只处理本地开发的网络转发。
 - SQLite 是当前演示配置，不代表架构基线从 `PostgreSQL` 改为 SQLite。
+- 正式 `PostgreSQL` 配置路径已经统一约定为 `APP_DATABASE_URL`；后续切换数据库时，不应改动 `/api/v1` contract、service contract 或 frontend API path。
