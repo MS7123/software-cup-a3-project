@@ -1,6 +1,6 @@
 # Done Tasks
 
-最后更新：2026-06-04  
+最后更新：2026-06-05
 维护角色：State Manager Agent / Task Manager
 
 规则：实现任务只有在 Review & Test Agent 明确给出“通过”结论后，才能由 Task Manager 移入本文件。State Manager Agent / Task Manager 不执行测试任务，不自行产生测试结论。
@@ -74,3 +74,8 @@
   - Review 来源：`reviews/review-log.md` 的 `2026-06-04 Review & Test Agent Review: IMPL-009`。
   - 已验证范围：`deployment/README.md`、`deployment/local.env.example`、`scripts/run-local.ps1`、本地 backend/frontend 启动 smoke、demo data load、Implementation Boundary Check。
   - 明确非 Done：生产级部署、数据库迁移、Redis/RQ、真实 LLMProvider、真实 VectorStore、完整 MVP 产品功能。
+- [x] `IMPL-010`：接入 OpenAI-compatible `LLMProvider` 并用于 `Tutor Agent`。
+  - Review 结论：通过，仅限 `IMPL-010` 的任务范围。
+  - Review 来源：`reviews/review-log.md` 的 `2026-06-05 Review & Test Agent Retest: IMPL-010`。
+  - 已验证范围：OpenAI-compatible `LLMProvider` adapter、Tutor agent strategy / factory、`LLM_FALLBACK_MODE=rule_based/error` 行为、provider failure fallback、Tutor API 层 `agent_run_steps` fallback 摘要记录、secret 不进入 response / metadata / agent run、本地 smoke 默认不依赖远程 LLM、Implementation Boundary Check。
+  - 明确非 Done：真实外部 LLM key 联网验收、真实 RAG / VectorStore、Resource / Quiz / Evaluator 的 LLM 接入、生产级部署、数据库迁移、Redis/RQ、完整 MVP 产品功能。

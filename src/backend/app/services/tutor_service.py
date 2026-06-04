@@ -1,4 +1,4 @@
-from app.agents.rule_based_agents import RuleBasedTutorAgent
+from app.agents.tutor_factory import build_tutor_agent
 from app.domain.exceptions import NotFoundError
 from app.models import Course, StudentProfile
 from app.db.session import session_scope
@@ -10,7 +10,7 @@ from app.services.knowledge_base_service import KnowledgeBaseService
 class TutorService:
     def __init__(self, database_url: str | None = None) -> None:
         self.database_url = database_url
-        self.agent = RuleBasedTutorAgent()
+        self.agent = build_tutor_agent()
 
     def ask(self, profile_id: int, course_id: int, question: str) -> TutorAskResponse:
         with session_scope(self.database_url) as session:
@@ -22,7 +22,8 @@ class TutorService:
                 raise NotFoundError("Course", course_id)
 
         chunks = KnowledgeBaseService(database_url=self.database_url).search(course_id, question, top_k=2)
-        result = self.agent.answer(question, chunks)
+        profile_summary = f"type={profile.profile_type}; level={profile.level}; goal={profile.goal}; time_budget={profile.time_budget}"
+        result = self.agent.answer(question, chunks, profile_summary, course.title)
         run_service = AgentRunService(database_url=self.database_url)
         run = run_service.start_run("tutor_answer", profile_id, course_id, input_summary=result.input_summary)
         run_service.record_step(

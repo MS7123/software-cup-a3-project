@@ -1,11 +1,11 @@
 # 项目状态
 
-最后更新：2026-06-04  
+最后更新：2026-06-05
 维护角色：State Manager Agent / Task Manager
 
 ## 1. 当前项目状态摘要
 
-当前仓库处于后端 MVP 基础能力、前端学生端关键交互、基础自动化验证和本地部署配置逐步落地阶段。`IMPL-001` 到 `IMPL-009` 均已由 Review & Test Agent 明确复核通过；通过范围均限定在对应阶段任务内，不代表完整 MVP 产品功能 Done。
+当前仓库处于后端 MVP 基础能力、前端学生端关键交互、基础自动化验证、本地部署配置和 Tutor Agent 真实 LLM 最小接入逐步落地阶段。`IMPL-001` 到 `IMPL-010` 均已由 Review & Test Agent 明确复核通过；通过范围均限定在对应阶段任务内，不代表完整 MVP 产品功能 Done。当前任务已推进到 `PLAN-002: 编写测试计划`。
 
 用户已确认 MVP 边界：
 
@@ -41,6 +41,9 @@
 - `IMPL-007` 已通过 Review，范围限定为学生端 MVP 页面关键交互。
 - `IMPL-008` 已通过 Review，范围限定为自动化测试与基础验证脚本。
 - `IMPL-009` 已通过 Review，范围限定为本地部署与演示运行配置。
+- `IMPL-010` 已通过 Review，范围限定为 OpenAI-compatible `LLMProvider` 接入 `Tutor Agent` 的最小实现。
+- Architect Agent 已完成真实 LLM 最小接入架构方案，写入 `docs/03-architecture.md` 的“真实 LLM 最小接入方案”章节；结论是不新增 ADR、不修改架构基线，第一批建议只接入 `Tutor Agent`。
+- 根据用户最新优先级，`PLAN-007` 不再单独执行，其边界约束已并入 `IMPL-010`；`IMPL-010` 复测通过后，当前任务推进到 `PLAN-002: 编写测试计划`。
 
 已新增实现：
 
@@ -66,11 +69,22 @@
 - 学生端 MVP 页面关键交互：`src/frontend/src/App.tsx`、`src/frontend/src/styles.css`，已覆盖画像选择、学习路径查看、节点切换、资源查看、Tutor 问答、Quiz 提交、评价反馈和 Agent run 摘要展示。
 - 自动化验证脚本：`scripts/verify.ps1`、`scripts/frontend-smoke.ps1`、`src/frontend/playwright.config.ts`、`src/frontend/tests/student-loop.spec.ts`。
 - 本地部署与演示配置：`deployment/README.md`、`deployment/local.env.example`、`scripts/run-local.ps1`。
+- Tutor Agent 真实 LLM 最小接入：`src/backend/app/adapters/llm_provider.py`、`src/backend/app/agents/tutor_agents.py`、`src/backend/app/agents/tutor_factory.py`、`src/backend/app/agents/tutor_prompts.py`、`tests/test_llm_provider_tutor.py`。
 
 尚未实现：
 
 - RAG / 知识库真实检索。
-- 部署和演示脚本。
+- 生产级部署配置。
+
+IMPL-010 implementation-side update（2026-06-05，已通过 Review，但仅限当前任务范围）：
+
+- 新增 OpenAI-compatible `LLMProvider` adapter，可通过 `LLM_PROVIDER=openai_compatible`、`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`、timeout、retry 和 fallback 环境变量配置。
+- 第一批只接入 `Tutor Agent`：`TutorService` 改为通过 tutor agent factory 获取 rule-based 或 LLM-backed strategy，未改变 `/api/v1/tutor/ask` request / response schema。
+- 新增 Tutor prompt 边界和 LLM-backed Tutor strategy，prompt 不进入 API handler 或 frontend。
+- 无配置、未显式启用时默认保持 rule-based tutor；provider 失败或 invalid response 时保留 rule-based fallback，并在 LLM-backed strategy 路径下把 fallback 摘要写入 agent step 的 output / decision basis。
+- `scripts/frontend-smoke.ps1` 强制使用 rule-based，`scripts/run-local.ps1` 默认不启用远程 Tutor LLM；只有显式 `-UseRemoteTutorLLM` 才读取远程 LLM 环境变量。
+- 未写入真实 API key；`deployment/local.env.example` 只保留 DeepSeek OpenAI-compatible 示例占位。
+- `LLM_FALLBACK_MODE=rule_based` 时 provider 失败会回退到 rule-based tutor answer，并在 `agent_run_steps` 记录 fallback 摘要；`LLM_FALLBACK_MODE=error` 时 agent 会抛出 `LLMProviderError`。
 
 Review & Test Agent 验证结论：
 
@@ -91,6 +105,8 @@ Review & Test Agent 验证结论：
 - `IMPL-008` 结论：通过，但仅限“自动化测试与基础验证脚本”；部署配置、真实 RAG / LLM / VectorStore、完整生产级测试矩阵和完整 MVP 产品功能仍未 Done。
 - `IMPL-009` 已由 Review & Test Agent 验收通过：`./scripts/verify.ps1` 通过；`./scripts/run-local.ps1 -SmokeOnly` 通过，并验证本地 backend/frontend 启动、demo data load 和运行配置。
 - `IMPL-009` 结论：通过，但仅限“本地部署与演示运行配置”；生产级部署、数据库迁移、Redis/RQ、真实 LLMProvider、真实 VectorStore 和完整 MVP 产品功能仍未 Done。
+- `IMPL-010` 初次 Review 结论：Needs Fix。原因是 `LLM_FALLBACK_MODE` 已配置未生效，且缺少 Tutor API 层 fallback step 记录集成测试。
+- `IMPL-010` 复测结论：通过。`./scripts/verify.ps1` 通过，24 个后端测试、frontend build 和 Playwright smoke 通过；`./scripts/run-local.ps1 -SmokeOnly -BackendPort 8242 -FrontendPort 5242` 通过，默认 `RemoteTutorLLM=False`；已验证 `LLM_FALLBACK_MODE` 行为、Tutor API 层 fallback step 记录、secret 不进入 response / metadata / agent run。
 - State Manager Agent / Task Manager 未执行测试，只引用 Review & Test Agent 已记录的测试和验收结果。
 
 ## 2. 需求覆盖矩阵
@@ -102,12 +118,12 @@ Review & Test Agent 验证结论：
 | R3 | 课程知识点和先修关系建模 | Partial | `src/backend/app/services/course_service.py`, `src/backend/app/api/v1/router.py`, Review & Test Agent IMPL-003 结论 | 已有课程知识点图查询 API，可返回数据结构课程、5 个 MVP 知识点和知识点关系；完整课程知识点维护能力仍未完成 |
 | R4 | 学习路径规划 Agent | Partial | `src/backend/app/services/learning_path_service.py`, `src/backend/app/agents/orchestrator.py`, Review & Test Agent IMPL-004 结论 | 已有同步学习路径创建 API 和 Planner 最小流程；完整多 Agent 学习流程仍待后续任务扩展 |
 | R5 | 学习资源生成 Agent | Partial | `src/backend/app/services/resource_service.py`, `src/backend/app/agents/rule_based_agents.py`, Review & Test Agent IMPL-005 结论 | 已实现面向 `path_item_id` 的最小资源生成闭环；真实 LLM / richer content generation 仍未完成 |
-| R6 | RAG Tutor Agent | Partial | `src/backend/app/services/tutor_service.py`, `src/backend/app/services/knowledge_base_service.py`, Review & Test Agent IMPL-005 结论 | 已实现基于 demo chunk 检索的 grounded tutor answer；真实 VectorStore / RAG pipeline 仍未完成 |
+| R6 | RAG Tutor Agent | Partial | `src/backend/app/services/tutor_service.py`, `src/backend/app/services/knowledge_base_service.py`, `src/backend/app/adapters/llm_provider.py`, Review & Test Agent IMPL-005 / IMPL-010 结论 | 已实现基于 demo chunk 检索的 grounded tutor answer，并为 Tutor Agent 接入 OpenAI-compatible LLMProvider 最小路径；真实 VectorStore / RAG pipeline 和真实外部 LLM 联网验收仍未完成 |
 | R7 | Quiz Agent | Partial | `src/backend/app/services/assessment_service.py`, Review & Test Agent IMPL-005 结论 | 已实现最小测验生成；更完整题型、策略和前端交互仍未完成 |
 | R8 | Evaluator Agent 和掌握度更新 | Partial | `src/backend/app/services/assessment_service.py`, Review & Test Agent IMPL-005 结论 | 已实现最小评分、反馈和 mastery update 建议；真实 evaluator 策略与持续追踪仍未完成 |
 | R9 | Agent 执行日志和可解释性 | Partial | `src/backend/app/services/agent_run_service.py`, Review & Test Agent IMPL-004 / IMPL-005 结论 | Planner、Resource、Tutor、Quiz、Evaluator 均有最小 `agent_runs` / `agent_run_steps` 记录；统一 learning-flow 聚合展示仍待增强 |
 | R10 | 前端核心界面 | Partial | `src/frontend/src/App.tsx`, `src/frontend/src/styles.css`, `src/frontend/tests/student-loop.spec.ts`, Review & Test Agent IMPL-006 / IMPL-007 / IMPL-008 结论 | 已有可 build 的前端学生端工程、关键交互和 Playwright smoke；更完整失败路径覆盖和生产级测试矩阵仍未完成 |
-| R11 | 后端 API、数据库、任务队列、LLM 封装 | Partial | `src/backend/app/`, `pyproject.toml`, `deployment/README.md`, `deployment/local.env.example`, `scripts/run-local.ps1`, Review & Test Agent IMPL-001 / IMPL-002 / IMPL-003 / IMPL-009 结论 | 已有 FastAPI、schema、model、demo persistence、部分 API、package 配置和本地演示部署说明；尚未实现数据库迁移、正式 PostgreSQL 配置、队列和可替换 LLM 配置 |
+| R11 | 后端 API、数据库、任务队列、LLM 封装 | Partial | `src/backend/app/`, `pyproject.toml`, `deployment/README.md`, `deployment/local.env.example`, `scripts/run-local.ps1`, `src/backend/app/adapters/llm_provider.py`, Review & Test Agent IMPL-001 / IMPL-002 / IMPL-003 / IMPL-009 / IMPL-010 结论 | 已有 FastAPI、schema、model、demo persistence、部分 API、package 配置、本地演示部署说明和 OpenAI-compatible LLMProvider 最小封装；尚未实现数据库迁移、正式 PostgreSQL 配置、队列和生产级 LLM 运维能力 |
 | R12 | 开源合规边界 | Partial | `docs/compliance/open-source-compliance.md`, `pyproject.toml` | 已有原则文档和基础依赖声明，但依赖 license 清单仍需补全 |
 | R13 | 架构基线与模块边界 | Partial | `docs/03-architecture.md`, `docs/decisions/0001-architecture-baseline.md`, Review & Test Agent IMPL-003 结论 | service / API 分层边界已修正；外部能力仍为 protocol / adapter 骨架；完整业务闭环未完成 |
 
@@ -130,13 +146,14 @@ Review & Test Agent 验证结论：
 - `IMPL-007`：实现学生端 MVP 页面。Review & Test Agent 验收通过，范围仅限学生端 MVP 页面关键交互。
 - `IMPL-008`：添加自动化测试与基础验证脚本。Review & Test Agent 复测通过，范围仅限自动化验证入口与 browser smoke。
 - `IMPL-009`：添加部署配置。Review & Test Agent 验收通过，范围仅限本地部署与演示运行配置。
+- `IMPL-010`：接入 OpenAI-compatible `LLMProvider` 并用于 `Tutor Agent`。Review & Test Agent 复测通过，范围仅限 Tutor Agent 的真实 LLM provider 最小接入、fallback 策略和默认 smoke 稳定性。
 
 ## 4. 未完成任务
 
 - 细化测试计划。
 - 实现 RAG / 知识库真实检索。
 - 补失败路径和多环境覆盖的自动化测试。
-- 增加生产级部署配置和演示脚本。
+- 增加生产级部署配置和更完整演示 runbook。
 
 ## 5. 已知问题
 
@@ -155,15 +172,49 @@ Review & Test Agent 验证结论：
 | I11 | Resource / Tutor / Quiz / Evaluator 当前分别创建独立 `agent_run` | 若后续要展示统一学习闭环调用顺序，当前 run 结构还不够集中 | Backlog |
 | I12 | 当前自动化测试仍缺少失败路径和多浏览器/移动视口覆盖 | 正向 smoke 已通过，但真实异常场景和跨环境稳定性仍可能滞后暴露 | Backlog |
 | I13 | Windows 环境下 Playwright 默认依赖 `msedge` channel | 其他机器若未安装 Edge，需要设置 `PLAYWRIGHT_CHANNEL` 或先安装 Chromium | Backlog |
+| I14 | `Planner` / `Resource` / `Tutor` / `Quiz` / `Evaluator` 核心智能能力仍以 rule-based demo logic 为主 | 演示可运行但尚不能证明真实 LLM 能力 | Tracked：Architect Agent 建议第一批只接入 `Tutor Agent` |
+| I15 | 真实 LLM 接入可能破坏本地 demo 稳定性 | 无 key、无网络、timeout 或 provider 输出漂移可能导致 smoke 失败 | Mitigation：必须保留 rule-based fallback，默认 smoke 不依赖真实 LLM |
+| I16 | `LLM_FALLBACK_MODE` 已在配置和文档中出现，但曾未参与运行行为 | 设置 `LLM_FALLBACK_MODE=error` 时仍 fallback 的风险已复测覆盖 | Mitigated：`IMPL-010` 复测通过 |
+| I17 | 曾缺少通过 `/api/v1/tutor/ask` 验证 LLM fallback 摘要进入 `agent_run_steps` 的集成测试 | API/service/run 记录链路曾缺少覆盖 | Mitigated：`IMPL-010` 复测通过 |
 
 ## 6. 下一步建议
 
 1. 优先推进测试与基础设施后续项：`PLAN-002` 细化测试计划，`TEST-002` 补失败路径和多环境自动化覆盖，`CONFIG-001` 明确 Playwright 跨机器策略。
-2. 后续涉及前后端闭环的实现任务仍必须先进入 Review，不得直接 Done。
-3. Review & Test Agent 后续对所有 `IMPL-*` 任务都必须包含 `Implementation Boundary Check`。
-4. 后续若启动真实数据库迁移，应保持 `APP_DATABASE_URL` 作为统一配置入口，不改变 `/api/v1` contract。
-5. State Manager Agent 每轮结束后更新本文件，避免上下文漂移。
+2. 当前推进 `PLAN-002`，形成覆盖 backend、frontend、browser smoke、LLM provider fallback、失败路径和跨环境验证的测试计划。
+3. `PLAN-002` 当前已进入 Current，不得借测试计划任务扩大任何已通过实现任务的 Done 范围。
+4. 后续涉及前后端闭环的实现任务仍必须先进入 Review，不得直接 Done。
+5. Review & Test Agent 后续对所有 `IMPL-*` 任务都必须包含 `Implementation Boundary Check`。
+6. 后续若启动真实数据库迁移，应保持 `APP_DATABASE_URL` 作为统一配置入口，不改变 `/api/v1` contract。
+7. State Manager Agent 每轮结束后更新本文件，避免上下文漂移。
 
-## 7. 需要用户裁决的问题
+## 7. Architect Agent 任务拆分记录：真实 LLM 接入
+
+以下记录保留 Architect Agent 对真实 LLM 接入的拆分依据；当前正式状态以 `tasks/current.md`、`tasks/backlog.md` 和 `tasks/done.md` 为准。
+
+### PLAN-007: 真实 LLM 接入配置与测试计划
+
+- 任务目标：明确 LLM provider 配置、secret 处理、本地 fallback 验证、mock / real provider contract test 计划。
+- 前置依赖：`PLAN-002` 测试计划完成或同步更新。
+- 影响模块：`deployment/local.env.example`、`deployment/README.md`、测试计划、Review 模板。
+- 验收重点：配置项覆盖 provider、base URL、API key、model、timeout、retry、fallback；无 key 时仍使用 rule-based fallback；secrets 不入仓库；真实 LLM 测试不阻塞默认 smoke。
+- 当前状态：`PLAN-007` 不再单独执行，关键约束已并入 `IMPL-010`。
+
+### IMPL-010: 接入 OpenAI-compatible `LLMProvider` 并用于 `Tutor Agent`
+
+- 任务目标：实现最小真实 LLM provider，通过配置选择 `rule_based` 或 `openai_compatible`，第一批只接入 `Tutor Agent`。
+- 前置依赖：`PLAN-007` 或等价配置方案已确认；`PLAN-002` 不必完全阻塞，但测试边界需明确。
+- 影响模块：`app/adapters/`、`app/agents/`、`app/services/tutor_service.py`、`deployment/local.env.example`、backend tests。
+- 验收重点：`/api/v1/tutor/ask` schema 不变；无 LLM 配置时 rule-based fallback 和现有 smoke 仍通过；provider 失败时 fallback 并记录到 `agent_run_steps`；service / API handler 不直接 import 具体 provider SDK；Implementation Boundary Review 为 Pass。
+- 当前状态：已作为 `IMPL-010` 完成并通过 Review，Done 范围仅限 Tutor Agent 的 OpenAI-compatible LLMProvider 最小接入。
+
+### REFACTOR-004: 抽离 Tutor agent strategy / factory
+
+- 任务目标：在不改变 API 的前提下，把 `RuleBasedTutorAgent` 与未来 `LLMTutorAgent` 统一到 strategy / factory 边界。
+- 前置依赖：可作为 `IMPL-010` 的前置子任务，也可并入 `IMPL-010`，但不得扩大到 Resource / Quiz / Evaluator。
+- 影响模块：`app/agents/`、`TutorService`、backend boundary tests。
+- 验收重点：`TutorService` 不直接实例化具体 rule-based / LLM agent；通过配置或 dependency factory 选择 agent；现有 tutor API 和 tests 不变。
+- 当前状态：strategy / factory 抽离已随 `IMPL-010` 完成；不扩大到 Resource / Quiz / Evaluator。
+
+## 8. 需要用户裁决的问题
 
 当前没有新的阻塞裁决问题。

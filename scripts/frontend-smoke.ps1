@@ -62,6 +62,8 @@ $oldDatabaseUrl = $env:APP_DATABASE_URL
 $oldViteBase = $env:VITE_API_BASE_URL
 $oldViteProxyTarget = $env:VITE_PROXY_TARGET
 $oldPlaywrightBase = $env:PLAYWRIGHT_BASE_URL
+$oldLlmProvider = $env:LLM_PROVIDER
+$oldLlmTutorEnabled = $env:LLM_ENABLE_FOR_TUTOR
 
 $backend = $null
 $frontend = $null
@@ -69,6 +71,8 @@ $frontend = $null
 try {
     $env:PYTHONPATH = "src/backend"
     $env:APP_DATABASE_URL = "sqlite:///$tmpDb"
+    $env:LLM_PROVIDER = "rule_based"
+    $env:LLM_ENABLE_FOR_TUTOR = "false"
     $backend = Start-Process -FilePath python `
         -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", [string]$BackendPort) `
         -WorkingDirectory $repoRoot `
@@ -120,6 +124,8 @@ try {
     if ($null -eq $oldViteBase) { Remove-Item Env:\VITE_API_BASE_URL -ErrorAction SilentlyContinue } else { $env:VITE_API_BASE_URL = $oldViteBase }
     if ($null -eq $oldViteProxyTarget) { Remove-Item Env:\VITE_PROXY_TARGET -ErrorAction SilentlyContinue } else { $env:VITE_PROXY_TARGET = $oldViteProxyTarget }
     if ($null -eq $oldPlaywrightBase) { Remove-Item Env:\PLAYWRIGHT_BASE_URL -ErrorAction SilentlyContinue } else { $env:PLAYWRIGHT_BASE_URL = $oldPlaywrightBase }
+    if ($null -eq $oldLlmProvider) { Remove-Item Env:\LLM_PROVIDER -ErrorAction SilentlyContinue } else { $env:LLM_PROVIDER = $oldLlmProvider }
+    if ($null -eq $oldLlmTutorEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_TUTOR -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_TUTOR = $oldLlmTutorEnabled }
 
     Start-Sleep -Milliseconds 300
     Remove-Item -LiteralPath $tmpDb -Force -ErrorAction SilentlyContinue

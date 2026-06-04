@@ -75,7 +75,13 @@ class RuleBasedResourceAgent:
 
 
 class RuleBasedTutorAgent:
-    def answer(self, question: str, chunks: list[KnowledgeSearchResult]) -> TutorAgentResult:
+    def answer(
+        self,
+        question: str,
+        chunks: list[KnowledgeSearchResult],
+        profile_summary: str = "",
+        course_title: str = "",
+    ) -> TutorAgentResult:
         source_refs = [
             {"chunk_id": chunk.chunk_id, "source_ref": chunk.source_ref, "score": chunk.score}
             for chunk in chunks

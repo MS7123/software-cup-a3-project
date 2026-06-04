@@ -1,6 +1,6 @@
 # 验收标准
 
-最后更新：2026-06-04  
+最后更新：2026-06-05
 状态：MVP 边界已确认，验收标准聚焦数据结构课程学生端闭环。
 
 ## 总体验收原则
@@ -41,6 +41,10 @@
 | AC18 | R4-R9, R13 | Rule-based `Planner` / `Tutor` / `Quiz` / `Evaluator` logic 必须隔离在 Agent、strategy 或 service 边界内，返回标准 domain result，不得写在 API handler 或 frontend | Active |
 | AC19 | R11, R13 | 后续替换真实 LLM / RAG / VectorStore 时，不得破坏 `/api/v1` schema、service contract、adapter contract 和 `agent_runs` / `agent_run_steps` 记录结构 | Active |
 | AC20 | R1-R13 | 每个后续 IMPL-* Review 必须包含 `Implementation Boundary Review` 结论，并能判定 `Pass`、`Needs Fix` 或 `Blocking` | Active |
+| AC21 | R6, R11, R13 | 第一批真实 LLM 接入应优先用于 `Tutor Agent`，并保持 `/api/v1/tutor/ask` request / response schema 稳定 | Proposed |
+| AC22 | R6, R11, R13 | 真实 LLM provider 必须通过 OpenAI-compatible `LLMProvider` adapter 接入；API handler、frontend、domain service 不得直接调用具体 provider SDK 或读取 API key | Proposed |
+| AC23 | R6, R9, R13 | LLM 调用失败、timeout、未配置 API key 或 invalid response 时，必须保留 rule-based fallback，并在 `agent_run_steps` 中记录 fallback 摘要 | Proposed |
+| AC24 | R11, R13 | 默认本地 demo / smoke 不应依赖真实 LLM key 或网络；真实 LLM 测试应使用 mock provider、显式 opt-in 或手动验证路径 | Proposed |
 
 ## MVP Implementation Boundary Standard
 
@@ -90,6 +94,19 @@
 | Frontend 从 API 获取 demo data | Frontend 本地维护一份 demo data | 前后端状态会漂移 |
 | 使用配置或依赖注入切换 mock / real provider | 用分散的 `if DEMO_MODE` 分支切换 | 分支污染业务代码 |
 
+## 真实 LLM 接入验收补充
+
+本节用于后续真实 LLM 接入任务。它不代表当前 rule-based MVP 已具备真实 LLM 能力。
+
+- 第一批真实 LLM 接入只建议覆盖 `Tutor Agent`，不同时绑定真实 RAG / VectorStore。
+- `/api/v1/tutor/ask` 的 request / response schema 必须保持稳定。
+- LLM provider 必须实现现有 `LLMProvider.generate(messages, response_schema=None) -> LLMResult` contract。
+- Prompt 模板不得放在 API handler 或 frontend；应位于 Agent / prompt module / strategy 边界。
+- 无 LLM 配置、provider timeout、rate limit、invalid response 时必须能回退 rule-based answer。
+- Fallback 信息应进入 `agent_run_steps` 的摘要或决策依据，不得在前端暴露敏感 provider 细节。
+- `LLM_API_KEY` 或同类 secret 不得写入仓库、测试输出、agent run 记录或 frontend bundle。
+- 默认 `scripts/verify.ps1`、`scripts/run-local.ps1 -SmokeOnly` 和 Playwright smoke 不应依赖真实 LLM 网络调用。
+
 ## 数据结构 MVP 场景验收
 
 Given 学生选择数据结构课程并选择一个模拟学生画像  
@@ -132,11 +149,11 @@ Then 应能看到需求侧架构影响分析，但不应将其视为已修改的
 
 ## 当前不可验收项
 
-截至 2026-06-04，`IMPL-001` 到 `IMPL-009` 已在各自任务范围内通过 Review & Test Agent 验收，仓库已经具备 student-side MVP 最小演示闭环、本地部署与基础自动化验证能力；但以下内容仍不能标记为完整验收通过：
+截至 2026-06-05，`IMPL-001` 到 `IMPL-010` 已在各自任务范围内通过 Review & Test Agent 验收，仓库已经具备 student-side MVP 最小演示闭环、本地部署、基础自动化验证能力，以及 Tutor Agent 的 OpenAI-compatible LLMProvider 最小接入；但以下内容仍不能标记为完整验收通过：
 
 - 不得将完整 AC1-AC13 或完整 MVP 产品功能标记为 Done。
 - 不得将当前 demo data 能力视为真实课程资料上传、解析、切分和正式知识库构建。
-- 不得将当前 rule-based `Planner` / `Tutor` / `Quiz` / `Evaluator` 视为真实 `LLM` 能力。
+- 不得将当前 rule-based `Planner` / `Resource` / `Quiz` / `Evaluator` 视为真实 `LLM` 能力；`Tutor Agent` 仅完成 OpenAI-compatible provider 最小接入和 fallback 验证，不代表完整 RAG Tutor 已 Done。
 - 不得将当前 demo chunk retrieval 视为真实 `RAG` / `VectorStore` 检索链路。
 - 不得将当前 SQLite 本地演示配置视为正式 `PostgreSQL`、迁移、`Redis/RQ` 或生产级部署能力。
 - 不得将当前 Playwright smoke 视为完整生产级测试矩阵；失败路径、多浏览器、移动视口和跨环境覆盖仍未完成。

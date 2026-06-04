@@ -6,6 +6,7 @@ param(
     [string]$DatabaseUrl = "sqlite:///./data/demo.sqlite3",
     [switch]$SkipFrontendInstall,
     [switch]$SkipDemoLoad,
+    [switch]$UseRemoteTutorLLM,
     [switch]$SmokeOnly
 )
 
@@ -89,6 +90,8 @@ $oldPythonPath = $env:PYTHONPATH
 $oldDatabaseUrl = $env:APP_DATABASE_URL
 $oldViteBase = $env:VITE_API_BASE_URL
 $oldViteProxyTarget = $env:VITE_PROXY_TARGET
+$oldLlmProvider = $env:LLM_PROVIDER
+$oldLlmTutorEnabled = $env:LLM_ENABLE_FOR_TUTOR
 
 $backend = $null
 $frontend = $null
@@ -98,6 +101,10 @@ $frontendBase = "http://$FrontendHost`:$FrontendPort"
 try {
     $env:PYTHONPATH = "src/backend"
     $env:APP_DATABASE_URL = $DatabaseUrl
+    if (-not $UseRemoteTutorLLM) {
+        $env:LLM_PROVIDER = "rule_based"
+        $env:LLM_ENABLE_FOR_TUTOR = "false"
+    }
 
     $backend = Start-Process -FilePath python `
         -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", $BackendHost, "--port", [string]$BackendPort) `
@@ -134,6 +141,7 @@ try {
         FrontendUrl = $frontendBase
         DatabaseUrl = $DatabaseUrl
         DemoDataLoaded = (-not $SkipDemoLoad)
+        RemoteTutorLLM = [bool]$UseRemoteTutorLLM
         BackendLog = $backendOut
         FrontendLog = $frontendOut
     } | Format-List
@@ -160,4 +168,6 @@ try {
     if ($null -eq $oldDatabaseUrl) { Remove-Item Env:\APP_DATABASE_URL -ErrorAction SilentlyContinue } else { $env:APP_DATABASE_URL = $oldDatabaseUrl }
     if ($null -eq $oldViteBase) { Remove-Item Env:\VITE_API_BASE_URL -ErrorAction SilentlyContinue } else { $env:VITE_API_BASE_URL = $oldViteBase }
     if ($null -eq $oldViteProxyTarget) { Remove-Item Env:\VITE_PROXY_TARGET -ErrorAction SilentlyContinue } else { $env:VITE_PROXY_TARGET = $oldViteProxyTarget }
+    if ($null -eq $oldLlmProvider) { Remove-Item Env:\LLM_PROVIDER -ErrorAction SilentlyContinue } else { $env:LLM_PROVIDER = $oldLlmProvider }
+    if ($null -eq $oldLlmTutorEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_TUTOR -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_TUTOR = $oldLlmTutorEnabled }
 }

@@ -42,6 +42,38 @@ $env:PLAYWRIGHT_CHANNEL='chromium'
 | `VITE_PROXY_TARGET` | `http://127.0.0.1:8000` | Vite `/api` proxy 指向的后端地址。 |
 | `PLAYWRIGHT_CHANNEL` | `msedge` on Windows | Playwright browser channel override。 |
 
+### LLM Provider Variables
+
+当前本地 demo 默认不依赖真实 LLM。后续接入 OpenAI-compatible provider 时，应通过环境变量注入配置，并保留 rule-based fallback。
+
+| 变量 | Demo 默认值 | 说明 |
+|---|---|---|
+| `LLM_PROVIDER` | `rule_based` | Provider 类型。后续真实接入可设为 `openai_compatible`。 |
+| `LLM_ENABLE_FOR_TUTOR` | `false` | 第一批真实 LLM 只建议用于 `Tutor Agent`。 |
+| `LLM_BASE_URL` | 空 | OpenAI-compatible endpoint base URL。 |
+| `LLM_API_KEY` | 空 | Secret，不得写入仓库、日志、frontend bundle 或 agent run 记录。 |
+| `LLM_MODEL` | 空 | 模型名称。 |
+| `LLM_TIMEOUT_SECONDS` | `20` | 单次请求超时。 |
+| `LLM_MAX_RETRIES` | `0` | 最小 retry 次数，避免演示卡死。 |
+| `LLM_FALLBACK_MODE` | `rule_based` | LLM 未配置、timeout 或失败时回退到 rule-based。 |
+| `LLM_BYPASS_PROXY` | `false` | 为 `true` 时，LLM provider 调用绕过当前 shell 的 HTTP/HTTPS proxy。 |
+
+默认 `verify.ps1`、`run-local.ps1 -SmokeOnly` 和 Playwright smoke 不应依赖真实 LLM 网络调用。需要验证真实 LLM 时，应使用显式 opt-in 的本地环境变量或独立手动验证路径。
+
+DeepSeek OpenAI-compatible 本地显式 opt-in 示例：
+
+```powershell
+$env:LLM_PROVIDER='openai_compatible'
+$env:LLM_ENABLE_FOR_TUTOR='true'
+$env:LLM_BASE_URL='https://api.deepseek.com'
+$env:LLM_MODEL='deepseek-v4-flash'
+$env:LLM_API_KEY='<your-deepseek-api-key>'
+$env:LLM_BYPASS_PROXY='true'
+./scripts/run-local.ps1 -UseRemoteTutorLLM
+```
+
+不要把真实 `LLM_API_KEY` 写入 `deployment/local.env.example`、`.env`、测试输出或 agent run 记录。
+
 ## Install Dependencies
 
 在仓库根目录执行：
@@ -81,6 +113,12 @@ cd ../..
 ./scripts/run-local.ps1 -BackendPort 8010 -FrontendPort 5175
 ```
 
+显式启用远程 Tutor LLM：
+
+```powershell
+./scripts/run-local.ps1 -UseRemoteTutorLLM
+```
+
 只验证启动链路并自动退出：
 
 ```powershell
@@ -108,3 +146,4 @@ cd ../..
 - 前端继续通过 `/api/v1` contract 调用后端；Vite proxy 只处理本地开发的网络转发。
 - SQLite 是当前演示配置，不代表架构基线从 `PostgreSQL` 改为 SQLite。
 - 正式 `PostgreSQL` 配置路径已经统一约定为 `APP_DATABASE_URL`；后续切换数据库时，不应改动 `/api/v1` contract、service contract 或 frontend API path。
+- 真实 LLM 接入应通过 `LLMProvider` adapter，不应让 API handler、frontend 或 service 直接依赖具体 provider SDK。

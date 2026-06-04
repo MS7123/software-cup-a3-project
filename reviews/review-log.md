@@ -1160,3 +1160,192 @@ Missing Tests：
 限制说明：
 
 - 本次更新不新增任何功能通过结论，不扩大既有 Done 范围。
+
+## 2026-06-04 State Manager Reprioritization After Architect LLM Plan
+
+依据：
+
+- Architect Agent 已在 `docs/03-architecture.md` 中给出“真实 LLM 最小接入方案”和任务拆分建议。
+- 用户明确要求：将架构建议的任务移入任务系统，并将目前的 `Current` 移回 `Backlog`。
+
+任务状态更新：
+
+- `PLAN-002` 从 `tasks/current.md` 移回 `tasks/backlog.md`，不再作为当前最高优先级。
+- 新增 `PLAN-007`、`IMPL-010`、`REFACTOR-004` 到 `tasks/backlog.md`。
+- `PLAN-007` 从 `tasks/backlog.md` 移入 `tasks/current.md`，作为真实 LLM 接入前的当前准备任务。
+
+限制说明：
+
+- 本次仅调整任务优先级与任务清单，不新增任何功能通过结论。
+- `IMPL-010` 尚未进入 `Current`，不得由 Implementation Agent 直接执行。
+
+## 2026-06-04 State Manager Reprioritization To Direct IMPL-010
+
+依据：
+
+- 用户明确要求采用“加速做法”：不单独执行 `PLAN-007`，直接推进 `IMPL-010`。
+- 但 `PLAN-007` 中的配置、secret、fallback 和测试边界约束必须继续生效。
+
+任务状态更新：
+
+- `PLAN-007` 不再作为独立 `Current` 任务执行。
+- `PLAN-007` 的关键约束已并入 `IMPL-010` 的任务说明与 Done 条件。
+- `IMPL-010` 从 `tasks/backlog.md` 移入 `tasks/current.md`，作为新的当前实现任务。
+
+限制说明：
+
+- 本次仍未新增任何功能通过结论。
+- `IMPL-010` 的 Review 必须同时检查真实 LLM 接入结果和原 `PLAN-007` 约束是否被满足。
+
+## 2026-06-04 Review & Test Agent Review: IMPL-010
+
+结论：Needs Fix。
+
+审查范围：
+
+- 当前任务：`tasks/current.md` 中的 `IMPL-010: 接入 OpenAI-compatible LLMProvider 并用于 Tutor Agent`。
+- 代码范围：`src/backend/app/adapters/llm_provider.py`、`src/backend/app/agents/tutor_agents.py`、`src/backend/app/agents/tutor_factory.py`、`src/backend/app/agents/tutor_prompts.py`、`src/backend/app/services/tutor_service.py`、`src/backend/app/agents/rule_based_agents.py`、`tests/test_llm_provider_tutor.py`。
+- 配置与脚本范围：`deployment/README.md`、`deployment/local.env.example`、`scripts/frontend-smoke.ps1`、`scripts/run-local.ps1`。
+- 文档与任务范围：`docs/02-acceptance-criteria.md`、`docs/03-architecture.md`、`docs/06-project-state.md`、`tasks/backlog.md`、`tasks/current.md`、`tasks/done.md`。
+
+验证命令与结果：
+
+- `./scripts/verify.ps1`：通过。覆盖 Python compile、20 个 backend unit tests、`pip check`、backend wheel build、frontend `npm ci`、frontend production build、Playwright smoke。
+- `./scripts/run-local.ps1 -SmokeOnly -BackendPort 8241 -FrontendPort 5241`：通过。输出 `DemoDataLoaded=True`、`RemoteTutorLLM=False`，确认默认本地演示不依赖远程 LLM。
+- `Select-String` 检查 `LLM_API_KEY` / provider SDK 关键字：未发现真实 key；具体 provider HTTP 调用仅位于 `src/backend/app/adapters/llm_provider.py`。
+
+Acceptance Criteria 覆盖：
+
+- AC6：Partial。Tutor 已接入 `LLMBackedTutorAgent` 与 OpenAI-compatible provider adapter，并保留 rule-based fallback；真实 RAG / VectorStore 不在本任务完成范围。
+- AC11：Partial。新增 LLM adapter、配置和本地运行脚本保护；数据库迁移、任务队列和生产部署仍未完成。
+- AC13：Pass in current scope。`TutorService` 通过 factory 获取 agent，API handler / frontend 未直接调用 provider SDK 或读取 API key。
+- AC20：Pass。已执行 Implementation Boundary Check。
+- 原 `PLAN-007` 并入约束：Needs Fix。默认 smoke 不依赖真实 LLM、secret 未入仓库、provider 失败 fallback 均有覆盖；但 `LLM_FALLBACK_MODE` 配置已暴露却未参与运行行为。
+
+Implementation Boundary Check：
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | API / frontend 未新增 LLM 业务结果硬编码；frontend smoke 强制 `LLM_PROVIDER=rule_based` 只保证本地稳定 |
+| Service/orchestrator boundary | Pass | `TutorService` 通过 `build_tutor_agent()` 获取 strategy，未直接实例化 provider SDK |
+| Adapter/provider boundary | Pass | `OpenAICompatibleLLMProvider` 位于 `app/adapters/llm_provider.py`，实现 `LLMProvider.generate()` contract |
+| Hardcoded demo/mock risk | Pass | Fake provider 仅在 `tests/test_llm_provider_tutor.py`；真实 demo 默认通过配置关闭远程 LLM |
+| API contract stability | Pass | `/api/v1/tutor/ask` request / response schema 未变，新增 LLM metadata 未进入 API response |
+
+Blocking Issues：
+
+- 无。
+
+Non-blocking Issues：
+
+- `src/backend/app/adapters/llm_provider.py`：`LLMSettings.fallback_mode` 从环境变量读取，但当前 `build_llm_provider()`、`LLMBackedTutorAgent` 和 `TutorService` 都未使用该值。影响：配置契约与运行行为不一致，设置 `LLM_FALLBACK_MODE=error` 时仍会 fallback。最小修复：要么实现 `rule_based` / `error` 两种策略并测试，要么从文档和配置中移除 `error` 策略承诺，仅声明固定 rule-based fallback。是否阻塞进入 Done：是，阻塞 `IMPL-010` 标记 Done，但不属于架构级 Blocking。
+- `docs/06-project-state.md` 原描述称“无配置、未显式启用”也会写入 fallback 摘要；实际 factory 在未配置时直接返回 `RuleBasedTutorAgent`，不会记录 LLM fallback reason。影响：状态文档强于实现事实。已由 State Manager Update 修正为当前真实行为。
+
+Missing Tests：
+
+- 缺少通过 `/api/v1/tutor/ask` 触发 provider failure 后再读取 `agent_runs` / `agent_run_steps` 的集成测试；当前只能证明 `LLMBackedTutorAgent` 单元层 fallback。
+- 缺少 `LLM_FALLBACK_MODE=error` 或等价策略的行为测试；如果项目决定只支持固定 rule-based fallback，则应删除该配置承诺并补文档测试。
+- 未进行真实外部 LLM 网络调用验证；按当前任务约束，默认验证不应依赖真实 key 或网络，因此不作为阻塞。
+
+建议：
+
+- 先完成 `FIX-002`：明确并实现 `LLM_FALLBACK_MODE` 语义，或移除该配置承诺。
+- 再完成 `TEST-003`：补 Tutor API 层 fallback / agent step 记录集成测试。
+- 修复后重新运行 `./scripts/verify.ps1` 和 `./scripts/run-local.ps1 -SmokeOnly`。
+
+最终结论：
+
+- 功能验收：Needs Fix。
+- Implementation Boundary Check：Pass。
+- 是否允许 State Manager 移入 Done：No。
+
+## 2026-06-04 State Manager Update After IMPL-010 Review
+
+依据：
+
+- Review & Test Agent 已在本文件中明确给出 `IMPL-010` 结论为 `Needs Fix`。
+- `Implementation Boundary Check` 为 `Pass`，但配置契约存在可证实缺口，未达到移入 Done 条件。
+
+任务状态更新：
+
+- `IMPL-010` 保持在 `tasks/current.md`，不得移入 `tasks/done.md`。
+- 从 `tasks/backlog.md` 移除重复残留的 `IMPL-010` 待实现行，避免同一任务同时位于 Current 和 Backlog。
+- 新增 `FIX-002`：补齐 `LLM_FALLBACK_MODE` 的真实行为或移除该配置承诺。
+- 新增 `TEST-003`：增加 Tutor API 层的 LLM fallback / agent step 记录测试。
+
+限制说明：
+
+- 本次未新增任何功能 Done 结论。
+- 未将真实 LLM 接入、完整 RAG / VectorStore、生产部署或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-05 Review & Test Agent Retest: IMPL-010
+
+结论：Pass。
+
+审查范围：
+
+- 当前任务：`tasks/current.md` 中的 `IMPL-010: 接入 OpenAI-compatible LLMProvider 并用于 Tutor Agent`。
+- 修复范围：`FIX-002` 与 `TEST-003`，即 `LLM_FALLBACK_MODE` 行为和 Tutor API 层 fallback / agent step 记录测试。
+- 代码范围：`src/backend/app/adapters/llm_provider.py`、`src/backend/app/agents/tutor_agents.py`、`src/backend/app/agents/tutor_factory.py`、`src/backend/app/agents/tutor_prompts.py`、`src/backend/app/services/tutor_service.py`、`tests/test_llm_provider_tutor.py`。
+
+验证命令与结果：
+
+- `./scripts/verify.ps1`：通过。覆盖 Python compile、24 个 backend unit tests、`pip check`、backend wheel build、frontend dependency install、frontend production build、Playwright smoke。
+- `./scripts/run-local.ps1 -SmokeOnly -BackendPort 8242 -FrontendPort 5242`：通过。输出 `DemoDataLoaded=True`、`RemoteTutorLLM=False`，确认默认本地演示不依赖远程 LLM。
+- 关键字检查：未发现真实 API key；具体 OpenAI-compatible HTTP 调用仅位于 `src/backend/app/adapters/llm_provider.py`。
+
+Acceptance Criteria 覆盖：
+
+- AC6：Pass in current scope。Tutor Agent 已通过 demo chunk 上下文生成 grounded answer，并可切换到 OpenAI-compatible provider；完整真实 RAG / VectorStore 仍未 Done。
+- AC11：Pass in current scope。已有可替换 LLMProvider adapter、配置、timeout、retry、fallback 与默认 smoke 保护；数据库迁移、任务队列和生产部署仍未 Done。
+- AC13：Pass。业务 service / API handler / frontend 未直接依赖具体 provider SDK 或读取 API key。
+- AC20：Pass。已完成 Implementation Boundary Check。
+- AC21-AC24：Pass in current scope。第一批只接入 Tutor，schema 稳定，provider 走 adapter，默认 smoke 不依赖真实 key 或网络，provider failure fallback / error 行为已有测试。
+
+Implementation Boundary Check：
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | API handler / frontend 未硬编码 LLM 结果；frontend 仍通过 `/api/v1/tutor/ask` 消费 schema |
+| Service/orchestrator boundary | Pass | `TutorService` 通过 `build_tutor_agent()` 获取 strategy，未直接调用 OpenAI-compatible HTTP / SDK |
+| Adapter/provider boundary | Pass | `OpenAICompatibleLLMProvider` 位于 `app/adapters/llm_provider.py`，实现 `LLMProvider.generate()` contract |
+| Hardcoded demo/mock risk | Pass | fake provider / fake endpoint 仅在 `tests/test_llm_provider_tutor.py`；默认 smoke 通过配置关闭远程 LLM |
+| API contract stability | Pass | `/api/v1/tutor/ask` request / response schema 未变；fallback 信息写入 `agent_run_steps`，未进入 API response |
+
+Blocking Issues：
+
+- 无。
+
+Non-blocking Issues：
+
+- 未进行真实外部 LLM key 联网验收；按当前任务约束，默认验证不应依赖真实 key 或网络，因此不阻塞。
+- `LLM_BYPASS_PROXY` 是本轮新增配置，用于本地 fake endpoint 测试和显式代理绕过场景；当前仅 backend adapter 使用，不影响 `/api/v1` schema。
+
+Missing Tests：
+
+- 真实外部 provider 的手动 opt-in 验证尚未执行。
+- 仍缺生产级多环境矩阵、移动视口和失败路径系统测试计划；已留给 `PLAN-002` / `TEST-002`。
+
+最终结论：
+
+- 功能验收：Pass。
+- Implementation Boundary Check：Pass。
+- 是否允许 State Manager 移入 Done：Yes。
+
+## 2026-06-05 State Manager Update After IMPL-010 Retest
+
+依据：
+
+- Review & Test Agent 已在本文件中明确给出 `IMPL-010` 复测通过结论。
+- 通过范围限定为 Tutor Agent 的 OpenAI-compatible LLMProvider 最小接入、fallback 策略、API schema 稳定和默认 smoke 稳定性。
+- `Implementation Boundary Check` 结论为 `Pass`。
+
+任务状态更新：
+
+- `IMPL-010` 从 `tasks/current.md` 移入 `tasks/done.md`。
+- `FIX-002` 和 `TEST-003` 已随 `IMPL-010` 修复并复测通过，从 `tasks/backlog.md` 移除。
+- `PLAN-002` 从 `tasks/backlog.md` 移入 `tasks/current.md`，作为下一阶段测试计划任务。
+
+限制说明：
+
+- 未将真实外部 LLM key 联网验收、完整 RAG / VectorStore、Resource / Quiz / Evaluator 的 LLM 接入、生产部署、数据库迁移、Redis/RQ 或完整 MVP 产品功能标记为 Done。
