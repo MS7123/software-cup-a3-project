@@ -23,6 +23,12 @@ export interface StudentProfile {
   created_at: string | null;
 }
 
+export interface StudentProfileDialogueCreate {
+  dialogue: string;
+  profile_type?: ProfileType | null;
+  user_id?: number | null;
+}
+
 export interface Concept {
   id: number;
   course_id: number;

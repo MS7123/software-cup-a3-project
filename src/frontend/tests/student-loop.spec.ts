@@ -9,7 +9,12 @@ test("student UI completes the current MVP learning loop", async ({ page }) => {
 
   const profiles = page.getByTestId("profile-option");
   await expect(profiles).toHaveCount(3);
-  await profiles.nth(1).click();
+  await page
+    .getByTestId("profile-dialogue")
+    .fill("我基础薄弱，想每天 1 小时复习二叉树遍历和 BFS/DFS，希望用例题和练习题准备小测");
+  await page.getByTestId("build-profile-button").click();
+  await expect(page.getByTestId("profile-dimensions")).toContainText("6-dimension profile");
+  await expect(profiles).toHaveCount(4);
 
   await page.getByTestId("create-path-button").click();
   const pathItems = page.getByTestId("path-item-card");

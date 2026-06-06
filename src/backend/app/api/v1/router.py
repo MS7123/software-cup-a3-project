@@ -16,6 +16,7 @@ from app.schemas import (
     QuizResponse,
     ResourceGenerateRequest,
     StudentProfileCreate,
+    StudentProfileDialogueCreate,
     StudentProfileResponse,
     TutorAskRequest,
     TutorAskResponse,
@@ -51,6 +52,11 @@ def list_student_profiles() -> list[StudentProfileResponse]:
 @api_router.post("/student-profiles", response_model=StudentProfileResponse)
 def create_student_profile(payload: StudentProfileCreate) -> StudentProfileResponse:
     return ProfileService().create_profile(payload)
+
+
+@api_router.post("/student-profiles/from-dialogue", response_model=StudentProfileResponse)
+def create_student_profile_from_dialogue(payload: StudentProfileDialogueCreate) -> StudentProfileResponse:
+    return ProfileService().create_profile_from_dialogue(payload)
 
 
 @api_router.get("/student-profiles/{profile_id}", response_model=StudentProfileResponse)

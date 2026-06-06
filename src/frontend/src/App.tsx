@@ -19,6 +19,7 @@ import type {
 type BusyAction =
   | "boot"
   | "load-demo"
+  | "build-profile"
   | "create-path"
   | "generate-resource"
   | "ask-tutor"
@@ -38,6 +39,15 @@ const agentTone: Record<string, string> = {
   quiz: "Assessment item",
   evaluator: "Mastery signal"
 };
+
+const profileDimensions = [
+  ["learning_goal", "Goal"],
+  ["foundation_level", "Level"],
+  ["learning_preference", "Preference"],
+  ["available_time", "Time"],
+  ["weak_points", "Weak points"],
+  ["resource_preference", "Resource"]
+] as const;
 
 function labelProfile(type: string): string {
   return profileLabels[type] ?? type.replaceAll("_", " ");
@@ -60,6 +70,9 @@ export function App() {
   const [graph, setGraph] = useState<ConceptGraph | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [selectedPathItemId, setSelectedPathItemId] = useState<number | null>(null);
+  const [profileDialogue, setProfileDialogue] = useState(
+    "我基础薄弱，想每天 1 小时复习二叉树遍历和 BFS/DFS，希望用例题和练习题准备小测"
+  );
   const [goal, setGoal] = useState("Review tree traversal and graph search for a short quiz");
   const [flow, setFlow] = useState<LearningFlow | null>(null);
   const [resource, setResource] = useState<GeneratedResource | null>(null);
@@ -120,6 +133,15 @@ export function App() {
     setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 8));
   }
 
+  function replaceOrAppendProfile(nextProfile: StudentProfile) {
+    setProfiles((current) => [nextProfile, ...current.filter((profile) => profile.id !== nextProfile.id)]);
+    setSelectedProfileId(nextProfile.id);
+    resetLoopOutputs();
+    setFlow(null);
+    setSelectedPathItemId(null);
+    setRuns([]);
+  }
+
   function resetLoopOutputs() {
     setResource(null);
     setAnswer(null);
@@ -176,6 +198,26 @@ export function App() {
 
           <Panel title="Student profile" kicker="Persona">
             <div className="space-y-3">
+              <textarea
+                className="field min-h-28 resize-none"
+                data-testid="profile-dialogue"
+                value={profileDialogue}
+                onChange={(event) => setProfileDialogue(event.target.value)}
+                aria-label="Profile dialogue"
+              />
+              <button
+                className="action-button w-full"
+                data-testid="build-profile-button"
+                disabled={!profileDialogue.trim() || busy !== null}
+                onClick={() =>
+                  void runTask("build-profile", async () => {
+                    const nextProfile = await api.createProfileFromDialogue({ dialogue: profileDialogue });
+                    replaceOrAppendProfile(nextProfile);
+                  })
+                }
+              >
+                {busy === "build-profile" ? "Building profile" : "Build profile from dialogue"}
+              </button>
               {profiles.map((profile) => (
                 <button
                   key={profile.id}
@@ -190,10 +232,14 @@ export function App() {
                   <span className="mt-1 block text-xs text-slate-500">
                     {profile.level} / {profile.time_budget}
                   </span>
+                  <span className="mt-1 block text-xs font-semibold text-moss">
+                    {profileDimensions.filter(([key]) => profile.preferences[key] !== undefined).length} profile dimensions
+                  </span>
                   <span className="mt-2 line-clamp-3 block text-xs leading-5 text-slate-600">{profile.goal}</span>
                 </button>
               ))}
               {profiles.length === 0 ? <EmptyState text="Load demo data to fetch profiles from the backend." /> : null}
+              {selectedProfile ? <ProfileDimensionList profile={selectedProfile} /> : null}
             </div>
           </Panel>
 
@@ -443,6 +489,33 @@ function NodeSummary({ item, concept }: { item: LearningPathItem | null; concept
       <p className="mt-3 text-xs text-slate-500">{concept?.name ?? `Concept ${item.concept_id}`}</p>
     </div>
   );
+}
+
+function ProfileDimensionList({ profile }: { profile: StudentProfile }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-4" data-testid="profile-dimensions">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">6-dimension profile</p>
+      <div className="mt-3 grid gap-2">
+        {profileDimensions.map(([key, label]) => (
+          <div key={key} className="rounded-md bg-slate-50 px-3 py-2">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-700">{formatPreference(profile, key)}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatPreference(profile: StudentProfile, key: string): string {
+  const value = profile.preferences[key];
+  if (value === undefined || value === null || value === "") {
+    if (key === "learning_goal") return profile.goal;
+    if (key === "foundation_level") return profile.level;
+    if (key === "available_time") return profile.time_budget;
+    return "待学习过程更新";
+  }
+  return String(value);
 }
 
 function RunCard({ run }: { run: AgentRun }) {

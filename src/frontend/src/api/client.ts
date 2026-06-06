@@ -6,6 +6,7 @@ import type {
   GeneratedResource,
   LearningFlow,
   Quiz,
+  StudentProfileDialogueCreate,
   StudentProfile,
   TutorAnswer
 } from "./types";
@@ -33,6 +34,11 @@ export const api = {
   getDemoStatus: () => request<DemoDataStatus>("/demo-data/status"),
   loadDemoData: () => request<{ demo_data: DemoDataStatus }>("/demo-data/load", { method: "POST" }),
   listProfiles: () => request<StudentProfile[]>("/student-profiles"),
+  createProfileFromDialogue: (payload: StudentProfileDialogueCreate) =>
+    request<StudentProfile>("/student-profiles/from-dialogue", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   getCourseGraph: (courseId: number) => request<ConceptGraph>(`/courses/${courseId}/graph`),
   createLearningPath: (studentProfileId: number, courseId: number, goal: string) =>
     request<LearningFlow>("/learning-paths", {

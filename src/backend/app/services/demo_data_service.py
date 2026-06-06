@@ -5,7 +5,7 @@ from app.core.enums import ProcessingStatus, ProfileType
 from app.db.base import Base
 from app.db.session import get_engine, session_scope
 from app.models import Concept, ConceptRelation, Course, Document, DocumentChunk, StudentProfile
-from app.schemas import DemoDataLoadResponse, DemoDataStatusResponse
+from app.schemas import DemoDataLoadResponse, DemoDataStatusResponse, StudentProfileCreate
 from app.seed.demo_data import (
     DEMO_CHUNKS,
     DEMO_CONCEPTS,
@@ -14,6 +14,7 @@ from app.seed.demo_data import (
     DEMO_PROFILES,
     DEMO_RELATIONS,
 )
+from app.services.profile_builder import normalize_profile_dimensions
 
 
 DEMO_CONCEPT_SLUGS = [
@@ -102,11 +103,17 @@ class DemoDataService:
 
     def _load_profiles(self, session: Session) -> None:
         for profile_data in DEMO_PROFILES:
+            normalized_profile = normalize_profile_dimensions(StudentProfileCreate(**profile_data))
             profile = session.scalar(
                 select(StudentProfile).where(StudentProfile.profile_type == profile_data["profile_type"])
             )
             if profile is None:
-                session.add(StudentProfile(**profile_data))
+                session.add(StudentProfile(**normalized_profile.model_dump()))
+            else:
+                profile.preferences = {
+                    **normalized_profile.preferences,
+                    **(profile.preferences if isinstance(profile.preferences, dict) else {}),
+                }
 
     def _load_document_chunks(self, session: Session) -> None:
         course = self._get_demo_course(session)

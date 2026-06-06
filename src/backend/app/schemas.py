@@ -32,6 +32,12 @@ class StudentProfileCreate(StudentProfileBase):
     user_id: int | None = None
 
 
+class StudentProfileDialogueCreate(BaseModel):
+    dialogue: str = Field(min_length=1)
+    profile_type: ProfileType | None = None
+    user_id: int | None = None
+
+
 class StudentProfileResponse(StudentProfileBase):
     model_config = ConfigDict(from_attributes=True)
 
