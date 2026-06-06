@@ -44,27 +44,97 @@ class EvaluatorAgentResult:
 
 
 class RuleBasedResourceAgent:
+    SUPPORTED_RESOURCE_TYPES = {
+        "guided_note": "讲解文档",
+        "practice_questions": "练习题",
+        "mind_map": "思维导图",
+        "extended_reading": "拓展阅读",
+        "coding_case": "代码实操案例",
+    }
+
     def generate(
         self,
         concept_name: str,
         objective: str,
         resource_type: str,
         chunks: list[KnowledgeSearchResult],
+        profile_preferences: dict[str, Any] | None = None,
     ) -> ResourceAgentResult:
+        normalized_type = resource_type if resource_type in self.SUPPORTED_RESOURCE_TYPES else "guided_note"
         source_refs = self._source_refs(chunks)
         evidence = chunks[0].content if chunks else "暂无可用资料片段。"
-        content = (
-            f"【{resource_type}】{concept_name}\n"
-            f"学习目标：{objective}\n"
-            f"核心讲解：{evidence}\n"
-            f"练习建议：先复述概念，再完成 1 道基础题和 1 道应用题。"
-        )
+        preferences = profile_preferences or {}
+        style = str(preferences.get("learning_preference") or preferences.get("style") or "step_by_step")
+        weak_points = str(preferences.get("weak_points") or "待通过测验进一步定位")
+        content = self._render_resource(normalized_type, concept_name, objective, evidence, style, weak_points)
         return ResourceAgentResult(
             content=content,
             source_refs=source_refs,
-            input_summary=f"为知识点 {concept_name} 生成 {resource_type} 资源。",
-            output_summary=f"生成包含讲解、依据和练习建议的 {resource_type}。",
-            decision_basis="基于学习路径节点目标和课程资料 chunk 生成资源，避免无依据扩写。",
+            input_summary=f"为知识点 {concept_name} 生成 {self.SUPPORTED_RESOURCE_TYPES[normalized_type]} 资源。",
+            output_summary=f"生成 {self.SUPPORTED_RESOURCE_TYPES[normalized_type]}，包含资料依据和个性化建议。",
+            decision_basis="基于学习路径节点目标、学生画像偏好和课程资料 chunk 生成资源，避免无依据扩写。",
+        )
+
+    def _render_resource(
+        self,
+        resource_type: str,
+        concept_name: str,
+        objective: str,
+        evidence: str,
+        style: str,
+        weak_points: str,
+    ) -> str:
+        title = self.SUPPORTED_RESOURCE_TYPES[resource_type]
+        if resource_type == "practice_questions":
+            return (
+                f"【{title}】{concept_name}\n"
+                f"学习目标：{objective}\n"
+                f"资料依据：{evidence}\n"
+                f"画像侧重点：{weak_points}\n"
+                "题目 1：用自己的话说明该知识点的核心思想。\n"
+                "题目 2：结合一个数据结构操作场景说明它的作用。\n"
+                "题目 3：写出一个容易混淆点，并给出区分方法。\n"
+                "建议：先独立作答，再回到 Tutor 区域追问不确定点。"
+            )
+        if resource_type == "mind_map":
+            return (
+                f"【{title}】{concept_name}\n"
+                f"- 中心主题：{concept_name}\n"
+                f"  - 学习目标：{objective}\n"
+                f"  - 资料依据：{evidence}\n"
+                f"  - 关键概念：定义、适用场景、基本操作\n"
+                f"  - 薄弱点关注：{weak_points}\n"
+                "  - 练习路径：复述概念 -> 对比场景 -> 完成小测 -> 复盘错误"
+            )
+        if resource_type == "extended_reading":
+            return (
+                f"【{title}】{concept_name}\n"
+                f"学习目标：{objective}\n"
+                f"先读资料依据：{evidence}\n"
+                "拓展阅读建议：\n"
+                "1. 查阅教材中该知识点的定义和图示。\n"
+                "2. 对比同章节相邻知识点，找出使用边界。\n"
+                "3. 记录一个实际题目中该知识点的触发信号。\n"
+                f"阅读方式：按 {style} 风格做短笔记，不追求一次读完。"
+            )
+        if resource_type == "coding_case":
+            return (
+                f"【{title}】{concept_name}\n"
+                f"学习目标：{objective}\n"
+                f"资料依据：{evidence}\n"
+                "实操任务：\n"
+                "1. 写出核心数据结构或算法过程的伪代码。\n"
+                "2. 准备一个最小输入样例并手动跟踪状态变化。\n"
+                "3. 标注时间复杂度和一个常见边界条件。\n"
+                f"个性化提醒：如果薄弱点包含 {concept_name}，先完成手动跟踪再写代码。"
+            )
+        return (
+            f"【{title}】{concept_name}\n"
+            f"学习目标：{objective}\n"
+            f"核心讲解：{evidence}\n"
+            f"画像侧重点：{weak_points}\n"
+            f"学习方式：采用 {style} 风格，先理解定义，再用一个小例子验证。\n"
+            "练习建议：先复述概念，再完成 1 道基础题和 1 道应用题。"
         )
 
     def _source_refs(self, chunks: list[KnowledgeSearchResult]) -> list[dict[str, Any]]:

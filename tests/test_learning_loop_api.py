@@ -9,6 +9,15 @@ from app.db.session import get_engine
 from app.main import create_app
 
 
+RESOURCE_TYPES = [
+    "guided_note",
+    "practice_questions",
+    "mind_map",
+    "extended_reading",
+    "coding_case",
+]
+
+
 class LearningLoopApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -108,6 +117,82 @@ class LearningLoopApiTests(unittest.TestCase):
                 self.assertTrue(run_body["steps"][0]["output_summary"])
                 self.assertTrue(run_body["steps"][0]["decision_basis"])
 
+            profile_update = client.post(f"/api/v1/student-profiles/{profile['id']}/update-from-trace")
+            self.assertEqual(profile_update.status_code, 200)
+            updated_profile = profile_update.json()
+            preferences = updated_profile["preferences"]
+            self.assertIn("last_profile_update_reason", preferences)
+            self.assertIn("last_profile_update_sources", preferences)
+            self.assertTrue(preferences["last_profile_update_sources"])
+            self.assertIn("Agent step", preferences["last_profile_update_reason"])
+
+    def test_resource_agent_generates_five_competition_resource_types(self) -> None:
+        with TestClient(create_app()) as client:
+            demo = client.post("/api/v1/demo-data/load").json()["demo_data"]
+            profile = client.get("/api/v1/student-profiles").json()[0]
+            learning_flow = client.post(
+                "/api/v1/learning-paths",
+                json={
+                    "student_profile_id": profile["id"],
+                    "course_id": demo["course_id"],
+                    "goal": "准备数据结构小测",
+                },
+            ).json()
+            path_item = learning_flow["learning_path"]["items"][0]
+
+            for resource_type in RESOURCE_TYPES:
+                response = client.post(
+                    "/api/v1/resources/generate",
+                    json={"path_item_id": path_item["id"], "resource_type": resource_type},
+                )
+                self.assertEqual(response.status_code, 200)
+                body = response.json()
+                self.assertEqual(body["path_item_id"], path_item["id"])
+                self.assertEqual(body["resource_type"], resource_type)
+                self.assertIn(path_item["objective"], body["content"])
+                self.assertTrue(body["source_refs"])
+                self.assertIsNotNone(body["agent_run_id"])
+
+    def test_deleting_user_profile_removes_related_learning_records_and_runs(self) -> None:
+        with TestClient(create_app()) as client:
+            demo = client.post("/api/v1/demo-data/load").json()["demo_data"]
+            profile = client.post(
+                "/api/v1/student-profiles/from-dialogue",
+                json={"dialogue": "我想用代码练习链表和 BFS，每周 6 小时。"},
+            ).json()
+            graph = client.get(f"/api/v1/courses/{demo['course_id']}/graph").json()
+            learning_flow = client.post(
+                "/api/v1/learning-paths",
+                json={
+                    "student_profile_id": profile["id"],
+                    "course_id": demo["course_id"],
+                    "goal": "练习链表和 BFS",
+                },
+            ).json()
+            path = learning_flow["learning_path"]
+            planner_run_id = learning_flow["agent_run"]["id"]
+            path_item = path["items"][0]
+
+            resource = client.post(
+                "/api/v1/resources/generate",
+                json={"path_item_id": path_item["id"], "resource_type": "coding_case"},
+            ).json()
+            quiz = client.post(
+                "/api/v1/quizzes/generate",
+                json={"student_profile_id": profile["id"], "concept_id": graph["concepts"][0]["id"], "difficulty": "basic"},
+            ).json()
+            attempt = client.post(
+                f"/api/v1/quizzes/{quiz['id']}/attempts",
+                json={"student_profile_id": profile["id"], "answers": {"answer": quiz["items"][0]["answer"]}},
+            ).json()
+
+            delete_response = client.delete(f"/api/v1/student-profiles/{profile['id']}")
+            self.assertEqual(delete_response.status_code, 204)
+            self.assertEqual(client.get(f"/api/v1/student-profiles/{profile['id']}").status_code, 404)
+            self.assertEqual(client.get(f"/api/v1/learning-paths/{path['id']}").status_code, 404)
+            for run_id in [planner_run_id, resource["agent_run_id"], quiz["agent_run_id"], attempt["agent_run_id"]]:
+                self.assertEqual(client.get(f"/api/v1/agent-runs/{run_id}").status_code, 404)
+
     def test_loop_endpoints_return_404_for_missing_records(self) -> None:
         with TestClient(create_app()) as client:
             resource = client.post("/api/v1/resources/generate", json={"path_item_id": 999999, "resource_type": "讲义"})
@@ -130,3 +215,6 @@ class LearningLoopApiTests(unittest.TestCase):
                 json={"student_profile_id": 999999, "answers": {"answer": "x"}},
             )
             self.assertEqual(attempt.status_code, 404)
+
+            profile_update = client.post("/api/v1/student-profiles/999999/update-from-trace")
+            self.assertEqual(profile_update.status_code, 404)

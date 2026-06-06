@@ -7,3 +7,8 @@ class NotFoundError(DomainError):
         self.resource = resource
         self.resource_id = resource_id
         super().__init__(f"{resource} {resource_id} not found.")
+
+
+class ProtectedResourceError(DomainError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)

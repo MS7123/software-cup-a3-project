@@ -19,7 +19,10 @@ import type {
 type BusyAction =
   | "boot"
   | "load-demo"
+  | "reset-demo"
   | "build-profile"
+  | "update-profile"
+  | "delete-profile"
   | "create-path"
   | "generate-resource"
   | "ask-tutor"
@@ -49,6 +52,14 @@ const profileDimensions = [
   ["resource_preference", "Resource"]
 ] as const;
 
+const resourceOptions = [
+  { type: "guided_note", label: "讲解" },
+  { type: "practice_questions", label: "练习" },
+  { type: "mind_map", label: "导图" },
+  { type: "extended_reading", label: "拓展" },
+  { type: "coding_case", label: "代码" }
+] as const;
+
 function labelProfile(type: string): string {
   return profileLabels[type] ?? type.replaceAll("_", " ");
 }
@@ -76,6 +87,7 @@ export function App() {
   const [goal, setGoal] = useState("Review tree traversal and graph search for a short quiz");
   const [flow, setFlow] = useState<LearningFlow | null>(null);
   const [resource, setResource] = useState<GeneratedResource | null>(null);
+  const [resourceType, setResourceType] = useState<(typeof resourceOptions)[number]["type"]>("guided_note");
   const [question, setQuestion] = useState("How are BFS and DFS different in data structures?");
   const [answer, setAnswer] = useState<TutorAnswer | null>(null);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
@@ -117,7 +129,9 @@ export function App() {
 
     const nextProfiles = await api.listProfiles();
     setProfiles(nextProfiles);
-    setSelectedProfileId((current) => current ?? nextProfiles[0]?.id ?? null);
+    setSelectedProfileId((current) =>
+      current && nextProfiles.some((profile) => profile.id === current) ? current : nextProfiles[0]?.id ?? null
+    );
 
     if (nextStatus.course_id) {
       const nextGraph = await api.getCourseGraph(nextStatus.course_id);
@@ -136,6 +150,22 @@ export function App() {
   function replaceOrAppendProfile(nextProfile: StudentProfile) {
     setProfiles((current) => [nextProfile, ...current.filter((profile) => profile.id !== nextProfile.id)]);
     setSelectedProfileId(nextProfile.id);
+    resetLoopOutputs();
+    setFlow(null);
+    setSelectedPathItemId(null);
+    setRuns([]);
+  }
+
+  function refreshSelectedProfile(nextProfile: StudentProfile) {
+    setProfiles((current) => current.map((profile) => (profile.id === nextProfile.id ? nextProfile : profile)));
+    setSelectedProfileId(nextProfile.id);
+  }
+
+  async function deleteProfile(profileId: number) {
+    await api.deleteProfile(profileId);
+    const nextProfiles = await api.listProfiles();
+    setProfiles(nextProfiles);
+    setSelectedProfileId(nextProfiles[0]?.id ?? null);
     resetLoopOutputs();
     setFlow(null);
     setSelectedPathItemId(null);
@@ -193,6 +223,23 @@ export function App() {
             >
               {busy === "load-demo" ? "Loading demo data" : "Load or refresh demo data"}
             </button>
+            <button
+              className="danger-button mt-3 w-full"
+              data-testid="reset-demo-button"
+              disabled={busy !== null}
+              onClick={() =>
+                void runTask("reset-demo", async () => {
+                  await api.resetDemoUserData();
+                  await refreshBaseData();
+                  resetLoopOutputs();
+                  setFlow(null);
+                  setSelectedPathItemId(null);
+                  setRuns([]);
+                })
+              }
+            >
+              {busy === "reset-demo" ? "Resetting demo" : "Reset user demo data"}
+            </button>
             <StatusLine busy={busy === "boot"} error={error} />
           </Panel>
 
@@ -218,28 +265,58 @@ export function App() {
               >
                 {busy === "build-profile" ? "Building profile" : "Build profile from dialogue"}
               </button>
-              {profiles.map((profile) => (
-                <button
-                  key={profile.id}
-                  className={`profile-option ${profile.id === selectedProfileId ? "profile-option-active" : ""}`}
-                  data-testid="profile-option"
-                  onClick={() => {
-                    setSelectedProfileId(profile.id);
-                    resetLoopOutputs();
-                  }}
-                >
-                  <span className="block text-sm font-semibold">{labelProfile(profile.profile_type)}</span>
-                  <span className="mt-1 block text-xs text-slate-500">
-                    {profile.level} / {profile.time_budget}
-                  </span>
-                  <span className="mt-1 block text-xs font-semibold text-moss">
-                    {profileDimensions.filter(([key]) => profile.preferences[key] !== undefined).length} profile dimensions
-                  </span>
-                  <span className="mt-2 line-clamp-3 block text-xs leading-5 text-slate-600">{profile.goal}</span>
-                </button>
-              ))}
+              {profiles.map((profile) => {
+                const isDemoProfile = profile.preferences.profile_origin === "demo";
+                return (
+                  <div
+                    key={profile.id}
+                    className={`profile-option ${profile.id === selectedProfileId ? "profile-option-active" : ""}`}
+                    data-testid="profile-option"
+                  >
+                    <button
+                      className="profile-select-button"
+                      onClick={() => {
+                        setSelectedProfileId(profile.id);
+                        resetLoopOutputs();
+                      }}
+                    >
+                      <span className="block text-sm font-semibold">{labelProfile(profile.profile_type)}</span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {profile.level} / {profile.time_budget}
+                      </span>
+                      <span className="mt-1 block text-xs font-semibold text-moss">
+                        {profileDimensions.filter(([key]) => profile.preferences[key] !== undefined).length} profile dimensions
+                      </span>
+                      <span className="mt-2 line-clamp-3 block text-xs leading-5 text-slate-600">{profile.goal}</span>
+                    </button>
+                    {!isDemoProfile ? (
+                      <button
+                        className="profile-delete-button"
+                        data-testid="delete-profile-button"
+                        disabled={busy !== null}
+                        onClick={() => void runTask("delete-profile", () => deleteProfile(profile.id))}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
               {profiles.length === 0 ? <EmptyState text="Load demo data to fetch profiles from the backend." /> : null}
               {selectedProfile ? <ProfileDimensionList profile={selectedProfile} /> : null}
+              <button
+                className="action-button w-full"
+                data-testid="update-profile-button"
+                disabled={!selectedProfileId || runs.length === 0 || busy !== null}
+                onClick={() =>
+                  void runTask("update-profile", async () => {
+                    const nextProfile = await api.updateProfileFromTrace(selectedProfileId as number);
+                    refreshSelectedProfile(nextProfile);
+                  })
+                }
+              >
+                {busy === "update-profile" ? "Updating profile" : "Update profile from learning trace"}
+              </button>
             </div>
           </Panel>
 
@@ -309,19 +386,34 @@ export function App() {
           <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
             <Panel title="Resource" kicker="Resource Agent">
               <NodeSummary item={selectedItem} concept={selectedConcept} />
+              <div className="mt-4 grid grid-cols-5 gap-2" data-testid="resource-type-options">
+                {resourceOptions.map((option) => (
+                  <button
+                    key={option.type}
+                    className={`resource-tab ${resourceType === option.type ? "resource-tab-active" : ""}`}
+                    data-testid={`resource-type-${option.type}`}
+                    onClick={() => {
+                      setResourceType(option.type);
+                      setResource(null);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <button
                 className="action-button mt-4"
                 data-testid="generate-resource-button"
                 disabled={!selectedItem || busy !== null}
                 onClick={() =>
                   void runTask("generate-resource", async () => {
-                    const nextResource = await api.generateResource(selectedItem!.id, "guided_note");
+                    const nextResource = await api.generateResource(selectedItem!.id, resourceType);
                     setResource(nextResource);
                     await appendRun(nextResource.agent_run_id);
                   })
                 }
               >
-                {busy === "generate-resource" ? "Generating resource" : "Generate resource for selected node"}
+                {busy === "generate-resource" ? "Generating resource" : "Generate selected resource"}
               </button>
               {resource ? (
                 <OutputBlock title={resource.resource_type} text={resource.content} source={sourceLabel(resource.source_refs)} />
@@ -503,6 +595,11 @@ function ProfileDimensionList({ profile }: { profile: StudentProfile }) {
           </div>
         ))}
       </div>
+      {profile.preferences.last_profile_update_reason ? (
+        <p className="mt-3 rounded-md bg-signal/10 p-3 text-xs leading-5 text-slate-700" data-testid="profile-update-reason">
+          {String(profile.preferences.last_profile_update_reason)}
+        </p>
+      ) : null}
     </div>
   );
 }

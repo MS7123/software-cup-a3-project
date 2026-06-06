@@ -14,6 +14,7 @@ PROFILE_DIMENSION_KEYS = [
 
 def normalize_profile_dimensions(profile: StudentProfileCreate) -> StudentProfileCreate:
     preferences = dict(profile.preferences)
+    preferences.setdefault("profile_origin", "user_created")
     preferences.setdefault("learning_goal", profile.goal)
     preferences.setdefault("foundation_level", profile.level)
     preferences.setdefault("learning_preference", preferences.get("style", "step_by_step"))
@@ -37,6 +38,7 @@ def build_profile_from_dialogue(payload: StudentProfileDialogueCreate) -> Studen
         "resource": _infer_resource_preference(text),
         "pace": _infer_pace(text),
         "dialogue_summary": text,
+        "profile_origin": "user_dialogue",
     }
     profile = StudentProfileCreate(
         user_id=payload.user_id,

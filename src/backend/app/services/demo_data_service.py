@@ -1,10 +1,26 @@
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.enums import ProcessingStatus, ProfileType
 from app.db.base import Base
 from app.db.session import get_engine, session_scope
-from app.models import Concept, ConceptRelation, Course, Document, DocumentChunk, StudentProfile
+from app.models import (
+    AgentRun,
+    AgentRunStep,
+    Attempt,
+    Concept,
+    ConceptRelation,
+    Course,
+    Document,
+    DocumentChunk,
+    GeneratedResource,
+    LearningPath,
+    LearningPathItem,
+    MasteryRecord,
+    Quiz,
+    QuizItem,
+    StudentProfile,
+)
 from app.schemas import DemoDataLoadResponse, DemoDataStatusResponse, StudentProfileCreate
 from app.seed.demo_data import (
     DEMO_CHUNKS,
@@ -52,6 +68,31 @@ class DemoDataService:
         return DemoDataLoadResponse(
             status=ProcessingStatus.completed,
             message="Demo data loaded successfully." if status.is_loaded else "Demo data load finished with missing records.",
+            demo_data=status,
+        )
+
+    def reset_user_data(self) -> DemoDataLoadResponse:
+        self.load_demo_data()
+        with session_scope(self.database_url) as session:
+            session.execute(delete(AgentRunStep))
+            session.execute(delete(AgentRun))
+            session.execute(delete(GeneratedResource))
+            session.execute(delete(LearningPathItem))
+            session.execute(delete(LearningPath))
+            session.execute(delete(QuizItem))
+            session.execute(delete(Attempt))
+            session.execute(delete(MasteryRecord))
+            session.execute(delete(Quiz))
+
+            for profile in session.scalars(select(StudentProfile).order_by(StudentProfile.id)).all():
+                preferences = profile.preferences if isinstance(profile.preferences, dict) else {}
+                if preferences.get("profile_origin") != "demo":
+                    session.delete(profile)
+            session.flush()
+            status = self._build_status(session)
+        return DemoDataLoadResponse(
+            status=ProcessingStatus.completed,
+            message="Demo user data reset successfully.",
             demo_data=status,
         )
 
@@ -104,9 +145,7 @@ class DemoDataService:
     def _load_profiles(self, session: Session) -> None:
         for profile_data in DEMO_PROFILES:
             normalized_profile = normalize_profile_dimensions(StudentProfileCreate(**profile_data))
-            profile = session.scalar(
-                select(StudentProfile).where(StudentProfile.profile_type == profile_data["profile_type"])
-            )
+            profile = self._find_demo_profile(session, profile_data)
             if profile is None:
                 session.add(StudentProfile(**normalized_profile.model_dump()))
             else:
@@ -169,8 +208,7 @@ class DemoDataService:
         ]
         profile_types = [
             ProfileType(profile_type)
-            for profile_type in session.scalars(select(StudentProfile.profile_type).order_by(StudentProfile.id)).all()
-            if profile_type in {profile.value for profile in DEMO_PROFILE_TYPES}
+            for profile_type in self._demo_profile_types(session)
         ]
         document_count = self._count(
             session,
@@ -202,6 +240,29 @@ class DemoDataService:
 
     def _get_demo_course(self, session: Session) -> Course | None:
         return session.scalar(select(Course).where(Course.title == DEMO_COURSE["title"], Course.is_demo.is_(True)))
+
+    def _find_demo_profile(self, session: Session, profile_data: dict) -> StudentProfile | None:
+        expected_key = profile_data["preferences"].get("demo_profile_key")
+        profiles = session.scalars(
+            select(StudentProfile).where(StudentProfile.profile_type == profile_data["profile_type"]).order_by(StudentProfile.id)
+        ).all()
+        for profile in profiles:
+            preferences = profile.preferences if isinstance(profile.preferences, dict) else {}
+            if preferences.get("demo_profile_key") == expected_key:
+                return profile
+        for profile in profiles:
+            preferences = profile.preferences if isinstance(profile.preferences, dict) else {}
+            if not preferences.get("profile_origin") and profile.goal == profile_data["goal"]:
+                return profile
+        return None
+
+    def _demo_profile_types(self, session: Session) -> list[str]:
+        profile_types: list[str] = []
+        for profile in session.scalars(select(StudentProfile).order_by(StudentProfile.id)).all():
+            preferences = profile.preferences if isinstance(profile.preferences, dict) else {}
+            if preferences.get("profile_origin") == "demo" and preferences.get("demo_profile_key"):
+                profile_types.append(profile.profile_type)
+        return profile_types
 
     def _count(self, session: Session, statement: Select[tuple[int]]) -> int:
         return int(session.scalar(statement) or 0)

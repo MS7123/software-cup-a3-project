@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.db.session import get_engine, get_session_factory
 from app.main import create_app
-from app.models import Concept, ConceptRelation, Document, DocumentChunk, StudentProfile
+from app.models import AgentRun, Concept, ConceptRelation, Document, DocumentChunk, LearningPath, StudentProfile
 from app.seed.demo_data import DEMO_CHUNKS, DEMO_CONCEPTS, DEMO_PROFILES, DEMO_RELATIONS
 from app.services.demo_data_service import DemoDataService
 
@@ -111,3 +111,44 @@ class DemoDataTests(unittest.TestCase):
 
             after = client.get("/api/v1/demo-data/status")
             self.assertTrue(after.json()["is_loaded"])
+
+    def test_reset_user_data_keeps_seed_data_and_removes_learning_process_records(self) -> None:
+        with TestClient(create_app()) as client:
+            demo = client.post("/api/v1/demo-data/load").json()["demo_data"]
+            profile = client.post(
+                "/api/v1/student-profiles/from-dialogue",
+                json={"dialogue": "我想用代码练习链表和 BFS，每周 6 小时。"},
+            ).json()
+            learning_flow = client.post(
+                "/api/v1/learning-paths",
+                json={
+                    "student_profile_id": profile["id"],
+                    "course_id": demo["course_id"],
+                    "goal": "练习链表和 BFS",
+                },
+            ).json()
+            path = learning_flow["learning_path"]
+            run = learning_flow["agent_run"]
+
+            reset = client.post("/api/v1/demo-data/reset-user-data")
+            self.assertEqual(reset.status_code, 200)
+            reset_body = reset.json()
+            self.assertEqual(reset_body["status"], "completed")
+            self.assertTrue(reset_body["demo_data"]["is_loaded"])
+            self.assertEqual(reset_body["demo_data"]["profile_count"], len(DEMO_PROFILES))
+
+            profiles = client.get("/api/v1/student-profiles").json()
+            self.assertEqual(len(profiles), len(DEMO_PROFILES))
+            self.assertEqual(client.get(f"/api/v1/student-profiles/{profile['id']}").status_code, 404)
+            self.assertEqual(client.get(f"/api/v1/learning-paths/{path['id']}").status_code, 404)
+            self.assertEqual(client.get(f"/api/v1/agent-runs/{run['id']}").status_code, 404)
+
+            session = get_session_factory(self.database_url)()
+            try:
+                self.assertEqual(len(session.scalars(select(Concept)).all()), len(DEMO_CONCEPTS))
+                self.assertEqual(len(session.scalars(select(StudentProfile)).all()), len(DEMO_PROFILES))
+                self.assertEqual(len(session.scalars(select(DocumentChunk)).all()), len(DEMO_CHUNKS))
+                self.assertEqual(len(session.scalars(select(LearningPath)).all()), 0)
+                self.assertEqual(len(session.scalars(select(AgentRun)).all()), 0)
+            finally:
+                session.close()

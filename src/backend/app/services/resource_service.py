@@ -3,7 +3,7 @@ from sqlalchemy import select
 from app.agents.rule_based_agents import RuleBasedResourceAgent
 from app.db.session import session_scope
 from app.domain.exceptions import NotFoundError
-from app.models import Concept, GeneratedResource, LearningPath, LearningPathItem
+from app.models import Concept, GeneratedResource, LearningPath, LearningPathItem, StudentProfile
 from app.schemas import GeneratedResourceResponse
 from app.services.agent_run_service import AgentRunService
 from app.services.demo_data_service import DemoDataService
@@ -35,13 +35,15 @@ class ResourceService:
             course_id = path.course_id
             concept_name = concept.name
             concept_slug = concept.slug
+            profile = session.get(StudentProfile, profile_id)
+            profile_preferences = profile.preferences if profile is not None and isinstance(profile.preferences, dict) else {}
 
         chunks = KnowledgeBaseService(database_url=self.database_url).search(
             course_id,
             concept_slug,
             top_k=2,
         )
-        result = self.agent.generate(concept_name, objective, resource_type, chunks)
+        result = self.agent.generate(concept_name, objective, resource_type, chunks, profile_preferences)
 
         with session_scope(self.database_url) as session:
             resource = GeneratedResource(

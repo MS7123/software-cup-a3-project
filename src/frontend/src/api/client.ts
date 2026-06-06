@@ -27,18 +27,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(text || `Request failed with ${response.status}`);
   }
 
-  return response.json() as Promise<T>;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export const api = {
   getDemoStatus: () => request<DemoDataStatus>("/demo-data/status"),
   loadDemoData: () => request<{ demo_data: DemoDataStatus }>("/demo-data/load", { method: "POST" }),
+  resetDemoUserData: () => request<{ demo_data: DemoDataStatus }>("/demo-data/reset-user-data", { method: "POST" }),
   listProfiles: () => request<StudentProfile[]>("/student-profiles"),
+  getProfile: (profileId: number) => request<StudentProfile>(`/student-profiles/${profileId}`),
   createProfileFromDialogue: (payload: StudentProfileDialogueCreate) =>
     request<StudentProfile>("/student-profiles/from-dialogue", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  updateProfileFromTrace: (profileId: number) =>
+    request<StudentProfile>(`/student-profiles/${profileId}/update-from-trace`, { method: "POST" }),
+  deleteProfile: async (profileId: number) => {
+    await request<void>(`/student-profiles/${profileId}`, { method: "DELETE" });
+  },
   getCourseGraph: (courseId: number) => request<ConceptGraph>(`/courses/${courseId}/graph`),
   createLearningPath: (studentProfileId: number, courseId: number, goal: string) =>
     request<LearningFlow>("/learning-paths", {

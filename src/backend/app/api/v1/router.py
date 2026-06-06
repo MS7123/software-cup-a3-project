@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
 
-from app.domain.exceptions import NotFoundError
+from app.domain.exceptions import NotFoundError, ProtectedResourceError
 from app.schemas import (
     ConceptGraphResponse,
     AgentRunResponse,
@@ -28,6 +28,7 @@ from app.services.course_service import CourseService
 from app.services.demo_data_service import DemoDataService
 from app.services.learning_path_service import LearningPathService
 from app.services.profile_service import ProfileService
+from app.services.profile_updater_service import ProfileUpdaterService
 from app.services.resource_service import ResourceService
 from app.services.tutor_service import TutorService
 
@@ -42,6 +43,11 @@ def get_demo_data_status() -> DemoDataStatusResponse:
 @api_router.post("/demo-data/load", response_model=DemoDataLoadResponse)
 def load_demo_data() -> DemoDataLoadResponse:
     return DemoDataService().load_demo_data()
+
+
+@api_router.post("/demo-data/reset-user-data", response_model=DemoDataLoadResponse)
+def reset_demo_user_data() -> DemoDataLoadResponse:
+    return DemoDataService().reset_user_data()
 
 
 @api_router.get("/student-profiles", response_model=list[StudentProfileResponse])
@@ -63,6 +69,24 @@ def create_student_profile_from_dialogue(payload: StudentProfileDialogueCreate) 
 def get_student_profile(profile_id: int) -> StudentProfileResponse:
     try:
         return ProfileService().get_profile(profile_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.delete("/student-profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_student_profile(profile_id: int) -> None:
+    try:
+        ProfileService().delete_profile(profile_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ProtectedResourceError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@api_router.post("/student-profiles/{profile_id}/update-from-trace", response_model=StudentProfileResponse)
+def update_student_profile_from_trace(profile_id: int) -> StudentProfileResponse:
+    try:
+        return ProfileUpdaterService().update_from_trace(profile_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

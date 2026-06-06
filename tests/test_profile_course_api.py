@@ -102,6 +102,26 @@ class ProfileCourseApiTests(unittest.TestCase):
             self.assertEqual(path_response.status_code, 200)
             self.assertEqual(path_response.json()["learning_path"]["student_profile_id"], created["id"])
 
+    def test_user_profile_can_be_deleted_but_demo_profile_is_protected(self) -> None:
+        with TestClient(create_app()) as client:
+            profiles = client.get("/api/v1/student-profiles").json()
+            demo_delete = client.delete(f"/api/v1/student-profiles/{profiles[0]['id']}")
+            self.assertEqual(demo_delete.status_code, 409)
+
+            created = client.post(
+                "/api/v1/student-profiles/from-dialogue",
+                json={"dialogue": "我想用代码练习链表，每周 6 小时。"},
+            ).json()
+            self.assertEqual(created["preferences"]["profile_origin"], "user_dialogue")
+            delete_response = client.delete(f"/api/v1/student-profiles/{created['id']}")
+            self.assertEqual(delete_response.status_code, 204)
+
+            missing = client.get(f"/api/v1/student-profiles/{created['id']}")
+            self.assertEqual(missing.status_code, 404)
+
+            remaining_profiles = client.get("/api/v1/student-profiles").json()
+            self.assertEqual(len(remaining_profiles), len(DEMO_PROFILES))
+
     def test_course_graph_returns_demo_course_concepts_and_relations(self) -> None:
         with TestClient(create_app()) as client:
             status_response = client.post("/api/v1/demo-data/load")
