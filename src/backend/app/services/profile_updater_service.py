@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 from sqlalchemy import select
 
+from app.adapters.llm_provider import LLMSettings, build_llm_provider
+from app.agents.profile_updater_agents import LLMBackedProfileUpdaterAgent
 from app.db.session import session_scope
 from app.domain.exceptions import NotFoundError
 from app.models import AgentRun, AgentRunStep, StudentProfile
@@ -19,6 +21,9 @@ class TraceEvidence:
     learning_preference: str | None
     foundation_level: str | None
     sources: list[dict[str, str | int]]
+    analysis_method: str = "rule_based"
+    reason: str | None = None
+    fallback_reason: str | None = None
 
 
 class ProfileUpdaterService:
@@ -47,7 +52,7 @@ class ProfileUpdaterService:
                     .order_by(AgentRunStep.agent_run_id.desc(), AgentRunStep.step_order)
                 ).all()
 
-            evidence = self._analyze_steps(steps)
+            evidence = self._analyze_steps_with_optional_llm(steps)
             current_preferences = profile.preferences if isinstance(profile.preferences, dict) else {}
             next_preferences = dict(current_preferences)
 
@@ -129,6 +134,50 @@ class ProfileUpdaterService:
             sources=sources,
         )
 
+    def _analyze_steps_with_optional_llm(self, steps: list[AgentRunStep]) -> TraceEvidence:
+        rule_based = self._analyze_steps(steps)
+        settings = LLMSettings.from_env()
+        provider = build_llm_provider(settings, purpose="profile_updater")
+        if provider is None or not steps:
+            return rule_based
+
+        try:
+            analysis = LLMBackedProfileUpdaterAgent(provider).analyze(self._trace_payload(steps))
+        except Exception as exc:
+            return TraceEvidence(
+                weak_points=rule_based.weak_points,
+                resource_preference=rule_based.resource_preference,
+                learning_preference=rule_based.learning_preference,
+                foundation_level=rule_based.foundation_level,
+                sources=rule_based.sources,
+                analysis_method="rule_based",
+                fallback_reason=self._fallback_reason(exc),
+            )
+
+        return TraceEvidence(
+            weak_points=analysis.weak_points,
+            resource_preference=analysis.resource_preference,
+            learning_preference=analysis.learning_preference,
+            foundation_level=analysis.foundation_level,
+            sources=rule_based.sources,
+            analysis_method="llm",
+            reason=analysis.reason,
+        )
+
+    def _trace_payload(self, steps: list[AgentRunStep]) -> list[dict[str, str | int]]:
+        payload = []
+        for step in steps[:8]:
+            payload.append(
+                {
+                    "agent_run_id": step.agent_run_id,
+                    "agent_type": step.agent_type,
+                    "input_summary": step.input_summary[:240],
+                    "output_summary": step.output_summary[:360],
+                    "decision_basis": step.decision_basis[:360],
+                }
+            )
+        return payload
+
     def _concept_labels(self, text: str) -> list[str]:
         labels = []
         for keyword, label in [
@@ -176,6 +225,8 @@ class ProfileUpdaterService:
     def _build_reason(self, evidence: TraceEvidence, step_count: int) -> str:
         if step_count == 0:
             return "暂无可分析的 Agent trace，画像保持当前状态。"
+        if evidence.analysis_method == "llm":
+            return f"LLM ProfileUpdater 基于最近 {step_count} 个 Agent step 更新画像：{evidence.reason}"
         parts = [f"基于最近 {step_count} 个 Agent step 更新画像"]
         if evidence.weak_points:
             parts.append(f"识别关注知识点：{'、'.join(evidence.weak_points)}")
@@ -183,4 +234,11 @@ class ProfileUpdaterService:
             parts.append(f"资源偏好调整为：{evidence.resource_preference}")
         if evidence.foundation_level:
             parts.append(f"基础水平调整为：{evidence.foundation_level}")
+        if evidence.fallback_reason:
+            parts.append(f"LLM 分析不可用，已回退到 rule-based：{evidence.fallback_reason}")
         return "；".join(parts)
+
+    def _fallback_reason(self, exc: Exception) -> str:
+        if str(exc):
+            return f"{type(exc).__name__}: {str(exc)[:160]}"
+        return type(exc).__name__

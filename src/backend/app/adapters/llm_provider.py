@@ -23,6 +23,7 @@ class LLMSettings:
     max_retries: int = 0
     fallback_mode: str = "rule_based"
     enable_for_tutor: bool = False
+    enable_for_profile_updater: bool = False
     bypass_proxy: bool = False
 
     @classmethod
@@ -36,13 +37,18 @@ class LLMSettings:
             max_retries=max(0, _int_from_env("LLM_MAX_RETRIES", 0)),
             fallback_mode=os.getenv("LLM_FALLBACK_MODE", "rule_based").strip() or "rule_based",
             enable_for_tutor=_bool_from_env("LLM_ENABLE_FOR_TUTOR", False),
+            enable_for_profile_updater=_bool_from_env("LLM_ENABLE_FOR_PROFILE_UPDATER", False),
             bypass_proxy=_bool_from_env("LLM_BYPASS_PROXY", False),
         )
 
-    def can_call_remote(self) -> bool:
+    def can_call_remote(self, purpose: str = "tutor") -> bool:
+        if purpose == "profile_updater":
+            enabled = self.enable_for_profile_updater
+        else:
+            enabled = self.enable_for_tutor
         return (
             self.provider == "openai_compatible"
-            and self.enable_for_tutor
+            and enabled
             and bool(self.base_url)
             and bool(self.api_key)
             and bool(self.model)
@@ -50,8 +56,8 @@ class LLMSettings:
 
 
 class OpenAICompatibleLLMProvider:
-    def __init__(self, settings: LLMSettings) -> None:
-        if not settings.can_call_remote():
+    def __init__(self, settings: LLMSettings, purpose: str = "tutor") -> None:
+        if not settings.can_call_remote(purpose):
             raise LLMProviderError("LLM provider is not fully configured.")
         self.settings = settings
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({})) if settings.bypass_proxy else None
@@ -114,13 +120,13 @@ class OpenAICompatibleLLMProvider:
         raise LLMProviderError(f"LLM provider request failed: {type(last_error).__name__}") from last_error
 
 
-def build_llm_provider(settings: LLMSettings | None = None) -> LLMProvider | None:
+def build_llm_provider(settings: LLMSettings | None = None, purpose: str = "tutor") -> LLMProvider | None:
     resolved = settings or LLMSettings.from_env()
-    if resolved.provider != "openai_compatible" or not resolved.enable_for_tutor:
+    if resolved.provider != "openai_compatible":
         return None
-    if not resolved.can_call_remote():
+    if not resolved.can_call_remote(purpose):
         return None
-    return OpenAICompatibleLLMProvider(resolved)
+    return OpenAICompatibleLLMProvider(resolved, purpose=purpose)
 
 
 def _chat_completions_url(base_url: str) -> str:

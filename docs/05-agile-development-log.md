@@ -407,7 +407,7 @@ Ready for commit：Yes。
 下一轮建议从以下候选中选择一个：
 
 1. Demo reset API：一键清理所有用户画像和学习过程数据，保留 seed 数据。
-2. LLM-backed ProfileUpdater：用固定 JSON schema 分析 Agent trace，失败时 fallback 到当前 rule-based updater。
+2. LLM-backed ProfileUpdater：用固定 JSON schema 分析 Agent trace，失败时 fallback 到当前 rule-based updater。（已在后续增量补齐）
 3. Resource Agent 接入 LLM generation，保留当前 5 类资源 fallback。
 4. Tutor / Resource 增强来源引用与防幻觉提示。
 
@@ -495,3 +495,69 @@ Ready for commit：Yes。
 - reset 是物理删除，不保留审计历史。
 - 当前没有按 session 粒度选择性 reset。
 - 仍未引入正式 session 概念。
+
+## 2026-06-06 增量：LLM-backed ProfileUpdater
+
+### 目标
+
+将学生画像更新从纯 rule-based trace analysis 推进为可选真实 LLM 分析：ProfileUpdater 先使用固定 JSON schema 分析最近 Agent trace，失败时自动回退到现有 rule-based updater，保证默认演示稳定。
+
+### 核心功能
+
+- 新增 `LLMBackedProfileUpdaterAgent`。
+- 使用固定 JSON schema 约束 LLM 输出字段：
+  - `weak_points`
+  - `resource_preference`
+  - `learning_preference`
+  - `foundation_level`
+  - `reason`
+- `ProfileUpdaterService.update_from_trace()` 默认仍可离线运行。
+- 显式配置 `LLM_ENABLE_FOR_PROFILE_UPDATER=true` 后，ProfileUpdater 会优先调用 `LLMProvider`。
+- LLM provider 不可用、返回 invalid JSON 或 schema 不合法时，自动 fallback 到当前 rule-based updater。
+- fallback 理由会写入 `preferences.last_profile_update_reason`。
+
+### 架构边界
+
+- LLM 调用继续通过现有 `LLMProvider` adapter。
+- 新增配置开关：
+  - `LLM_ENABLE_FOR_PROFILE_UPDATER`
+- `LLMSettings` 支持按用途启用远端调用：
+  - `tutor`
+  - `profile_updater`
+- Prompt 和 JSON 解析集中在：
+  - `src/backend/app/agents/profile_updater_agents.py`
+- Service 只负责读取 trace、选择 LLM 或 fallback、写回画像。
+- API contract 不变：
+  - `POST /api/v1/student-profiles/{profile_id}/update-from-trace`
+
+### 测试与验证
+
+已运行：
+
+```text
+python -m unittest tests.test_profile_updater_llm tests.test_learning_loop_api tests.test_llm_provider_tutor tests.test_backend_contracts -v
+python -m compileall -q src/backend tests
+./scripts/verify.ps1
+```
+
+验证结果：
+
+- 新增测试覆盖 LLM JSON 分析写回画像。
+- 新增测试覆盖 LLM 失败时 fallback 到 rule-based。
+- 后端完整验证 31 个单元测试通过。
+- 前端 production build 通过。
+- Playwright smoke 通过。
+- 默认 smoke 明确设置 `LLM_ENABLE_FOR_PROFILE_UPDATER=false`，不依赖真实 LLM key 或网络。
+
+### 当前状态
+
+状态：已实现并通过 Builder 自测。
+
+Ready for commit：Yes。
+
+### 已知限制
+
+- LLM-backed ProfileUpdater 仍是显式 opt-in，不会在默认 demo 中自动联网。
+- 当前 JSON schema 是轻量约束，未使用 provider 原生 structured output。
+- 当前只分析最近若干 Agent step，没有长期学习历史压缩。
+- 画像更新仍由前端按钮触发，尚未自动在每轮学习后执行。

@@ -1349,3 +1349,179 @@ Missing Tests：
 限制说明：
 
 - 未将真实外部 LLM key 联网验收、完整 RAG / VectorStore、Resource / Quiz / Evaluator 的 LLM 接入、生产部署、数据库迁移、Redis/RQ 或完整 MVP 产品功能标记为 Done。
+
+## 2026-06-06 Lightweight Reviewer Agent Review: Agile Demo Increments
+
+结论：Pass。
+
+对应提交：
+
+- `7b3e37a Improve demo profile lifecycle`
+- 分支：`codex/agile-profile-dialogue`
+
+审查范围：
+
+- 5 类个性化资源生成：`guided_note`、`practice_questions`、`mind_map`、`extended_reading`、`coding_case`。
+- 基于 `agent_runs` / `agent_run_steps` 的动态学生画像更新。
+- 用户画像删除与关联学习数据清理。
+- Demo reset API：清理用户画像和学习过程数据，保留 seed demo data。
+- 前端主流程：资源类型切换、画像更新、画像删除、reset user demo data。
+- 轻量敏捷日志：`docs/05-agile-development-log.md`。
+
+主要文件：
+
+- `src/backend/app/agents/rule_based_agents.py`
+- `src/backend/app/api/v1/router.py`
+- `src/backend/app/services/resource_service.py`
+- `src/backend/app/services/profile_updater_service.py`
+- `src/backend/app/services/profile_service.py`
+- `src/backend/app/services/demo_data_service.py`
+- `src/frontend/src/App.tsx`
+- `src/frontend/src/api/client.ts`
+- `src/frontend/tests/student-loop.spec.ts`
+- `tests/test_demo_data.py`
+- `tests/test_learning_loop_api.py`
+- `tests/test_profile_course_api.py`
+
+验证命令与结果：
+
+- `git diff --check`：通过，仅有 Windows 工作区 CRLF 提示，无 whitespace error。
+- `python -m unittest tests.test_demo_data tests.test_profile_course_api tests.test_learning_loop_api -v`：通过，15 个目标测试全部通过。
+- `python -m compileall -q src/backend tests`：通过。
+- `npm ci`：最终通过，0 vulnerabilities。首次失败原因是本项目 Vite / esbuild 进程占用 `node_modules` 下 native binary；停止残留进程后重跑通过。
+- `npm run build`：通过，TypeScript check 与 Vite production build 成功。
+- `python -m unittest discover -s tests -v`：通过，29 个 backend tests 全部通过。
+- `./scripts/verify.ps1`：通过，覆盖 Python compile、backend unit tests、`pip check`、backend wheel build、frontend dependency install、frontend production build、Playwright smoke。
+
+功能验收分析：
+
+- 资源生成：Pass。后端测试覆盖 5 类资源均可通过 `/api/v1/resources/generate` 生成，并保留 `source_refs` 与 `agent_run_id`；前端 smoke 覆盖 `guided_note` 与 `coding_case` 两类实际切换。
+- 动态画像更新：Pass in current scope。`ProfileUpdaterService` 从最近 Agent trace 中提取弱点、资源偏好、学习偏好和更新原因，并写回 `StudentProfile.preferences`；当前为 rule-based trace analysis，不等同于真实 LLM 长期画像建模。
+- 用户画像删除：Pass。demo profiles 通过 `profile_origin = "demo"` 保护，用户画像可删除；测试覆盖删除后 profile、learning path 和相关 agent runs 不再可查询。
+- Demo reset：Pass。`POST /api/v1/demo-data/reset-user-data` 清理用户画像、学习路径、资源、quiz、attempt、mastery、agent runs 和 steps，保留 demo course、concepts、document chunks 与 3 个 seed profiles。
+- 前端演示流程：Pass。Playwright smoke 覆盖“自然语言建画像 -> 学习路径 -> 资源生成 -> Tutor -> Quiz -> Evaluator -> 更新画像 -> reset 回到 3 个 demo profiles”。
+
+Implementation Boundary Check：
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | API handler 只转发 service 调用和错误转换；frontend 只触发 API、刷新状态和展示结果 |
+| Service/orchestrator boundary | Pass | 资源生成在 `RuleBasedResourceAgent`，画像更新在 `ProfileUpdaterService`，画像删除在 `ProfileService`，reset 在 `DemoDataService` |
+| Adapter/provider boundary | N/A | 本轮未新增外部 provider；仍为 rule-based demo capability |
+| Hardcoded demo/mock risk | Pass | demo profile 通过 seed preferences 标记，reset/delete 通过 profile origin 管理；未在 frontend 模拟核心结果 |
+| API contract stability | Pass | 新增 endpoint，但既有 `/api/v1/resources/generate`、profile list/detail、learning loop schema 未破坏 |
+
+发现的问题：
+
+Blocking Issues：
+
+- 无。
+
+Fix Before Merge：
+
+- 无。
+
+Non-blocking Issues / Residual Risks：
+
+- `npm ci` 在 review 中曾因本地 Vite / esbuild 进程占用 `node_modules` native binary 失败；这是本地验证环境问题，不是代码问题。后续人工验证前应先停止旧的 `run-local.ps1` / Vite 进程，避免依赖安装被 Windows 锁文件阻塞。
+- `ProfileUpdaterService` 当前是 rule-based trace analysis，关键词识别对中文表达、同义词和长期学习趋势不稳；它满足当前可演示闭环，但不能标记为真实 LLM-backed dynamic learner modeling。
+- Demo reset 和 delete 都是物理删除，不保留审计历史；适合比赛演示重置，不适合作为生产级学习记录治理方案。
+- Demo reset 当前清理全局学习过程数据，而不是按 session 粒度选择性清理；这与当前单人 demo 目标匹配，但后续多用户或多 session 场景需要重新设计。
+- Resource 5 类生成仍为 rule-based content templates；满足 A3 类型展示要求的最小演示版本，但不代表 Resource Agent 已具备真实 LLM 生成能力。
+
+Missing Tests：
+
+- 尚未覆盖移动视口、多浏览器和失败路径 UI 自动化。
+- 尚未覆盖 reset/delete 在并发请求或半失败事务下的行为。
+- 尚未覆盖 ProfileUpdater 的长周期、多轮、多 concept 混合历史稳定性。
+- 尚未进行真实 LLM / RAG 参与资源生成或画像更新的 opt-in 验证。
+
+最终建议：
+
+- 允许保留并提交本轮增量。
+- 通过范围限定为“个人敏捷模式下的可演示增量”：资源类型扩展、trace 驱动画像更新、用户画像生命周期和 demo reset。
+- 不应把完整 RAG、生产级数据治理、真实 LLM Resource/ProfileUpdater 或完整测试矩阵标记为 Done。
+
+## 2026-06-06 Lightweight Reviewer Agent Review: LLM-backed ProfileUpdater
+
+结论：Pass。
+
+审查范围：
+
+- `LLMSettings` 新增 `LLM_ENABLE_FOR_PROFILE_UPDATER` 与按用途启用远端调用。
+- `ProfileUpdaterService` 支持可选 LLM-backed trace analysis，provider 不可用时回退到 rule-based updater。
+- 新增 `LLMBackedProfileUpdaterAgent`，使用固定 JSON schema 解析画像更新结果。
+- 默认 smoke / local demo 保持离线安全，显式启用才调用远端 ProfileUpdater LLM。
+- 新增 Aliyun Bailian Flash 本地启动脚本和部署文档说明。
+- 新增 `tests/test_profile_updater_llm.py` 覆盖 LLM 成功和失败 fallback。
+
+主要文件：
+
+- `src/backend/app/adapters/llm_provider.py`
+- `src/backend/app/agents/profile_updater_agents.py`
+- `src/backend/app/services/profile_updater_service.py`
+- `tests/test_profile_updater_llm.py`
+- `scripts/run-local.ps1`
+- `scripts/frontend-smoke.ps1`
+- `scripts/run-local-aliyun-flash.ps1`
+- `deployment/README.md`
+- `deployment/local.env.example`
+- `docs/05-agile-development-log.md`
+
+验证命令与结果：
+
+- `python -m unittest tests.test_profile_updater_llm tests.test_learning_loop_api tests.test_llm_provider_tutor tests.test_backend_contracts -v`：通过，18 个目标测试全部通过。
+- `python -m compileall -q src/backend tests`：通过。
+- `git diff --check`：通过，仅有 Windows 工作区 CRLF 提示，无 whitespace error。
+- `npm ci`：最终通过，0 vulnerabilities。首次失败原因是本项目 Vite / esbuild 残留进程占用 `node_modules` native binary；停止项目相关进程后重跑通过。
+- `npm run build`：通过，TypeScript check 与 Vite production build 成功。
+- `python -m unittest discover -s tests -v`：通过，31 个 backend tests 全部通过。
+- `./scripts/verify.ps1`：通过，覆盖 Python compile、backend unit tests、`pip check`、backend wheel build、frontend dependency install、frontend production build、Playwright smoke。
+
+功能验收分析：
+
+- LLM-backed ProfileUpdater：Pass in current scope。开启 `LLM_ENABLE_FOR_PROFILE_UPDATER=true` 且 provider 配置完整时，`ProfileUpdaterService` 会通过 `LLMProvider` 调用 `LLMBackedProfileUpdaterAgent`，解析固定 JSON 字段并写回 `StudentProfile.preferences`。
+- Fallback：Pass。新增测试覆盖 provider exception 时回退到 rule-based updater，并把 fallback reason 写入 `last_profile_update_reason`。
+- 默认演示稳定性：Pass。`scripts/frontend-smoke.ps1` 和未显式 `-UseRemoteTutorLLM` 的 `scripts/run-local.ps1` 都强制 `LLM_PROVIDER=rule_based`、`LLM_ENABLE_FOR_TUTOR=false`、`LLM_ENABLE_FOR_PROFILE_UPDATER=false`。
+- API contract：Pass。画像更新仍使用既有 `POST /api/v1/student-profiles/{profile_id}/update-from-trace`，未新增 response schema 或数据库迁移。
+- Aliyun local script：Pass in documentation scope。`scripts/run-local-aliyun-flash.ps1` 通过 `ALIYUN_BAILIAN_API_KEY` 环境变量读取 secret，不把 key 写入仓库；该脚本未在默认 smoke 中执行。
+
+Implementation Boundary Check：
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | 本轮未把 LLM prompt、JSON parsing 或画像分析写入 API handler / frontend |
+| Service/orchestrator boundary | Pass | `ProfileUpdaterService` 负责读取 trace、选择 LLM 或 fallback、写回画像 |
+| Adapter/provider boundary | Pass | 远端调用继续通过 `LLMProvider` / `OpenAICompatibleLLMProvider`，按 `purpose="profile_updater"` 启用 |
+| Hardcoded demo/mock risk | Pass | fake provider 仅位于 `tests/test_profile_updater_llm.py`，默认 demo 不依赖真实 LLM |
+| API contract stability | Pass | 既有 update-from-trace endpoint 不变，新增配置不影响 `/api/v1` schema |
+
+发现的问题：
+
+Blocking Issues：
+
+- 无。
+
+Fix Before Merge：
+
+- 无。
+
+Non-blocking Issues / Residual Risks：
+
+- 未执行真实 Aliyun Bailian / external LLM 联网验收；当前只验证 adapter contract、fake provider success 和 fallback，符合默认验证不依赖真实 key 的原则。
+- 当前 JSON schema 是 prompt-level 约束和本地解析校验，不是 provider 原生 structured output；provider 若返回非 JSON 会 fallback。
+- `ProfileUpdaterService` 仍只分析最近若干 Agent step，不支持长期学习历史压缩或跨 session 画像建模。
+- `npm ci` 在 review 中再次遇到本项目 Vite / esbuild 残留进程锁文件；这是 Windows 本地验证流程风险，人工验证前应停止旧的 `run-local.ps1` / Vite 进程。
+
+Missing Tests：
+
+- 未覆盖真实 Aliyun endpoint 的手动 opt-in smoke。
+- 未覆盖 LLM 返回字段过长、恶意内容或不受控知识点标签时的更细粒度清洗策略。
+- 未覆盖 `run-local-aliyun-flash.ps1 -SmokeOnly` 的自动化测试，因为它需要真实 API key。
+- 未覆盖多轮长期 profile update 的稳定性。
+
+最终建议：
+
+- 允许提交本轮增量。
+- 通过范围限定为“可选 LLM-backed ProfileUpdater + 默认离线 fallback + Aliyun Flash 本地 opt-in runbook”。
+- 不应将真实外部 LLM 服务可用性、生产级画像建模、完整 RAG 或长期学习历史建模标记为 Done。

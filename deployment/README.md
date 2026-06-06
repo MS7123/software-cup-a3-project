@@ -50,6 +50,7 @@ $env:PLAYWRIGHT_CHANNEL='chromium'
 |---|---|---|
 | `LLM_PROVIDER` | `rule_based` | Provider 类型。后续真实接入可设为 `openai_compatible`。 |
 | `LLM_ENABLE_FOR_TUTOR` | `false` | 第一批真实 LLM 只建议用于 `Tutor Agent`。 |
+| `LLM_ENABLE_FOR_PROFILE_UPDATER` | `false` | 显式启用后，ProfileUpdater 会先用固定 JSON schema 分析 Agent trace，失败时回退到 rule-based。 |
 | `LLM_BASE_URL` | 空 | OpenAI-compatible endpoint base URL。 |
 | `LLM_API_KEY` | 空 | Secret，不得写入仓库、日志、frontend bundle 或 agent run 记录。 |
 | `LLM_MODEL` | 空 | 模型名称。 |
@@ -65,11 +66,33 @@ DeepSeek OpenAI-compatible 本地显式 opt-in 示例：
 ```powershell
 $env:LLM_PROVIDER='openai_compatible'
 $env:LLM_ENABLE_FOR_TUTOR='true'
+$env:LLM_ENABLE_FOR_PROFILE_UPDATER='true'
 $env:LLM_BASE_URL='https://api.deepseek.com'
 $env:LLM_MODEL='deepseek-v4-flash'
 $env:LLM_API_KEY='<your-deepseek-api-key>'
 $env:LLM_BYPASS_PROXY='true'
 ./scripts/run-local.ps1 -UseRemoteTutorLLM
+```
+
+阿里云百炼 Flash 一键启动脚本：
+
+```powershell
+[Environment]::SetEnvironmentVariable('ALIYUN_BAILIAN_API_KEY', '<your-aliyun-bailian-api-key>', 'User')
+./scripts/run-local-aliyun-flash.ps1
+```
+
+该脚本默认使用：
+
+- `LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`
+- `LLM_MODEL=qwen3.5-flash`
+- `LLM_ENABLE_FOR_TUTOR=true`
+- `LLM_ENABLE_FOR_PROFILE_UPDATER=true`
+- `LLM_FALLBACK_MODE=rule_based`
+
+如需临时换模型：
+
+```powershell
+./scripts/run-local-aliyun-flash.ps1 -Model qwen3.5-plus
 ```
 
 不要把真实 `LLM_API_KEY` 写入 `deployment/local.env.example`、`.env`、测试输出或 agent run 记录。
