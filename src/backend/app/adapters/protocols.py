@@ -15,6 +15,14 @@ class VectorSearchResult:
     metadata: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class ImageGenerationResult:
+    image_url: str | None
+    image_bytes: bytes | None
+    mime_type: str
+    metadata: dict[str, Any]
+
+
 class LLMProvider(Protocol):
     def generate(
         self,
@@ -32,6 +40,16 @@ class VectorStore(Protocol):
         top_k: int,
         filters: dict[str, Any] | None = None,
     ) -> list[VectorSearchResult]:
+        raise NotImplementedError
+
+
+class ImageGenerationProvider(Protocol):
+    def generate_image(
+        self,
+        prompt: str,
+        visual_spec: dict[str, Any],
+        size: str = "1024x1024",
+    ) -> ImageGenerationResult:
         raise NotImplementedError
 
 

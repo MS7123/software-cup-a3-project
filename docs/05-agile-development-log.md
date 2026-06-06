@@ -560,4 +560,263 @@ Ready for commit：Yes。
 - LLM-backed ProfileUpdater 仍是显式 opt-in，不会在默认 demo 中自动联网。
 - 当前 JSON schema 是轻量约束，未使用 provider 原生 structured output。
 - 当前只分析最近若干 Agent step，没有长期学习历史压缩。
-- 画像更新仍由前端按钮触发，尚未自动在每轮学习后执行。
+- 画像更新自动触发已在后续增量补齐；当前仍保留手动按钮用于演示重复更新。
+
+## 2026-06-06 增量：Resource LLM、Trace 时间线与自动画像更新
+
+### 目标
+
+一次性补齐当前最关键的 4 个演示增量：Resource Agent 接入 LLM generation、Tutor / Resource 来源引用与防幻觉增强、Agent trace 时间线展示、Evaluator 后自动更新学生画像。
+
+### 核心功能
+
+- Resource Agent 新增 LLM-backed strategy：
+  - 显式配置 `LLM_ENABLE_FOR_RESOURCE=true` 后，优先调用 `LLMProvider` 生成资源。
+  - provider 失败、无课程 chunk 或异常输出时 fallback 到现有 rule-based resource generation。
+- 阿里云 Flash 一键启动脚本会同时启用：
+  - `LLM_ENABLE_FOR_TUTOR=true`
+  - `LLM_ENABLE_FOR_RESOURCE=true`
+  - `LLM_ENABLE_FOR_PROFILE_UPDATER=true`
+- Tutor / Resource 继续要求基于课程 chunk 和 source_ref 输出。
+- 前端 Output block 展示 `Grounded source`，最多合并展示 3 个来源。
+- Agent trace 展示升级为时间线式卡片：
+  - Input
+  - Output
+  - Decision
+  - fallback 标记
+- Quiz answer 提交后自动调用 ProfileUpdater，从 Agent trace 更新画像。
+- 前端仍保留手动 `Update profile from learning trace` 按钮，便于演示重复触发。
+
+### 架构边界
+
+- 新增 Resource Agent strategy / factory：
+  - `src/backend/app/agents/resource_agents.py`
+  - `src/backend/app/agents/resource_factory.py`
+- `ResourceService` 只调用 `build_resource_agent()`，不直接依赖具体 provider SDK。
+- 真实 LLM 继续通过 `LLMProvider` adapter。
+- API schema 不变。
+- 自动画像更新放在前端 workflow 层串联现有 API，不修改 Evaluator response contract。
+- 默认 `verify.ps1`、frontend smoke 和 `run-local.ps1 -SmokeOnly` 仍强制关闭远端 LLM。
+
+### API / Config 状态
+
+新增配置：
+
+```text
+LLM_ENABLE_FOR_RESOURCE
+```
+
+未新增 API，未修改数据库表结构。
+
+### 测试与验证
+
+已运行：
+
+```text
+python -m unittest tests.test_resource_llm tests.test_learning_loop_api tests.test_profile_updater_llm tests.test_llm_provider_tutor tests.test_backend_contracts -v
+npm ci
+npm run build
+python -m compileall -q src/backend tests
+./scripts/verify.ps1
+```
+
+验证结果：
+
+- 新增测试覆盖 Resource LLM 成功路径。
+- 新增测试覆盖 Resource LLM 失败 fallback。
+- 后端完整验证 34 个单元测试通过。
+- 前端 production build 通过。
+- Playwright smoke 通过。
+- Browser smoke 覆盖：提交 Quiz answer 后自动画像更新，并展示 `profile-update-reason`。
+
+### 当前状态
+
+状态：已实现并通过 Builder 自测。
+
+Ready for commit：Yes。
+
+### 已知限制
+
+- Resource LLM 当前使用普通 chat completion，不是 provider 原生 structured output。
+- Resource LLM 只在显式配置时启用；默认 demo 仍保持离线 rule-based。
+- 自动画像更新由前端串联触发；后端 Evaluator 尚未内聚触发 ProfileUpdater。
+- 防幻觉主要依赖 prompt、source_ref 展示和无资料 fallback，尚未做独立内容安全过滤器。
+
+## 2026-06-06 增量：多模态资源卡片与 LLM-backed Evaluator
+
+### 目标
+
+增强资源展示的演示效果，并把 Evaluator Agent 从纯 rule-based 推进为可选 LLM-backed 评价能力，形成更完整的智能学习闭环。
+
+### 核心功能
+
+- 前端资源输出按 `resource_type` 使用不同卡片：
+  - `guided_note`：讲解笔记卡。
+  - `practice_questions`：练习题列表卡。
+  - `mind_map`：可视化导图节点卡。
+  - `extended_reading`：拓展阅读计划卡。
+  - `coding_case`：代码实操任务卡。
+- 新增 `LLMBackedEvaluatorAgent`。
+- 新增 Evaluator factory：
+  - `build_evaluator_agent()`
+- 显式配置 `LLM_ENABLE_FOR_EVALUATOR=true` 后，Evaluator 会优先调用 `LLMProvider`。
+- LLM Evaluator 使用固定 JSON 输出：
+  - `score`
+  - `feedback`
+  - `weak_points`
+  - `misconceptions`
+  - `next_action`
+- LLM 失败、超时或 JSON 不合法时，fallback 到现有 `RuleBasedEvaluatorAgent`。
+- fallback 原因进入 `agent_run_steps.decision_basis`。
+
+### 架构边界
+
+- Evaluator 真实 LLM 调用继续通过 `LLMProvider` adapter。
+- `AssessmentService` 只调用 `build_evaluator_agent()`，不直接依赖具体 provider。
+- API schema 不变：
+  - `POST /api/v1/quizzes/{quiz_id}/attempts`
+  - `EvaluationResult`
+- 评分细节写入现有 `mastery_updates.evidence`，不新增数据库表。
+- 多模态卡片只改变前端展示，不模拟后端资源内容。
+
+### API / Config 状态
+
+新增配置：
+
+```text
+LLM_ENABLE_FOR_EVALUATOR
+```
+
+阿里云 Flash 一键启动脚本现在默认启用：
+
+```text
+LLM_ENABLE_FOR_TUTOR=true
+LLM_ENABLE_FOR_RESOURCE=true
+LLM_ENABLE_FOR_EVALUATOR=true
+LLM_ENABLE_FOR_PROFILE_UPDATER=true
+```
+
+### 测试与验证
+
+已运行：
+
+```text
+python -m unittest tests.test_evaluator_llm tests.test_resource_llm tests.test_learning_loop_api tests.test_backend_contracts -v
+npm run build
+python -m compileall -q src/backend tests
+./scripts/verify.ps1
+```
+
+验证结果：
+
+- 新增测试覆盖 Evaluator LLM 成功路径。
+- 新增测试覆盖 Evaluator LLM 失败 fallback。
+- 后端完整验证 37 个单元测试通过。
+- 前端 production build 通过。
+- Playwright smoke 通过。
+- Browser smoke 覆盖 coding case 专用资源卡片。
+
+### 当前状态
+
+状态：已实现并通过 Builder 自测。
+
+Ready for commit：Yes。
+
+### 已知限制
+
+- Evaluator LLM 当前使用普通 chat completion，不是 provider 原生 structured output。
+- 多模态资源卡片是前端结构化展示，不是视频/动画真实生成。
+- Evaluator 仍以单次 Quiz attempt 为输入，没有长期 mastery 模型。
+- 默认 demo / smoke 仍关闭远端 LLM，真实阿里云效果需要手动 opt-in 验证。
+
+## 2026-06-06 修补：资源类型差异化输出
+
+### 问题
+
+真实 LLM Resource Agent 虽然支持 5 个 `resource_type`，但 prompt 只要求通用“学习资源”，导致讲解、练习、导图、拓展和代码案例生成结果趋同。前端卡片也只做了基础外观分型，未可靠提取导图节点、练习题或代码块。
+
+### 修补
+
+- Resource Agent prompt 增加按类型区分的格式契约：
+  - `practice_questions` 必须输出多道题、题型、答案提示和解析依据。
+  - `mind_map` 必须输出 `中心主题` 和多个 `分支`。
+  - `coding_case` 必须输出 Python fenced code block、输入样例、预期输出、边界条件和复杂度观察。
+  - `extended_reading` 必须输出阅读计划和延伸问题。
+  - `guided_note` 保持讲解文档结构。
+- 前端资源卡片增强内容提取：
+  - 导图卡从 `中心主题` / `分支` 提取节点。
+  - 代码卡优先展示 fenced code block。
+  - 练习卡提取 `题目 n`。
+
+### 验证
+
+已运行：
+
+```text
+python -m unittest tests.test_resource_llm -v
+npm run build
+python -m compileall -q src/backend tests
+./scripts/verify.ps1
+```
+
+验证结果：
+
+- 新增测试覆盖 Resource LLM prompt 必须包含类型专属格式要求。
+- 后端完整验证 38 个单元测试通过。
+- 前端 production build 通过。
+- Playwright smoke 通过。
+
+## 2026-06-06 增量：资源完整展示、SVG 导图与生图接口预留
+
+### 目标
+
+修复资源卡片展示内容被截断的问题，把 `mind_map` 从普通节点卡升级为前端 SVG 图谱，并为后续接入生图模型预留正式 adapter contract。
+
+### 核心功能
+
+- 资源卡片保留完整正文：
+  - 练习题卡展示题目列表，同时提供完整资源正文折叠区。
+  - 代码案例卡优先展示 Python fenced code block，同时保留完整正文。
+  - 拓展阅读卡不再只显示前 6 行。
+  - 导图卡同时展示 SVG 图谱和完整正文。
+- `mind_map` 前端渲染为 SVG 中心节点 + 分支节点 + 连线。
+- 预留生图模型 adapter contract：
+  - `ImageGenerationProvider`
+  - `ImageGenerationResult`
+
+### 架构边界
+
+- 未接入真实生图模型。
+- 未修改现有 Resource API schema。
+- 生图能力只预留在 adapter protocol 层，后续可由 Resource Agent 输出 `visual_spec` 后再接入。
+- 前端 SVG 图谱基于现有 Resource content 解析，不模拟后端业务内容。
+
+### 测试与验证
+
+已运行：
+
+```text
+python -m unittest tests.test_backend_contracts tests.test_resource_llm -v
+npm run build
+python -m compileall -q src/backend tests
+./scripts/verify.ps1
+```
+
+验证结果：
+
+- 新增 contract test 覆盖 `ImageGenerationResult` 可构造。
+- 后端完整验证 39 个单元测试通过。
+- 前端 production build 通过。
+- Playwright smoke 通过。
+
+### 当前状态
+
+状态：已实现并通过 Builder 自测。
+
+Ready for commit：Yes。
+
+### 已知限制
+
+- SVG 导图基于文本解析，不是语义布局引擎。
+- 生图接口只是 contract 预留，没有 provider factory、配置项或真实远端调用。
+- LLM 若完全不按格式输出，前端仍只能尽量解析并显示完整正文。

@@ -64,6 +64,8 @@ $oldViteProxyTarget = $env:VITE_PROXY_TARGET
 $oldPlaywrightBase = $env:PLAYWRIGHT_BASE_URL
 $oldLlmProvider = $env:LLM_PROVIDER
 $oldLlmTutorEnabled = $env:LLM_ENABLE_FOR_TUTOR
+$oldLlmResourceEnabled = $env:LLM_ENABLE_FOR_RESOURCE
+$oldLlmEvaluatorEnabled = $env:LLM_ENABLE_FOR_EVALUATOR
 $oldLlmProfileUpdaterEnabled = $env:LLM_ENABLE_FOR_PROFILE_UPDATER
 
 $backend = $null
@@ -74,6 +76,8 @@ try {
     $env:APP_DATABASE_URL = "sqlite:///$tmpDb"
     $env:LLM_PROVIDER = "rule_based"
     $env:LLM_ENABLE_FOR_TUTOR = "false"
+    $env:LLM_ENABLE_FOR_RESOURCE = "false"
+    $env:LLM_ENABLE_FOR_EVALUATOR = "false"
     $env:LLM_ENABLE_FOR_PROFILE_UPDATER = "false"
     $backend = Start-Process -FilePath python `
         -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", [string]$BackendPort) `
@@ -128,6 +132,8 @@ try {
     if ($null -eq $oldPlaywrightBase) { Remove-Item Env:\PLAYWRIGHT_BASE_URL -ErrorAction SilentlyContinue } else { $env:PLAYWRIGHT_BASE_URL = $oldPlaywrightBase }
     if ($null -eq $oldLlmProvider) { Remove-Item Env:\LLM_PROVIDER -ErrorAction SilentlyContinue } else { $env:LLM_PROVIDER = $oldLlmProvider }
     if ($null -eq $oldLlmTutorEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_TUTOR -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_TUTOR = $oldLlmTutorEnabled }
+    if ($null -eq $oldLlmResourceEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_RESOURCE -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_RESOURCE = $oldLlmResourceEnabled }
+    if ($null -eq $oldLlmEvaluatorEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_EVALUATOR -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_EVALUATOR = $oldLlmEvaluatorEnabled }
     if ($null -eq $oldLlmProfileUpdaterEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_PROFILE_UPDATER -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_PROFILE_UPDATER = $oldLlmProfileUpdaterEnabled }
 
     Start-Sleep -Milliseconds 300

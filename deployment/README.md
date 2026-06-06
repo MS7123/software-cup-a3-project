@@ -50,6 +50,8 @@ $env:PLAYWRIGHT_CHANNEL='chromium'
 |---|---|---|
 | `LLM_PROVIDER` | `rule_based` | Provider 类型。后续真实接入可设为 `openai_compatible`。 |
 | `LLM_ENABLE_FOR_TUTOR` | `false` | 第一批真实 LLM 只建议用于 `Tutor Agent`。 |
+| `LLM_ENABLE_FOR_RESOURCE` | `false` | 显式启用后，Resource Agent 会先用 LLM 生成 5 类学习资源，失败时回退到 rule-based。 |
+| `LLM_ENABLE_FOR_EVALUATOR` | `false` | 显式启用后，Evaluator Agent 会用 LLM 生成评分反馈、薄弱点和下一步建议，失败时回退到 rule-based。 |
 | `LLM_ENABLE_FOR_PROFILE_UPDATER` | `false` | 显式启用后，ProfileUpdater 会先用固定 JSON schema 分析 Agent trace，失败时回退到 rule-based。 |
 | `LLM_BASE_URL` | 空 | OpenAI-compatible endpoint base URL。 |
 | `LLM_API_KEY` | 空 | Secret，不得写入仓库、日志、frontend bundle 或 agent run 记录。 |
@@ -66,6 +68,8 @@ DeepSeek OpenAI-compatible 本地显式 opt-in 示例：
 ```powershell
 $env:LLM_PROVIDER='openai_compatible'
 $env:LLM_ENABLE_FOR_TUTOR='true'
+$env:LLM_ENABLE_FOR_RESOURCE='true'
+$env:LLM_ENABLE_FOR_EVALUATOR='true'
 $env:LLM_ENABLE_FOR_PROFILE_UPDATER='true'
 $env:LLM_BASE_URL='https://api.deepseek.com'
 $env:LLM_MODEL='deepseek-v4-flash'
@@ -86,6 +90,8 @@ $env:LLM_BYPASS_PROXY='true'
 - `LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`
 - `LLM_MODEL=qwen3.5-flash`
 - `LLM_ENABLE_FOR_TUTOR=true`
+- `LLM_ENABLE_FOR_RESOURCE=true`
+- `LLM_ENABLE_FOR_EVALUATOR=true`
 - `LLM_ENABLE_FOR_PROFILE_UPDATER=true`
 - `LLM_FALLBACK_MODE=rule_based`
 

@@ -2,7 +2,8 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.agents.rule_based_agents import RuleBasedEvaluatorAgent, RuleBasedQuizAgent
+from app.agents.evaluator_factory import build_evaluator_agent
+from app.agents.rule_based_agents import RuleBasedQuizAgent
 from app.db.session import session_scope
 from app.domain.exceptions import NotFoundError
 from app.models import Attempt, Concept, MasteryRecord, Quiz, QuizItem, StudentProfile
@@ -16,7 +17,7 @@ class AssessmentService:
     def __init__(self, database_url: str | None = None) -> None:
         self.database_url = database_url
         self.quiz_agent = RuleBasedQuizAgent()
-        self.evaluator_agent = RuleBasedEvaluatorAgent()
+        self.evaluator_agent = build_evaluator_agent()
 
     def generate_quiz(self, profile_id: int, concept_id: int, difficulty: str) -> QuizResponse:
         DemoDataService(database_url=self.database_url).get_status()

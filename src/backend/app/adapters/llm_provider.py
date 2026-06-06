@@ -24,6 +24,8 @@ class LLMSettings:
     fallback_mode: str = "rule_based"
     enable_for_tutor: bool = False
     enable_for_profile_updater: bool = False
+    enable_for_resource: bool = False
+    enable_for_evaluator: bool = False
     bypass_proxy: bool = False
 
     @classmethod
@@ -38,12 +40,18 @@ class LLMSettings:
             fallback_mode=os.getenv("LLM_FALLBACK_MODE", "rule_based").strip() or "rule_based",
             enable_for_tutor=_bool_from_env("LLM_ENABLE_FOR_TUTOR", False),
             enable_for_profile_updater=_bool_from_env("LLM_ENABLE_FOR_PROFILE_UPDATER", False),
+            enable_for_resource=_bool_from_env("LLM_ENABLE_FOR_RESOURCE", False),
+            enable_for_evaluator=_bool_from_env("LLM_ENABLE_FOR_EVALUATOR", False),
             bypass_proxy=_bool_from_env("LLM_BYPASS_PROXY", False),
         )
 
     def can_call_remote(self, purpose: str = "tutor") -> bool:
         if purpose == "profile_updater":
             enabled = self.enable_for_profile_updater
+        elif purpose == "resource":
+            enabled = self.enable_for_resource
+        elif purpose == "evaluator":
+            enabled = self.enable_for_evaluator
         else:
             enabled = self.enable_for_tutor
         return (

@@ -3,6 +3,7 @@ import unittest
 
 from app.main import create_app
 from app.models import Base
+from app.adapters.protocols import ImageGenerationResult
 from app.schemas import DemoDataStatusResponse, LearningPathCreate, StudentProfileCreate
 from app.services import (
     agent_run_service,
@@ -61,6 +62,16 @@ class BackendContractTests(unittest.TestCase):
         self.assertEqual(profile.profile_type, "weak_foundation")
         self.assertEqual(path.course_id, 1)
         self.assertFalse(status.is_loaded)
+
+    def test_image_generation_result_contract_is_constructible(self) -> None:
+        result = ImageGenerationResult(
+            image_url=None,
+            image_bytes=None,
+            mime_type="image/png",
+            metadata={"provider": "future"},
+        )
+        self.assertEqual(result.mime_type, "image/png")
+        self.assertEqual(result.metadata["provider"], "future")
 
     def test_api_prefix_and_demo_routes_exist(self) -> None:
         app = create_app()

@@ -1525,3 +1525,79 @@ Missing Tests：
 - 允许提交本轮增量。
 - 通过范围限定为“可选 LLM-backed ProfileUpdater + 默认离线 fallback + Aliyun Flash 本地 opt-in runbook”。
 - 不应将真实外部 LLM 服务可用性、生产级画像建模、完整 RAG 或长期学习历史建模标记为 Done。
+
+## 2026-06-06 Lightweight Reviewer Agent Review: Resource/Evaluator LLM and Demo Presentation
+
+## Review Conclusion
+
+Result: Pass
+
+Allowed to commit: Yes
+
+## Scope Reviewed
+
+- Documents read: `docs/04-development-roadmap.md`, `docs/00-project-brief.md`, `docs/02-acceptance-criteria.md`, `docs/06-project-state.md`, `docs/05-agile-development-log.md`
+- Diff / files reviewed: Resource/Evaluator LLM agents and factories, `LLMSettings`, Resource/Assessment services, image generation protocol reservation, local/smoke scripts, deployment config, frontend resource cards and Agent trace timeline, Playwright smoke, backend tests
+- Builder claimed: optional LLM-backed Resource and Evaluator with rule-based fallback; grounded source display; automatic profile update after evaluation; resource-specific cards including SVG mind map; image-generation adapter contract reservation
+- Tests reported: targeted backend tests, 39-test backend suite, frontend build, `scripts/verify.ps1`, Playwright smoke
+
+## Findings
+
+### Blocking
+
+- None.
+
+### Fix Before Merge
+
+- None.
+
+### Optional
+
+- File: `src/frontend/src/App.tsx`
+- Issue: Quiz submission and automatic profile update are two sequential API calls in one frontend task. If profile update fails after evaluation succeeds, the evaluation remains valid but the page also displays a global error.
+- Impact: The core evaluation is not lost, but an unstable ProfileUpdater provider can make the demo look like the quiz submission failed.
+- Minimal fix: In a later UI increment, catch profile-update failure separately and show a non-blocking profile update warning while preserving the successful evaluation state.
+
+- File: `src/frontend/src/App.tsx`
+- Issue: Resource card parsing and SVG mind-map layout depend on the LLM following the requested text markers such as `中心主题`, `分支`, fenced code blocks, and `题目 n`.
+- Impact: Non-conforming provider output may produce a simplified card, although the full resource text remains available and the page does not crash.
+- Minimal fix: Keep the current full-text fallback; add one malformed-output component test when frontend component testing is introduced.
+
+- File: `src/backend/app/adapters/protocols.py`
+- Issue: `ImageGenerationProvider` is only a contract reservation and has no provider, factory, config, API field, or runtime use.
+- Impact: No current runtime risk, but it must not be presented as implemented image generation capability.
+- Minimal fix: Keep it explicitly documented as reserved infrastructure until a real Resource Agent visual-spec flow is implemented.
+
+## Implementation Boundary Check
+
+| Check | Result | Evidence |
+|---|---|---|
+| Controller/frontend business logic | Pass | Frontend only sequences existing APIs and renders returned resource content; LLM prompts, evaluation, fallback, and persistence remain in backend Agent/service boundaries |
+| Service/orchestrator boundary | Pass | `ResourceService` and `AssessmentService` call `build_resource_agent()` / `build_evaluator_agent()` and retain persistence plus Agent run recording |
+| Adapter/provider boundary | Pass | Resource and Evaluator remote calls use the existing `LLMProvider`; image generation is represented only by an adapter protocol |
+| Hardcoded demo/mock risk | Pass | Fake providers exist only in tests; default smoke forces all remote LLM feature flags off; frontend does not fabricate resource or evaluation results |
+| API contract stability | Pass | Existing Resource and Quiz attempt endpoints and response schemas remain unchanged; only opt-in environment flags were added |
+
+## Competition Fit Check
+
+- Current phase: Phase 2, with a directly related Phase 3 presentation increment
+- Does this change advance the phase goal? Yes
+- Does this change improve A3 requirements fit? Yes
+- The change adds real-LLM paths for Resource and Evaluator while preserving fallback, strengthens five resource-type differentiation, improves grounded-source and Agent trace presentation, and closes the evaluation-to-profile-update demo loop.
+
+## Test Assessment
+
+- Tests run by Builder: targeted Resource/Evaluator/API tests, frontend build, backend compile, 39-test suite, `scripts/verify.ps1`
+- Tests run by Reviewer, if any:
+  - `python -m unittest tests.test_evaluator_llm tests.test_resource_llm tests.test_learning_loop_api tests.test_backend_contracts -v`: 16 tests passed
+  - `python -m unittest discover -s tests -v`: 39 tests passed
+  - `python -m compileall -q src/backend tests`: passed
+  - `npm run build`: passed
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`: passed, including dependency check, wheel build, frontend build, and Playwright smoke
+  - `git diff --check`: passed with Windows CRLF notices only
+- Missing but necessary tests: No additional test is required before this merge. Real Aliyun endpoint quality remains an explicit manual opt-in check because default verification must not require a secret or network.
+- Is verification sufficient for this change? Yes
+
+## Final Recommendation
+
+建议提交本轮增量。Resource/Evaluator 的真实 LLM 路径保持在 Agent factory 和 `LLMProvider` 边界内，默认离线演示、fallback 和现有 API contract 均未被破坏。最重要的后端、前端构建和 Playwright 主流程均已由 Reviewer 复跑通过。通过范围不包括真实远端 provider 可用性、真实生图能力或生产级长期 mastery 建模。

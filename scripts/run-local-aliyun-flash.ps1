@@ -5,6 +5,8 @@ param(
     [int]$FrontendPort = 5173,
     [string]$DatabaseUrl = "sqlite:///./data/demo.sqlite3",
     [string]$Model = "qwen3.5-flash",
+    [int]$TimeoutSeconds = 45,
+    [int]$MaxRetries = 1,
     [switch]$SmokeOnly
 )
 
@@ -28,6 +30,8 @@ $oldLlmRetries = $env:LLM_MAX_RETRIES
 $oldLlmFallback = $env:LLM_FALLBACK_MODE
 $oldLlmBypassProxy = $env:LLM_BYPASS_PROXY
 $oldLlmTutorEnabled = $env:LLM_ENABLE_FOR_TUTOR
+$oldLlmResourceEnabled = $env:LLM_ENABLE_FOR_RESOURCE
+$oldLlmEvaluatorEnabled = $env:LLM_ENABLE_FOR_EVALUATOR
 $oldLlmProfileUpdaterEnabled = $env:LLM_ENABLE_FOR_PROFILE_UPDATER
 
 try {
@@ -35,11 +39,13 @@ try {
     $env:LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     $env:LLM_API_KEY = $apiKey
     $env:LLM_MODEL = $Model
-    $env:LLM_TIMEOUT_SECONDS = "20"
-    $env:LLM_MAX_RETRIES = "0"
+    $env:LLM_TIMEOUT_SECONDS = [string]$TimeoutSeconds
+    $env:LLM_MAX_RETRIES = [string]$MaxRetries
     $env:LLM_FALLBACK_MODE = "rule_based"
     $env:LLM_BYPASS_PROXY = "true"
     $env:LLM_ENABLE_FOR_TUTOR = "true"
+    $env:LLM_ENABLE_FOR_RESOURCE = "true"
+    $env:LLM_ENABLE_FOR_EVALUATOR = "true"
     $env:LLM_ENABLE_FOR_PROFILE_UPDATER = "true"
 
     $scriptArgs = @{
@@ -65,5 +71,7 @@ try {
     if ($null -eq $oldLlmFallback) { Remove-Item Env:\LLM_FALLBACK_MODE -ErrorAction SilentlyContinue } else { $env:LLM_FALLBACK_MODE = $oldLlmFallback }
     if ($null -eq $oldLlmBypassProxy) { Remove-Item Env:\LLM_BYPASS_PROXY -ErrorAction SilentlyContinue } else { $env:LLM_BYPASS_PROXY = $oldLlmBypassProxy }
     if ($null -eq $oldLlmTutorEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_TUTOR -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_TUTOR = $oldLlmTutorEnabled }
+    if ($null -eq $oldLlmResourceEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_RESOURCE -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_RESOURCE = $oldLlmResourceEnabled }
+    if ($null -eq $oldLlmEvaluatorEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_EVALUATOR -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_EVALUATOR = $oldLlmEvaluatorEnabled }
     if ($null -eq $oldLlmProfileUpdaterEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_PROFILE_UPDATER -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_PROFILE_UPDATER = $oldLlmProfileUpdaterEnabled }
 }

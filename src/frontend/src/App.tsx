@@ -65,9 +65,11 @@ function labelProfile(type: string): string {
 }
 
 function sourceLabel(sourceRefs: Array<Record<string, unknown>>): string {
-  const source = sourceRefs[0];
-  if (!source) return "No source returned";
-  return String(source.source_ref ?? source.chunk_id ?? "source");
+  if (sourceRefs.length === 0) return "No source returned";
+  return sourceRefs
+    .slice(0, 3)
+    .map((source) => String(source.source_ref ?? source.chunk_id ?? "source"))
+    .join(" / ");
 }
 
 function toErrorMessage(err: unknown): string {
@@ -93,6 +95,7 @@ export function App() {
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attemptText, setAttemptText] = useState("");
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
+  const [autoProfileUpdate, setAutoProfileUpdate] = useState<string | null>(null);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [busy, setBusy] = useState<BusyAction | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -178,6 +181,7 @@ export function App() {
     setQuiz(null);
     setAttemptText("");
     setEvaluation(null);
+    setAutoProfileUpdate(null);
   }
 
   useEffect(() => {
@@ -416,7 +420,7 @@ export function App() {
                 {busy === "generate-resource" ? "Generating resource" : "Generate selected resource"}
               </button>
               {resource ? (
-                <OutputBlock title={resource.resource_type} text={resource.content} source={sourceLabel(resource.source_refs)} />
+                <ResourceOutputBlock resource={resource} source={sourceLabel(resource.source_refs)} />
               ) : (
                 <EmptyState text="The generated resource will appear here after the backend Resource Agent responds." />
               )}
@@ -499,6 +503,9 @@ export function App() {
                         });
                         setEvaluation(nextEvaluation);
                         await appendRun(nextEvaluation.agent_run_id);
+                        const nextProfile = await api.updateProfileFromTrace(selectedProfileId as number);
+                        refreshSelectedProfile(nextProfile);
+                        setAutoProfileUpdate(String(nextProfile.preferences.last_profile_update_reason ?? "Profile updated from trace."));
                       })
                     }
                   >
@@ -517,6 +524,11 @@ export function App() {
                   <p className="rounded-md bg-white p-4 text-sm leading-6 text-slate-700" data-testid="evaluator-feedback">
                     {evaluation.feedback}
                   </p>
+                  {autoProfileUpdate ? (
+                    <p className="rounded-md bg-moss/10 p-3 text-xs font-semibold leading-5 text-slate-700" data-testid="auto-profile-update">
+                      {autoProfileUpdate}
+                    </p>
+                  ) : null}
                   <div className="space-y-2">
                     {evaluation.mastery_updates.map((update, index) => (
                       <div key={index} className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
@@ -617,20 +629,29 @@ function formatPreference(profile: StudentProfile, key: string): string {
 
 function RunCard({ run }: { run: AgentRun }) {
   return (
-    <article className="rounded-md border border-slate-200 bg-white p-4" data-testid="run-card">
+    <article className="run-timeline-card" data-testid="run-card">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-950">{run.run_type}</h3>
         <span className="rounded-full bg-moss/15 px-3 py-1 text-xs font-semibold text-moss">{run.status}</span>
       </div>
       <p className="mt-3 text-sm leading-6 text-slate-600">{run.final_summary ?? run.output_summary ?? run.input_summary}</p>
-      <div className="mt-4 space-y-2">
+      <div className="timeline-steps">
         {run.steps.map((step) => (
-          <div key={step.id} className="rounded-md bg-slate-50 p-3">
+          <div key={step.id} className="timeline-step">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
               {step.step_order}. {agentTone[step.agent_type] ?? step.agent_type}
             </p>
-            <p className="mt-1 text-sm text-slate-700">{step.output_summary}</p>
-            <p className="mt-1 text-xs text-slate-500">{step.decision_basis}</p>
+            <p className="mt-2 text-xs font-semibold text-slate-500">Input</p>
+            <p className="text-sm leading-5 text-slate-700">{step.input_summary}</p>
+            <p className="mt-2 text-xs font-semibold text-slate-500">Output</p>
+            <p className="text-sm leading-5 text-slate-700">{step.output_summary}</p>
+            <p className="mt-2 text-xs font-semibold text-slate-500">Decision</p>
+            <p className="text-xs leading-5 text-slate-500">{step.decision_basis}</p>
+            {step.decision_basis.toLowerCase().includes("fallback") ? (
+              <span className="mt-2 inline-flex rounded-full bg-signal/10 px-2 py-1 text-[0.68rem] font-semibold text-signal">
+                Fallback
+              </span>
+            ) : null}
           </div>
         ))}
       </div>
@@ -662,8 +683,171 @@ function OutputBlock({ title, text, source }: { title: string; text: string; sou
     <article className="mt-4 rounded-md border border-slate-200 bg-white p-4" data-testid="output-block">
       <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{text}</p>
-      <p className="mt-3 text-xs font-semibold text-moss">Source: {source}</p>
+      <p className="mt-3 rounded-md bg-moss/10 px-3 py-2 text-xs font-semibold text-moss">Grounded source: {source}</p>
     </article>
+  );
+}
+
+function ResourceOutputBlock({ resource, source }: { resource: GeneratedResource; source: string }) {
+  const lines = resource.content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const title = resource.resource_type;
+
+  if (resource.resource_type === "mind_map") {
+    const center = extractMindMapCenter(lines);
+    const nodes = extractMindMapNodes(lines);
+    return (
+      <article className="resource-card resource-card-map" data-testid="output-block">
+        <ResourceHeader title="Mind map" source={source} />
+        <MindMapDiagram center={center} nodes={nodes} />
+        <FullResourceText text={resource.content} />
+      </article>
+    );
+  }
+
+  if (resource.resource_type === "coding_case") {
+    const code = extractFencedCode(resource.content);
+    const tasks = extractNumberedItems(lines).slice(0, 5);
+    return (
+      <article className="resource-card resource-card-code" data-testid="output-block">
+        <ResourceHeader title="Coding case" source={source} />
+        {code ? (
+          <pre className="code-case-block" data-testid="coding-case-card">{code}</pre>
+        ) : (
+          <div className="missing-structured-block" data-testid="coding-case-card">模型未返回 Python 代码块，以下保留完整资源正文。</div>
+        )}
+        <div className="resource-chip-row">
+          {tasks.map((task, index) => (
+            <span key={index} className="resource-chip">{task}</span>
+          ))}
+        </div>
+        <FullResourceText text={resource.content} />
+      </article>
+    );
+  }
+
+  if (resource.resource_type === "practice_questions") {
+    const questions = extractPracticeQuestions(lines);
+    return (
+      <article className="resource-card resource-card-practice" data-testid="output-block">
+        <ResourceHeader title="Practice questions" source={source} />
+        <ol className="practice-list" data-testid="practice-card">
+          {(questions.length ? questions : extractQuestionLikeLines(lines)).map((line, index) => (
+            <li key={index}>{line.replace(/^题目\s*\d+[:：]\s*/, "")}</li>
+          ))}
+        </ol>
+        <FullResourceText text={resource.content} />
+      </article>
+    );
+  }
+
+  if (resource.resource_type === "extended_reading") {
+    return (
+      <article className="resource-card resource-card-reading" data-testid="output-block">
+        <ResourceHeader title="Extended reading" source={source} />
+        <div className="reading-plan" data-testid="reading-card">
+          {lines.map((line, index) => (
+            <p key={index}>{line}</p>
+          ))}
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="resource-card resource-card-note" data-testid="output-block">
+      <ResourceHeader title={title} source={source} />
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{resource.content}</p>
+    </article>
+  );
+}
+
+function extractMindMapCenter(lines: string[]): string {
+  const center = lines.find((line) => line.startsWith("中心主题"));
+  return center?.replace(/^中心主题[:：]\s*/, "") || lines.find((line) => !line.startsWith("#")) || "Mind map";
+}
+
+function extractMindMapNodes(lines: string[]): string[] {
+  const branchNodes = lines
+    .filter((line) => line.startsWith("分支"))
+    .map((line) => line.replace(/^分支[:：]\s*/, ""));
+  if (branchNodes.length) return branchNodes.slice(0, 8);
+  return lines
+    .filter((line) => line.startsWith("-") || line.startsWith("  -"))
+    .map((line) => line.replace(/^-+\s*/, "").replace(/^-\s*/, ""))
+    .slice(0, 8);
+}
+
+function extractFencedCode(content: string): string {
+  const match = content.match(/```(?:python|py)?\s*([\s\S]*?)```/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+function extractNumberedItems(lines: string[]): string[] {
+  return lines.filter((line) => /^\d+[.、]/.test(line)).map((line) => line.replace(/^\d+[.、]\s*/, ""));
+}
+
+function extractPracticeQuestions(lines: string[]): string[] {
+  const questions = lines
+    .filter((line) => /^题目\s*\d+[:：]/.test(line))
+    .map((line) => line.replace(/^题目\s*\d+[:：]\s*/, ""));
+  if (questions.length) return questions.slice(0, 8);
+  return extractNumberedItems(lines);
+}
+
+function extractQuestionLikeLines(lines: string[]): string[] {
+  const useful = lines.filter((line) => /题|答案|解析|选择|填空|简答|应用/.test(line));
+  return useful.length ? useful : lines;
+}
+
+function MindMapDiagram({ center, nodes }: { center: string; nodes: string[] }) {
+  const safeNodes = nodes.length ? nodes : ["定义", "表示方法", "复杂度", "易错点"];
+  const height = Math.max(220, 84 + safeNodes.length * 54);
+  const centerY = height / 2;
+  return (
+    <div className="mind-map-diagram" data-testid="mind-map-card">
+      <svg viewBox={`0 0 720 ${height}`} role="img" aria-label="Mind map diagram">
+        <rect x="28" y={centerY - 34} width="220" height="68" rx="8" className="mind-map-svg-center" />
+        <text x="138" y={centerY - 4} textAnchor="middle" className="mind-map-svg-title">
+          {truncateSvgText(center, 14)}
+        </text>
+        <text x="138" y={centerY + 18} textAnchor="middle" className="mind-map-svg-subtitle">中心主题</text>
+        {safeNodes.map((node, index) => {
+          const y = 42 + index * 54;
+          return (
+            <g key={index}>
+              <path d={`M 248 ${centerY} C 330 ${centerY}, 315 ${y + 22}, 398 ${y + 22}`} className="mind-map-svg-link" />
+              <rect x="398" y={y} width="292" height="44" rx="8" className="mind-map-svg-node" />
+              <text x="414" y={y + 27} className="mind-map-svg-node-text">{truncateSvgText(node, 24)}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function truncateSvgText(text: string, maxLength: number): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
+}
+
+function FullResourceText({ text }: { text: string }) {
+  return (
+    <details className="full-resource-text">
+      <summary>完整资源正文</summary>
+      <pre>{text}</pre>
+    </details>
+  );
+}
+
+function ResourceHeader({ title, source }: { title: string; source: string }) {
+  return (
+    <div className="resource-header">
+      <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
+      <p className="grounded-source">Grounded source: {source}</p>
+    </div>
   );
 }
 

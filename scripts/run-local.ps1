@@ -92,6 +92,8 @@ $oldViteBase = $env:VITE_API_BASE_URL
 $oldViteProxyTarget = $env:VITE_PROXY_TARGET
 $oldLlmProvider = $env:LLM_PROVIDER
 $oldLlmTutorEnabled = $env:LLM_ENABLE_FOR_TUTOR
+$oldLlmResourceEnabled = $env:LLM_ENABLE_FOR_RESOURCE
+$oldLlmEvaluatorEnabled = $env:LLM_ENABLE_FOR_EVALUATOR
 $oldLlmProfileUpdaterEnabled = $env:LLM_ENABLE_FOR_PROFILE_UPDATER
 
 $backend = $null
@@ -105,6 +107,8 @@ try {
     if (-not $UseRemoteTutorLLM) {
         $env:LLM_PROVIDER = "rule_based"
         $env:LLM_ENABLE_FOR_TUTOR = "false"
+        $env:LLM_ENABLE_FOR_RESOURCE = "false"
+        $env:LLM_ENABLE_FOR_EVALUATOR = "false"
         $env:LLM_ENABLE_FOR_PROFILE_UPDATER = "false"
     }
 
@@ -172,5 +176,7 @@ try {
     if ($null -eq $oldViteProxyTarget) { Remove-Item Env:\VITE_PROXY_TARGET -ErrorAction SilentlyContinue } else { $env:VITE_PROXY_TARGET = $oldViteProxyTarget }
     if ($null -eq $oldLlmProvider) { Remove-Item Env:\LLM_PROVIDER -ErrorAction SilentlyContinue } else { $env:LLM_PROVIDER = $oldLlmProvider }
     if ($null -eq $oldLlmTutorEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_TUTOR -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_TUTOR = $oldLlmTutorEnabled }
+    if ($null -eq $oldLlmResourceEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_RESOURCE -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_RESOURCE = $oldLlmResourceEnabled }
+    if ($null -eq $oldLlmEvaluatorEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_EVALUATOR -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_EVALUATOR = $oldLlmEvaluatorEnabled }
     if ($null -eq $oldLlmProfileUpdaterEnabled) { Remove-Item Env:\LLM_ENABLE_FOR_PROFILE_UPDATER -ErrorAction SilentlyContinue } else { $env:LLM_ENABLE_FOR_PROFILE_UPDATER = $oldLlmProfileUpdaterEnabled }
 }

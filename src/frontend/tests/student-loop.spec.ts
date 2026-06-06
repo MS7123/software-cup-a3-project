@@ -27,7 +27,7 @@ test("student UI completes the current MVP learning loop", async ({ page }) => {
   await expect(page.getByTestId("output-block").filter({ hasText: "guided_note" })).toBeVisible();
   await page.getByTestId("resource-type-coding_case").click();
   await page.getByTestId("generate-resource-button").click();
-  await expect(page.getByTestId("output-block").filter({ hasText: "coding_case" })).toBeVisible();
+  await expect(page.getByTestId("coding-case-card")).toBeVisible();
 
   await page.getByTestId("tutor-question").fill("How should I compare BFS and DFS before a quiz?");
   await page.getByTestId("ask-tutor-button").click();
@@ -39,8 +39,7 @@ test("student UI completes the current MVP learning loop", async ({ page }) => {
   await page.getByTestId("submit-answer-button").click();
   await expect(page.getByText("Score")).toBeVisible();
   await expect(page.getByTestId("evaluator-feedback")).toBeVisible();
-
-  await page.getByTestId("update-profile-button").click();
+  await expect(page.getByTestId("auto-profile-update")).toContainText("Agent step");
   await expect(page.getByTestId("profile-update-reason")).toContainText("Agent step");
 
   await expect(page.getByTestId("run-card")).toHaveCount(6);

@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.agents.rule_based_agents import RuleBasedResourceAgent
+from app.agents.resource_factory import build_resource_agent
 from app.db.session import session_scope
 from app.domain.exceptions import NotFoundError
 from app.models import Concept, GeneratedResource, LearningPath, LearningPathItem, StudentProfile
@@ -13,7 +13,7 @@ from app.services.knowledge_base_service import KnowledgeBaseService
 class ResourceService:
     def __init__(self, database_url: str | None = None) -> None:
         self.database_url = database_url
-        self.agent = RuleBasedResourceAgent()
+        self.agent = build_resource_agent()
 
     def generate_resource(self, path_item_id: int, resource_type: str) -> GeneratedResourceResponse:
         DemoDataService(database_url=self.database_url).get_status()
