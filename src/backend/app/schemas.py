@@ -98,6 +98,10 @@ class DocumentCreate(BaseModel):
     source_type: str
 
 
+class DocumentIngestionRequest(DocumentCreate):
+    content: str = Field(min_length=1)
+
+
 class DocumentResponse(DocumentCreate):
     model_config = ConfigDict(from_attributes=True)
 
@@ -117,6 +121,12 @@ class DocumentChunkResponse(BaseModel):
     vector_ref: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     source_ref: str | None = None
+
+
+class DocumentIngestionResponse(BaseModel):
+    document: DocumentResponse
+    chunks: list[DocumentChunkResponse]
+    chunk_count: int
 
 
 class KnowledgeSearchRequest(BaseModel):

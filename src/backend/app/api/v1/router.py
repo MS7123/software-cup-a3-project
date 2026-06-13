@@ -7,8 +7,13 @@ from app.schemas import (
     AttemptSubmitRequest,
     DemoDataLoadResponse,
     DemoDataStatusResponse,
+    DocumentChunkResponse,
+    DocumentIngestionRequest,
+    DocumentIngestionResponse,
     EvaluationResult,
     GeneratedResourceResponse,
+    KnowledgeSearchRequest,
+    KnowledgeSearchResponse,
     LearningFlowResponse,
     LearningPathCreate,
     LearningPathResponse,
@@ -26,6 +31,8 @@ from app.services.agent_run_service import AgentRunService
 from app.services.assessment_service import AssessmentService
 from app.services.course_service import CourseService
 from app.services.demo_data_service import DemoDataService
+from app.services.document_ingestion_service import DocumentIngestionService
+from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.learning_path_service import LearningPathService
 from app.services.profile_service import ProfileService
 from app.services.profile_updater_service import ProfileUpdaterService
@@ -97,6 +104,30 @@ def get_course_graph(course_id: int) -> ConceptGraphResponse:
         return CourseService().get_concept_graph(course_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.post("/courses/{course_id}/documents", response_model=DocumentIngestionResponse)
+def ingest_course_document(course_id: int, payload: DocumentIngestionRequest) -> DocumentIngestionResponse:
+    try:
+        return DocumentIngestionService().ingest(course_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@api_router.get("/documents/{document_id}/chunks", response_model=list[DocumentChunkResponse])
+def list_document_chunks(document_id: int) -> list[DocumentChunkResponse]:
+    try:
+        return DocumentIngestionService().list_chunks(document_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.post("/knowledge/search", response_model=KnowledgeSearchResponse)
+def search_knowledge(payload: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
+    results = KnowledgeBaseService().search(payload.course_id, payload.query, payload.top_k)
+    return KnowledgeSearchResponse(results=results)
 
 
 @api_router.post("/learning-paths", response_model=LearningFlowResponse)

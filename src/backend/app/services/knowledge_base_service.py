@@ -1,9 +1,10 @@
+import re
+
 from sqlalchemy import select
 
 from app.db.session import session_scope
 from app.models import Document, DocumentChunk
 from app.schemas import KnowledgeSearchResult
-from app.services.demo_data_service import DemoDataService
 
 
 class KnowledgeBaseService:
@@ -11,8 +12,9 @@ class KnowledgeBaseService:
         self.database_url = database_url
 
     def search(self, course_id: int, query: str, top_k: int) -> list[KnowledgeSearchResult]:
-        DemoDataService(database_url=self.database_url).load_demo_data()
-        normalized_query = query.lower()
+        query_terms = self._query_terms(query)
+        if not query_terms:
+            return []
         with session_scope(self.database_url) as session:
             chunks = session.scalars(
                 select(DocumentChunk)
@@ -23,15 +25,52 @@ class KnowledgeBaseService:
             ranked: list[KnowledgeSearchResult] = []
             for chunk in chunks:
                 haystack = f"{chunk.content} {chunk.source_ref or ''} {chunk.metadata_json}".lower()
-                score = 1.0 if normalized_query and normalized_query in haystack else 0.5
+                score = self._score(haystack, query_terms)
+                if score <= 0:
+                    continue
+                metadata = {
+                    **(chunk.metadata_json if isinstance(chunk.metadata_json, dict) else {}),
+                    "document_id": chunk.document_id,
+                    "chunk_id": chunk.id,
+                    "source_ref": chunk.source_ref,
+                    "score": score,
+                    "retrieval_mode": "keyword",
+                }
                 ranked.append(
                     KnowledgeSearchResult(
                         chunk_id=chunk.id,
                         content=chunk.content,
                         score=score,
                         source_ref=chunk.source_ref,
-                        metadata=chunk.metadata_json,
+                        metadata=metadata,
                     )
                 )
             ranked.sort(key=lambda item: item.score or 0, reverse=True)
             return ranked[:top_k]
+
+    def _query_terms(self, query: str) -> list[str]:
+        normalized = query.strip().lower()
+        if not normalized:
+            return []
+        raw_terms = re.findall(r"[\w#:+\-/]+", normalized, flags=re.UNICODE)
+        terms: list[str] = []
+        for term in raw_terms:
+            if len(term) < 2:
+                continue
+            terms.append(term)
+            if re.fullmatch(r"[\u4e00-\u9fff]+", term) and len(term) > 2:
+                terms.extend(term[index : index + 2] for index in range(0, len(term) - 1))
+        if not terms:
+            compact = re.sub(r"\s+", "", normalized)
+            if compact:
+                terms.append(compact)
+                if len(compact) > 2:
+                    terms.extend(compact[index : index + 2] for index in range(0, len(compact) - 1))
+        return list(dict.fromkeys(terms))
+
+    def _score(self, haystack: str, query_terms: list[str]) -> float:
+        matched = sum(1 for term in query_terms if term in haystack)
+        if matched == 0:
+            return 0.0
+        phrase_bonus = 0.5 if " ".join(query_terms) in haystack else 0.0
+        return round(matched / len(query_terms) + phrase_bonus, 4)

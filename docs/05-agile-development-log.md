@@ -820,3 +820,57 @@ Ready for commit：Yes。
 - SVG 导图基于文本解析，不是语义布局引擎。
 - 生图接口只是 contract 预留，没有 provider factory、配置项或真实远端调用。
 - LLM 若完全不按格式输出，前端仍只能尽量解析并显示完整正文。
+
+## 2026-06-13 增量：RAG 第一阶段 IMPL-011 / IMPL-012
+
+### 目标
+
+完成真实 RAG 最小闭环的后端第一阶段：课程资料通过 JSON 导入，后端解析并切分为 `DocumentChunk`，`KnowledgeBaseService.search()` 从数据库中的真实 chunk 做 keyword retrieval，并把稳定 `source_ref` 继续传给 Tutor / Resource。
+
+### 核心功能
+
+- 新增资料导入 API：
+  - `POST /api/v1/courses/{course_id}/documents`
+  - `GET /api/v1/documents/{document_id}/chunks`
+  - `POST /api/v1/knowledge/search`
+- 新增 `DocumentIngestionService`：校验 course、创建 `Document`、调用 parser adapter、调用 `ChunkingService`、写入 `DocumentChunk`、生成稳定 `source_ref`。
+- 新增 parser adapter：`PlainTextDocumentParser`、`MarkdownDocumentParser`。
+- 新增 `ChunkingService`，默认 `RAG_CHUNK_SIZE=600`、`RAG_CHUNK_OVERLAP=80`。
+- 改造 `KnowledgeBaseService.search()`：移除隐式 `DemoDataService.load_demo_data()`，基于数据库真实 chunk 做 keyword scoring。
+
+### 架构边界
+
+- API handler 只负责请求接收、service 调用和 HTTP error 映射。
+- chunking 逻辑不进入 API handler。
+- retrieval scoring 只在 `KnowledgeBaseService`。
+- 没有引入 Chroma、embedding provider、PostgreSQL migration、multipart 文件上传或真实 LLM 强依赖。
+- 现有 Tutor / Resource response schema 保持不变，继续复用 `KnowledgeSearchResult.source_ref`。
+
+### 验证
+
+已运行：
+
+```text
+python -m unittest tests.test_rag_ingestion tests.test_rag_retrieval tests.test_backend_contracts -v
+```
+
+验证结果：
+
+- 文本 / Markdown JSON 导入可创建 `documents` 和 `document_chunks`。
+- chunk `source_ref` 使用 `document:{document_id}#chunk:{chunk_index}`。
+- 导入失败返回明确错误，不留下半成品 document。
+- 未加载 demo data 时，真实资料导入后 search 能命中真实 chunk。
+- search 不再隐式创建 demo course / demo chunks。
+- Tutor / Resource 使用真实资料时，response `source_refs` 指向真实导入 document chunk。
+
+### 当前状态
+
+状态：已实现并通过完整 `verify.ps1`。
+
+Ready for commit：Yes。
+
+### 已知限制
+
+- 第一阶段检索为 keyword retrieval，不含 embedding / rerank。
+- 第一阶段只支持 JSON body 中的 `text` / `markdown` 内容，不支持 PDF / Word / PPT / multipart 上传。
+- 当前未新增数据库迁移系统，仍使用现有 `Base.metadata.create_all()` 本地演示路径。
