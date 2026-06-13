@@ -10,6 +10,17 @@ from app.services.demo_data_service import DemoDataService
 from app.services.knowledge_base_service import KnowledgeBaseService
 
 
+def _source_ref_summary(source_refs: list[dict]) -> str:
+    refs = [
+        str(source.get("source_ref"))
+        for source in source_refs[:3]
+        if source.get("source_ref")
+    ]
+    if not refs:
+        return "Grounded sources: none retrieved."
+    return f"Grounded sources: {', '.join(refs)}"
+
+
 class ResourceService:
     def __init__(self, database_url: str | None = None) -> None:
         self.database_url = database_url
@@ -67,8 +78,8 @@ class ResourceService:
             run.id,
             "resource",
             result.input_summary,
-            result.output_summary,
-            result.decision_basis,
+            f"{result.output_summary} {_source_ref_summary(result.source_refs)}",
+            f"{result.decision_basis} {_source_ref_summary(result.source_refs)}",
             "completed",
         )
         run_service.complete_run(run.id, f"Resource Agent generated resource {response.id} for path_item {path_item_id_value}.")

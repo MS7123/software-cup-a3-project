@@ -53,6 +53,47 @@ export interface ConceptGraph {
   relations: ConceptRelation[];
 }
 
+export interface DocumentChunk {
+  id: number;
+  document_id: number;
+  concept_id: number | null;
+  content: string;
+  vector_ref: string | null;
+  metadata: Record<string, unknown>;
+  source_ref: string | null;
+}
+
+export interface DocumentIngestionRequest {
+  title: string;
+  source_type: "text" | "markdown";
+  content: string;
+}
+
+export interface DocumentIngestionResponse {
+  document: {
+    id: number;
+    course_id: number;
+    title: string;
+    source_type: string;
+    status: string;
+    created_at: string | null;
+  };
+  chunks: DocumentChunk[];
+  chunk_count: number;
+}
+
+export interface KnowledgeSearchResult {
+  chunk_id: number | null;
+  content: string;
+  score: number | null;
+  source_ref: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface KnowledgeSearchResponse {
+  results: KnowledgeSearchResult[];
+}
+
 export interface LearningPathItem {
   id: number;
   path_id: number;

@@ -21,7 +21,7 @@
 - Phase 2：补齐核心智能能力，尤其是真实 LLM opt-in、画像构建、资源生成、评价反馈。
 - Phase 3：优化演示体验，让评委能直观看到 Multi-Agent 协作、个性化和 Agent trace。
 
-截至 2026-06-10，当前分支已具备以下可演示能力。
+截至 2026-06-13，当前分支已具备以下可演示能力。
 
 ### 已完成的主流程能力
 
@@ -63,6 +63,16 @@
   - SVG 思维导图
   - 完整资源正文折叠区
   - grounded source 展示
+- 真实 RAG 第一阶段闭环：
+  - 前端 `Knowledge setup` 可粘贴 `text` / `markdown` 课程资料。
+  - 后端创建 `documents` / `document_chunks`。
+  - `KnowledgeBaseService.search()` 基于真实导入 chunk 做 keyword retrieval。
+  - Tutor / Resource response 保留真实 `source_refs`。
+  - Agent trace 可展示具体 `document:{id}#chunk:{index}` 来源。
+- RAG keyword retrieval 小优化：
+  - search metadata 包含 `matched_terms`。
+  - search metadata 包含 `term_match_count`。
+  - stack / queue、BFS / DFS 演示资料可用于手动检索验证。
 
 ### 已完成的 LLM 接入范围
 
@@ -102,6 +112,9 @@
 - `DELETE /api/v1/student-profiles/{profile_id}`
 - `POST /api/v1/student-profiles/{profile_id}/update-from-trace`
 - `GET /api/v1/courses/{course_id}/graph`
+- `POST /api/v1/courses/{course_id}/documents`
+- `GET /api/v1/documents/{document_id}/chunks`
+- `POST /api/v1/knowledge/search`
 - `POST /api/v1/learning-paths`
 - `GET /api/v1/learning-paths/{path_id}`
 - `POST /api/v1/resources/generate`
@@ -116,9 +129,9 @@
 
 ### 核心能力
 
-- 真实课程资料上传、解析、chunking 和错误提示。
-- 真实 RAG / VectorStore 检索链路。
-- Tutor / Resource 对真实课程资料的更强 grounded generation。
+- PDF / Word / PPT 等文件上传和解析。
+- embedding / VectorStore / hybrid retrieval 检索链路。
+- Tutor / Resource 对复杂真实课程资料的更强 grounded generation。
 - 视频、动画或真实图片类资源生成。
 - 长期学习历史压缩和跨 session 动态画像建模。
 - 更完整的 mastery model，而不是单次 Quiz attempt 驱动的最小评价。
@@ -220,7 +233,7 @@ cd ../..
 - frontend production build
 - Playwright browser smoke
 
-当前最近一次 Reviewer 验证结果：`39` 个后端测试通过，frontend build 通过，Playwright 主流程 smoke 通过。
+当前最近一次 Reviewer 验证结果：`47` 个后端测试通过，frontend build 通过，Playwright 主流程 smoke 通过。
 
 ## 真实 LLM 演示配置
 
@@ -280,19 +293,23 @@ $env:LLM_FALLBACK_MODE='rule_based'
 1. 运行 `./scripts/run-local.ps1`。
 2. 打开 frontend 地址。
 3. 点击 `Reset user demo data`，回到干净演示状态。
-4. 输入自然语言学习目标，生成学生画像。
-5. 查看 6 维画像。
-6. 创建学习路径。
-7. 切换 5 类资源并生成至少 2 类资源。
-8. 向 Tutor 提问。
-9. 生成 Quiz 并提交答案。
-10. 查看 Evaluator 反馈和自动画像更新。
-11. 查看 Agent trace 时间线。
+4. 在 `Knowledge setup` 粘贴一段 `text` / `markdown` 课程资料并导入。
+5. 查看 `document_id`、`chunk_count` 和 `source_ref`。
+6. 可选使用 `Search imported chunks` 验证检索命中。
+7. 输入自然语言学习目标，生成学生画像。
+8. 查看 6 维画像。
+9. 创建学习路径。
+10. 切换 5 类资源并生成至少 2 类资源。
+11. 向 Tutor 提问，并观察 grounded source。
+12. 生成 Quiz 并提交答案。
+13. 查看 Evaluator 反馈和自动画像更新。
+14. 查看 Agent trace 时间线中的具体 grounded sources。
 
 ## 重要边界
 
 - 当前 SQLite 只用于本地开发和比赛演示，不代表正式数据库方向。
-- 当前 demo data 不代表真实课程资料上传和真实知识库。
+- 当前真实资料导入仅支持 `text` / `markdown` 粘贴，不代表完整文件上传解析平台。
+- 当前 RAG 使用 SQLite keyword retrieval，不代表 embedding / VectorStore / pgvector 已完成。
 - 默认 rule-based fallback 是演示稳定性保障，不等同于完整智能能力。
 - 真实 LLM 需要显式配置 API key 和开关；默认验证不依赖网络。
 - 生图接口目前只是 adapter contract 预留，不是已完成的图片生成能力。

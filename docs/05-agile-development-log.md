@@ -874,3 +874,73 @@ Ready for commit：Yes。
 - 第一阶段检索为 keyword retrieval，不含 embedding / rerank。
 - 第一阶段只支持 JSON body 中的 `text` / `markdown` 内容，不支持 PDF / Word / PPT / multipart 上传。
 - 当前未新增数据库迁移系统，仍使用现有 `Base.metadata.create_all()` 本地演示路径。
+
+## 2026-06-13 增量：08 后续演示增量计划落地
+
+### 目标
+
+完成 `docs/08-next-demo-increments-plan.md` 中列出的 4 个轻量演示增量：前端知识导入 UI、LLM + RAG Tutor 手动验证文档、Agent trace 具体来源展示、RAG keyword retrieval 小优化。
+
+### 核心功能
+
+- 前端新增 `Knowledge setup` 区域：
+  - 支持输入 `title`。
+  - 支持选择 `source_type=text|markdown`。
+  - 支持粘贴课程资料 `content`。
+  - 调用 `POST /api/v1/courses/{course_id}/documents`。
+  - 成功后展示 `document_id`、`chunk_count` 和前 3 个 `source_ref`。
+  - 提供最小 search 验证框，调用 `POST /api/v1/knowledge/search`。
+- 新增前端 API client 与类型：
+  - `ingestCourseDocument(courseId, payload)`
+  - `searchKnowledge(courseId, query, topK)`
+- 新增 LLM + RAG Tutor 手动验证文档：
+  - `docs/llm-rag-tutor-manual-verification.md`
+  - 明确 rule-based 基线、远程 Tutor LLM opt-in、输入样例、预期输出和失败判定。
+- Agent trace 来源增强：
+  - Tutor step 的 `output_summary` / `decision_basis` 追加 `Grounded sources: ...`。
+  - Resource step 的 `output_summary` / `decision_basis` 追加 `Grounded sources: ...`。
+  - 无命中时写入 `Grounded sources: none retrieved.`，不伪造来源。
+- RAG keyword retrieval 小优化：
+  - metadata 增加 `matched_terms`。
+  - metadata 增加 `term_match_count`。
+  - scoring 保持在 `KnowledgeBaseService` 内部，不改变 search API schema。
+
+### 架构边界
+
+- 前端只调用后端 API，不做 chunking、retrieval scoring 或硬编码 source refs。
+- 没有修改数据库表结构。
+- 没有修改 Agent run response schema。
+- 没有引入 embedding、Chroma、pgvector 或新的外部 provider。
+- LLM 真实调用仍为显式 opt-in，默认本地 smoke 继续离线可运行。
+
+### 验证
+
+已运行：
+
+```text
+python -m unittest tests.test_rag_retrieval tests.test_learning_loop_api tests.test_backend_contracts -v
+npm run build
+python -m unittest tests.test_rag_retrieval -v
+./scripts/verify.ps1
+```
+
+验证结果：
+
+- RAG search response metadata 包含 `matched_terms` 和 `term_match_count`。
+- Tutor / Resource trace 能展示真实 `document:{id}#chunk:{index}`。
+- 无命中时 trace 显示 `none retrieved`，不伪造 source。
+- stack / queue 问题能优先命中对应导入资料。
+- 前端 production build 通过。
+- 完整 `verify.ps1` 通过，包含 47 个后端单元测试、frontend build 和 Playwright smoke。
+
+### 当前状态
+
+状态：已实现并通过完整 `verify.ps1`。
+
+Ready for commit：Yes。
+
+### 已知限制
+
+- 前端知识导入仍只支持文本粘贴，不支持 multipart 文件上传。
+- LLM + RAG Tutor 真实 provider 调用未纳入默认自动化测试，只提供手动验证文档。
+- keyword retrieval 仍不是 embedding retrieval，复杂语义同义表达仍可能漏召回。

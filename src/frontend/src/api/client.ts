@@ -2,8 +2,11 @@ import type {
   AgentRun,
   ConceptGraph,
   DemoDataStatus,
+  DocumentIngestionRequest,
+  DocumentIngestionResponse,
   EvaluationResult,
   GeneratedResource,
+  KnowledgeSearchResponse,
   LearningFlow,
   Quiz,
   StudentProfileDialogueCreate,
@@ -48,6 +51,16 @@ export const api = {
     await request<void>(`/student-profiles/${profileId}`, { method: "DELETE" });
   },
   getCourseGraph: (courseId: number) => request<ConceptGraph>(`/courses/${courseId}/graph`),
+  ingestCourseDocument: (courseId: number, payload: DocumentIngestionRequest) =>
+    request<DocumentIngestionResponse>(`/courses/${courseId}/documents`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  searchKnowledge: (courseId: number, query: string, topK = 3) =>
+    request<KnowledgeSearchResponse>("/knowledge/search", {
+      method: "POST",
+      body: JSON.stringify({ course_id: courseId, query, top_k: topK })
+    }),
   createLearningPath: (studentProfileId: number, courseId: number, goal: string) =>
     request<LearningFlow>("/learning-paths", {
       method: "POST",

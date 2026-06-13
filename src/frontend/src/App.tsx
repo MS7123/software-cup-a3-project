@@ -7,8 +7,10 @@ import type {
   Concept,
   ConceptGraph,
   DemoDataStatus,
+  DocumentIngestionResponse,
   EvaluationResult,
   GeneratedResource,
+  KnowledgeSearchResult,
   LearningFlow,
   LearningPathItem,
   Quiz,
@@ -23,6 +25,8 @@ type BusyAction =
   | "build-profile"
   | "update-profile"
   | "delete-profile"
+  | "import-knowledge"
+  | "search-knowledge"
   | "create-path"
   | "generate-resource"
   | "ask-tutor"
@@ -87,6 +91,15 @@ export function App() {
     "我基础薄弱，想每天 1 小时复习二叉树遍历和 BFS/DFS，希望用例题和练习题准备小测"
   );
   const [goal, setGoal] = useState("Review tree traversal and graph search for a short quiz");
+  const [knowledgeTitle, setKnowledgeTitle] = useState("bfs-dfs-note.md");
+  const [knowledgeSourceType, setKnowledgeSourceType] = useState<"text" | "markdown">("markdown");
+  const [knowledgeContent, setKnowledgeContent] = useState(
+    "# BFS and DFS\nBFS uses a queue to expand nodes level by level, so in an unweighted graph the first time a node is reached represents the fewest edges. DFS uses a stack or recursion to go deep first, which is better for traversal and backtracking but does not guarantee shortest paths."
+  );
+  const [knowledgeQuery, setKnowledgeQuery] = useState("BFS shortest path queue DFS");
+  const [knowledgeImportResult, setKnowledgeImportResult] = useState<DocumentIngestionResponse | null>(null);
+  const [knowledgeSearchResults, setKnowledgeSearchResults] = useState<KnowledgeSearchResult[]>([]);
+  const [knowledgeError, setKnowledgeError] = useState<string | null>(null);
   const [flow, setFlow] = useState<LearningFlow | null>(null);
   const [resource, setResource] = useState<GeneratedResource | null>(null);
   const [resourceType, setResourceType] = useState<(typeof resourceOptions)[number]["type"]>("guided_note");
@@ -120,7 +133,11 @@ export function App() {
     try {
       await task();
     } catch (err) {
-      setError(toErrorMessage(err));
+      const message = toErrorMessage(err);
+      setError(message);
+      if (action === "import-knowledge" || action === "search-knowledge") {
+        setKnowledgeError(message);
+      }
     } finally {
       setBusy(null);
     }
@@ -184,6 +201,25 @@ export function App() {
     setAutoProfileUpdate(null);
   }
 
+  async function importKnowledge() {
+    if (!status?.course_id) return;
+    setKnowledgeError(null);
+    const result = await api.ingestCourseDocument(status.course_id, {
+      title: knowledgeTitle,
+      source_type: knowledgeSourceType,
+      content: knowledgeContent
+    });
+    setKnowledgeImportResult(result);
+    setKnowledgeSearchResults([]);
+  }
+
+  async function searchKnowledge() {
+    if (!status?.course_id) return;
+    setKnowledgeError(null);
+    const result = await api.searchKnowledge(status.course_id, knowledgeQuery, 3);
+    setKnowledgeSearchResults(result.results);
+  }
+
   useEffect(() => {
     void runTask("boot", refreshBaseData);
   }, []);
@@ -245,6 +281,91 @@ export function App() {
               {busy === "reset-demo" ? "Resetting demo" : "Reset user demo data"}
             </button>
             <StatusLine busy={busy === "boot"} error={error} />
+          </Panel>
+
+          <Panel title="Knowledge setup" kicker="RAG import">
+            <div className="space-y-3">
+              <input
+                className="field"
+                data-testid="knowledge-title"
+                value={knowledgeTitle}
+                onChange={(event) => setKnowledgeTitle(event.target.value)}
+                aria-label="Knowledge document title"
+              />
+              <select
+                className="field"
+                data-testid="knowledge-source-type"
+                value={knowledgeSourceType}
+                onChange={(event) => setKnowledgeSourceType(event.target.value as "text" | "markdown")}
+                aria-label="Knowledge source type"
+              >
+                <option value="markdown">markdown</option>
+                <option value="text">text</option>
+              </select>
+              <textarea
+                className="field min-h-36 resize-none"
+                data-testid="knowledge-content"
+                value={knowledgeContent}
+                onChange={(event) => setKnowledgeContent(event.target.value)}
+                aria-label="Knowledge content"
+              />
+              <button
+                className="action-button w-full"
+                data-testid="import-knowledge-button"
+                disabled={!status?.course_id || !knowledgeTitle.trim() || !knowledgeContent.trim() || busy !== null}
+                onClick={() =>
+                  void runTask("import-knowledge", async () => {
+                    await importKnowledge();
+                  })
+                }
+              >
+                {busy === "import-knowledge" ? "Importing knowledge" : "Import knowledge"}
+              </button>
+              {knowledgeImportResult ? (
+                <div className="knowledge-result" data-testid="knowledge-import-result">
+                  <p>
+                    Document #{knowledgeImportResult.document.id} / {knowledgeImportResult.chunk_count} chunks
+                  </p>
+                  <div className="source-ref-list">
+                    {knowledgeImportResult.chunks.slice(0, 3).map((chunk) => (
+                      <span key={chunk.id}>{chunk.source_ref}</span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="knowledge-search-box">
+                <input
+                  className="field"
+                  data-testid="knowledge-query"
+                  value={knowledgeQuery}
+                  onChange={(event) => setKnowledgeQuery(event.target.value)}
+                  aria-label="Knowledge search query"
+                />
+                <button
+                  className="primary-button w-full"
+                  data-testid="search-knowledge-button"
+                  disabled={!status?.course_id || !knowledgeQuery.trim() || busy !== null}
+                onClick={() =>
+                    void runTask("search-knowledge", async () => {
+                      await searchKnowledge();
+                    })
+                  }
+                >
+                  {busy === "search-knowledge" ? "Searching" : "Search imported chunks"}
+                </button>
+                {knowledgeSearchResults.length > 0 ? (
+                  <div className="knowledge-search-results" data-testid="knowledge-search-results">
+                    {knowledgeSearchResults.map((result) => (
+                      <div key={result.chunk_id ?? result.source_ref} className="knowledge-search-result">
+                        <p>{result.source_ref}</p>
+                        <span>score {result.score ?? "n/a"}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              {knowledgeError ? <p className="error-note">{knowledgeError}</p> : null}
+            </div>
           </Panel>
 
           <Panel title="Student profile" kicker="Persona">

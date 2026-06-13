@@ -25,7 +25,8 @@ class KnowledgeBaseService:
             ranked: list[KnowledgeSearchResult] = []
             for chunk in chunks:
                 haystack = f"{chunk.content} {chunk.source_ref or ''} {chunk.metadata_json}".lower()
-                score = self._score(haystack, query_terms)
+                matched_terms = self._matched_terms(haystack, query_terms)
+                score = self._score_from_matches(matched_terms, query_terms, haystack)
                 if score <= 0:
                     continue
                 metadata = {
@@ -35,6 +36,8 @@ class KnowledgeBaseService:
                     "source_ref": chunk.source_ref,
                     "score": score,
                     "retrieval_mode": "keyword",
+                    "matched_terms": matched_terms[:12],
+                    "term_match_count": len(matched_terms),
                 }
                 ranked.append(
                     KnowledgeSearchResult(
@@ -69,8 +72,17 @@ class KnowledgeBaseService:
         return list(dict.fromkeys(terms))
 
     def _score(self, haystack: str, query_terms: list[str]) -> float:
-        matched = sum(1 for term in query_terms if term in haystack)
-        if matched == 0:
+        matched_terms = self._matched_terms(haystack, query_terms)
+        return self._score_from_matches(matched_terms, query_terms, haystack)
+
+    def _matched_terms(self, haystack: str, query_terms: list[str]) -> list[str]:
+        return [term for term in query_terms if term in haystack]
+
+    def _score_from_matches(self, matched_terms: list[str], query_terms: list[str], haystack: str) -> float:
+        matched = len(matched_terms)
+        if matched == 0 or not query_terms:
             return 0.0
         phrase_bonus = 0.5 if " ".join(query_terms) in haystack else 0.0
-        return round(matched / len(query_terms) + phrase_bonus, 4)
+        coverage = matched / len(query_terms)
+        density_bonus = min(0.25, matched * 0.03)
+        return round(coverage + phrase_bonus + density_bonus, 4)

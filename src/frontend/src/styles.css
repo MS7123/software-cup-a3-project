@@ -166,6 +166,62 @@ button:disabled {
   padding: 0.85rem 0.85rem 0.85rem 1rem;
 }
 
+.knowledge-result,
+.knowledge-search-box,
+.knowledge-search-results {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.knowledge-result {
+  border-radius: 0.375rem;
+  border: 1px solid rgb(203 213 225);
+  background: rgb(255 255 255);
+  padding: 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: rgb(15 23 42);
+}
+
+.source-ref-list {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.source-ref-list span,
+.knowledge-search-result {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border-radius: 0.375rem;
+  background: rgb(96 115 95 / 0.1);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #60735f;
+}
+
+.knowledge-search-result {
+  display: grid;
+  gap: 0.2rem;
+  background: rgb(248 250 252);
+  color: rgb(51 65 85);
+}
+
+.knowledge-search-result span {
+  font-size: 0.68rem;
+  color: #60735f;
+}
+
+.error-note {
+  border-radius: 0.375rem;
+  background: rgb(212 93 63 / 0.1);
+  padding: 0.65rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.45;
+  color: #7f1d1d;
+}
+
 .resource-card {
   margin-top: 1rem;
   border-radius: 0.375rem;

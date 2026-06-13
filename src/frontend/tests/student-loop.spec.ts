@@ -7,6 +7,19 @@ test("student UI completes the current MVP learning loop", async ({ page }) => {
   await page.getByTestId("load-demo-button").click();
   await expect(page.getByText("Loaded").first()).toBeVisible();
 
+  await page.getByTestId("knowledge-title").fill("bfs-dfs-smoke.md");
+  await page
+    .getByTestId("knowledge-content")
+    .fill(
+      "# BFS and DFS\nBFS uses a queue to expand nodes level by level, so in an unweighted graph the first time a node is reached represents the fewest edges. DFS uses a stack or recursion to go deep first."
+    );
+  await page.getByTestId("import-knowledge-button").click();
+  await expect(page.getByTestId("knowledge-import-result")).toContainText("Document #");
+  await expect(page.getByTestId("knowledge-import-result")).toContainText("document:");
+  await page.getByTestId("knowledge-query").fill("BFS shortest path queue DFS stack");
+  await page.getByTestId("search-knowledge-button").click();
+  await expect(page.getByTestId("knowledge-search-results")).toContainText("document:");
+
   const profiles = page.getByTestId("profile-option");
   await expect(profiles).toHaveCount(3);
   await page
@@ -29,15 +42,16 @@ test("student UI completes the current MVP learning loop", async ({ page }) => {
   await page.getByTestId("generate-resource-button").click();
   await expect(page.getByTestId("coding-case-card")).toBeVisible();
 
-  await page.getByTestId("tutor-question").fill("How should I compare BFS and DFS before a quiz?");
+  await page.getByTestId("tutor-question").fill("How should I compare BFS and DFS shortest path queue stack before a quiz?");
   await page.getByTestId("ask-tutor-button").click();
   await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" })).toBeVisible();
+  await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" })).toContainText("document:");
 
   await page.getByTestId("generate-quiz-button").click();
   await expect(page.getByTestId("quiz-question")).toBeVisible();
   await page.getByTestId("quiz-answer").fill("Use BFS for level-order exploration and DFS for depth-first traversal.");
   await page.getByTestId("submit-answer-button").click();
-  await expect(page.getByText("Score")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Evaluator feedback" })).toBeVisible();
   await expect(page.getByTestId("evaluator-feedback")).toBeVisible();
   await expect(page.getByTestId("auto-profile-update")).toContainText("Agent step");
   await expect(page.getByTestId("profile-update-reason")).toContainText("Agent step");

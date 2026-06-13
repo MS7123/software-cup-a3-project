@@ -40,6 +40,8 @@ class RagRetrievalTests(unittest.TestCase):
             self.assertTrue(results)
             self.assertEqual(results[0]["source_ref"], f"document:{document['id']}#chunk:0")
             self.assertEqual(results[0]["metadata"]["retrieval_mode"], "keyword")
+            self.assertGreater(results[0]["metadata"]["term_match_count"], 0)
+            self.assertTrue(results[0]["metadata"]["matched_terms"])
 
             session = get_session_factory(self.database_url)()
             try:
@@ -65,6 +67,10 @@ class RagRetrievalTests(unittest.TestCase):
             tutor_body = tutor.json()
             self.assertTrue(tutor_body["answer"])
             self.assertEqual(tutor_body["source_refs"][0]["source_ref"], expected_source_ref)
+            tutor_run = client.get(f"/api/v1/agent-runs/{tutor_body['agent_run_id']}").json()
+            tutor_step = tutor_run["steps"][0]
+            self.assertIn(expected_source_ref, tutor_step["output_summary"])
+            self.assertIn(expected_source_ref, tutor_step["decision_basis"])
 
             resource = client.post(
                 "/api/v1/resources/generate",
@@ -74,6 +80,10 @@ class RagRetrievalTests(unittest.TestCase):
             resource_body = resource.json()
             self.assertTrue(resource_body["content"])
             self.assertEqual(resource_body["source_refs"][0]["source_ref"], expected_source_ref)
+            resource_run = client.get(f"/api/v1/agent-runs/{resource_body['agent_run_id']}").json()
+            resource_step = resource_run["steps"][0]
+            self.assertIn(expected_source_ref, resource_step["output_summary"])
+            self.assertIn(expected_source_ref, resource_step["decision_basis"])
 
     def test_search_returns_empty_results_without_matching_chunks_or_demo_seed(self) -> None:
         with TestClient(create_app()) as client:
@@ -83,6 +93,51 @@ class RagRetrievalTests(unittest.TestCase):
             )
             self.assertEqual(search.status_code, 200)
             self.assertEqual(search.json()["results"], [])
+
+            tutor = client.post(
+                "/api/v1/tutor/ask",
+                json={
+                    "student_profile_id": self.profile_id,
+                    "course_id": self.course_id,
+                    "question": "AVL rotation",
+                },
+            )
+            self.assertEqual(tutor.status_code, 200)
+            tutor_body = tutor.json()
+            self.assertEqual(tutor_body["source_refs"], [])
+            tutor_run = client.get(f"/api/v1/agent-runs/{tutor_body['agent_run_id']}").json()
+            self.assertIn("Grounded sources: none retrieved.", tutor_run["steps"][0]["decision_basis"])
+            self.assertNotIn("document:", tutor_run["steps"][0]["decision_basis"])
+
+    def test_keyword_retrieval_handles_stack_queue_and_ranks_specific_chunk_first(self) -> None:
+        with TestClient(create_app()) as client:
+            bfs_document = self._ingest_bfs_document(client)
+            stack_response = client.post(
+                f"/api/v1/courses/{self.course_id}/documents",
+                json={
+                    "title": "stack-queue-note.md",
+                    "source_type": "markdown",
+                    "content": (
+                        "# stack-queue\n"
+                        "Stack uses push and pop with last-in-first-out behavior. "
+                        "Queue uses enqueue and dequeue with first-in-first-out behavior. "
+                        "BFS relies on queue while DFS commonly relies on stack or recursion."
+                    ),
+                },
+            )
+            self.assertEqual(stack_response.status_code, 200)
+            stack_document = stack_response.json()["document"]
+
+            search = client.post(
+                "/api/v1/knowledge/search",
+                json={"course_id": self.course_id, "query": "stack queue push pop enqueue dequeue", "top_k": 2},
+            )
+            self.assertEqual(search.status_code, 200)
+            results = search.json()["results"]
+            self.assertGreaterEqual(len(results), 1)
+            self.assertEqual(results[0]["source_ref"], f"document:{stack_document['id']}#chunk:0")
+            self.assertNotEqual(results[0]["source_ref"], f"document:{bfs_document['id']}#chunk:0")
+            self.assertGreaterEqual(results[0]["metadata"]["term_match_count"], 4)
 
     def _ingest_bfs_document(self, client: TestClient) -> dict:
         response = client.post(
