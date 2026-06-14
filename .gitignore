@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+
+# Build artifacts
+build/
+dist/
+.build/
+.build-review/
+.build-verify/
+
+# Local runtime data
+data/demo.sqlite3
+
+# Frontend
+src/frontend/node_modules/
+src/frontend/dist/
+src/frontend/playwright-report/
+src/frontend/test-results/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+
+# Claude Code session data
+.claude/
+
+# Temporary files
+update1.md
