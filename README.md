@@ -72,6 +72,8 @@
 - RAG keyword retrieval 小优化：
   - search metadata 包含 `matched_terms`。
   - search metadata 包含 `term_match_count`。
+  - BFS/DFS 复合问题支持 anchor-aware coverage ranking，减少只召回 BFS 而漏掉 DFS chunk 的演示风险。
+  - Search UI 展示 `matched_terms`、`anchor_matches` 和 chunk 摘要，方便人工检查检索依据。
   - stack / queue、BFS / DFS 演示资料可用于手动检索验证。
 
 ### 已完成的 LLM 接入范围
@@ -233,7 +235,7 @@ cd ../..
 - frontend production build
 - Playwright browser smoke
 
-当前最近一次 Reviewer 验证结果：`47` 个后端测试通过，frontend build 通过，Playwright 主流程 smoke 通过。
+当前最近一次 Reviewer 验证结果：`54` 个后端测试通过，frontend build 通过，Playwright 主流程 smoke 通过。
 
 ## 真实 LLM 演示配置
 

@@ -212,6 +212,13 @@ button:disabled {
   color: #60735f;
 }
 
+.knowledge-search-excerpt {
+  margin: 0;
+  color: rgb(51 65 85);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .error-note {
   border-radius: 0.375rem;
   background: rgb(212 93 63 / 0.1);

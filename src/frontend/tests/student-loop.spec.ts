@@ -19,6 +19,8 @@ test("student UI completes the current MVP learning loop", async ({ page }) => {
   await page.getByTestId("knowledge-query").fill("BFS shortest path queue DFS stack");
   await page.getByTestId("search-knowledge-button").click();
   await expect(page.getByTestId("knowledge-search-results")).toContainText("document:");
+  await expect(page.getByTestId("knowledge-search-results")).toContainText("matched");
+  await expect(page.getByTestId("knowledge-search-results")).toContainText("BFS uses");
 
   const profiles = page.getByTestId("profile-option");
   await expect(profiles).toHaveCount(3);

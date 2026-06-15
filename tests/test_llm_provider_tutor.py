@@ -29,6 +29,14 @@ class FakeProvider:
         return LLMResult(content="这是来自模拟 LLM provider 的回答。", metadata={"provider": "fake"})
 
 
+class NoContextProvider:
+    def generate(self, messages, response_schema=None) -> LLMResult:
+        return LLMResult(
+            content="No retrieved course chunks are available, so I cannot answer.",
+            metadata={"provider": "fake"},
+        )
+
+
 class OpenAICompatibleHandler(BaseHTTPRequestHandler):
     request_payload: dict | None = None
     auth_header: str | None = None
@@ -154,6 +162,14 @@ class LLMProviderTutorTests(unittest.TestCase):
         self.assertIn("模拟 LLM provider", result.answer)
         self.assertTrue(result.source_refs)
         self.assertIn("LLMProvider adapter", result.decision_basis)
+
+    def test_llm_tutor_agent_falls_back_when_provider_denies_non_empty_context(self) -> None:
+        agent = LLMBackedTutorAgent(NoContextProvider())
+        result = agent.answer("Why compare BFS and DFS?", [_chunk()])
+        self.assertNotIn("No retrieved course chunks", result.answer)
+        self.assertTrue(result.source_refs)
+        self.assertIn("contradicted non-empty retrieved chunks", result.decision_basis)
+        self.assertIn("rule-based", result.output_summary)
 
     def test_llm_tutor_agent_falls_back_when_provider_fails(self) -> None:
         agent = LLMBackedTutorAgent(FakeProvider(fail=True))

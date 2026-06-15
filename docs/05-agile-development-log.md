@@ -944,3 +944,58 @@ Ready for commit：Yes。
 - 前端知识导入仍只支持文本粘贴，不支持 multipart 文件上传。
 - LLM + RAG Tutor 真实 provider 调用未纳入默认自动化测试，只提供手动验证文档。
 - keyword retrieval 仍不是 embedding retrieval，复杂语义同义表达仍可能漏召回。
+
+## 2026-06-15 增量：RAG-RECALL-001 检索覆盖优化
+
+### 目标
+
+根据 `docs/09-rag-retrieval-coverage-plan.md` 完成最小可演示增量：让真实 RAG 的 keyword retrieval 在 BFS/DFS 对比类问题中稳定召回 DFS chunk 与 compare chunk，并把检索证据展示到前端。
+
+### 核心功能
+
+- `KnowledgeBaseService.search()` 增加 anchor-aware retrieval：
+  - 识别 `bfs` / `dfs` 及其英文别名。
+  - metadata 返回 `anchor_matches`、`required_anchors`、`coverage_bucket`。
+  - 多 anchor 查询优先选择同时覆盖 required anchors 的 compare chunk，再补齐每个 anchor 的最佳 chunk，最后按 score 填满 `top_k`。
+- Tutor / Resource 检索范围从 `top_k=2` 调整为 `top_k=5`，减少复杂问题只拿到单一来源的风险。
+- Knowledge setup 搜索结果显示 backend 返回的证据字段：
+  - `source_ref`
+  - `score`
+  - `matched_terms`
+  - `anchor_matches`
+  - chunk content excerpt
+
+### 架构边界
+
+- 没有引入 embedding、VectorStore、PostgreSQL、rerank model 或文件上传解析。
+- 没有修改 API response schema，只扩展 `metadata` 内容。
+- 前端只展示后端 metadata，不在 UI 端重新计算 score 或检索排序。
+- 没有硬编码回答或 source_ref，source_ref 仍来自真实导入 document chunk。
+
+### 验证
+
+已运行：
+
+```text
+python -m unittest tests.test_rag_retrieval -v
+npm run build
+./scripts/verify.ps1
+```
+
+验证结果：
+
+- `tests.test_rag_retrieval` 10 个测试通过。
+- 完整 `verify.ps1` 通过：54 个 backend tests、frontend production build、Playwright smoke。
+- 首次 `verify.ps1` 因 Windows 上 `esbuild.exe` 被占用导致 `npm ci` 清理失败；结束项目 frontend 的 node/esbuild 进程后重跑通过。
+
+### 当前状态
+
+状态：已实现并通过完整验证。
+
+Ready for commit：Yes。
+
+### 已知限制
+
+- 当前 anchor 表只覆盖 BFS/DFS 这一个演示主题，后续需要扩展到 course concept alias 表或数据库维护的 synonym/alias 配置。
+- 检索仍是 keyword retrieval，不处理深层语义改写、跨语言同义表达或 embedding recall。
+- `npm ci` 在 Windows 上可能被正在运行的 Vite/esbuild 进程占用，需要先停止本地 frontend dev server 再跑完整 verify。

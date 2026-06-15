@@ -76,6 +76,17 @@ function sourceLabel(sourceRefs: Array<Record<string, unknown>>): string {
     .join(" / ");
 }
 
+function formatMetadataList(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return "none";
+  return value.map((item) => String(item)).join(", ");
+}
+
+function excerpt(text: string, maxLength = 160): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1)}...`;
+}
+
 function toErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return "Request failed";
@@ -358,7 +369,12 @@ export function App() {
                     {knowledgeSearchResults.map((result) => (
                       <div key={result.chunk_id ?? result.source_ref} className="knowledge-search-result">
                         <p>{result.source_ref}</p>
-                        <span>score {result.score ?? "n/a"}</span>
+                        <span>
+                          score {result.score ?? "n/a"} · matched{" "}
+                          {formatMetadataList(result.metadata?.matched_terms)} · anchors{" "}
+                          {formatMetadataList(result.metadata?.anchor_matches)}
+                        </span>
+                        <p className="knowledge-search-excerpt">{excerpt(result.content)}</p>
                       </div>
                     ))}
                   </div>

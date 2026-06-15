@@ -52,7 +52,7 @@ class ResourceService:
         chunks = KnowledgeBaseService(database_url=self.database_url).search(
             course_id,
             concept_slug,
-            top_k=2,
+            top_k=5,
         )
         result = self.agent.generate(concept_name, objective, resource_type, chunks, profile_preferences)
 

@@ -44,6 +44,18 @@ class LLMBackedTutorAgent:
             result = self.provider.generate(
                 build_tutor_messages(question, chunks, profile_summary, course_title),
             )
+            if chunks and _contradicts_retrieved_context(result.content):
+                fallback = self.fallback_agent.answer(question, chunks, profile_summary, course_title)
+                return TutorAgentResult(
+                    answer=fallback.answer,
+                    source_refs=fallback.source_refs,
+                    input_summary=fallback.input_summary,
+                    output_summary="LLM provider returned an ungrounded no-context answer, fell back to rule-based tutor answer.",
+                    decision_basis=(
+                        f"{fallback.decision_basis} "
+                        "Fallback reason: LLM answer contradicted non-empty retrieved chunks."
+                    ),
+                )
             return TutorAgentResult(
                 answer=result.content,
                 source_refs=source_refs,
@@ -71,3 +83,19 @@ def _fallback_reason(exc: Exception) -> str:
     if str(exc):
         return f"{type(exc).__name__}: {str(exc)[:240]}"
     return type(exc).__name__
+
+
+def _contradicts_retrieved_context(answer: str) -> bool:
+    normalized = answer.lower()
+    no_context_markers = [
+        "no retrieved course chunks",
+        "no retrieved chunks",
+        "no course chunks",
+        "insufficient retrieved",
+        "\u6ca1\u6709\u4efb\u4f55",
+        "\u6ca1\u6709\u68c0\u7d22\u5230",
+        "\u65e0\u6cd5\u4f9d\u636e\u8bfe\u7a0b\u6750\u6599",
+        "\u8d44\u6599\u4e0d\u8db3",
+        "\u7247\u6bb5\u4e0d\u8db3",
+    ]
+    return any(marker in normalized for marker in no_context_markers)
