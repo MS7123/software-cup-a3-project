@@ -24,7 +24,10 @@ def build_tutor_messages(
                 "If chunks partly answer the question, answer the supported parts and list only the missing parts. "
                 "If the chunks are insufficient, say what is missing instead of inventing facts. "
                 "Cite source refs inline using the source value shown for each chunk. "
-                "Keep the answer concise and include practical next-step advice."
+                "Use the student profile to adapt difficulty, practice style, and time-budget advice. "
+                "Return exactly three Markdown sections: "
+                "1. Direct answer; 2. Based on your current profile; 3. Grounded next step. "
+                "Keep the answer concise and avoid a generic opening."
             ),
         },
         {

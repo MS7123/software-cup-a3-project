@@ -999,3 +999,110 @@ Ready for commit：Yes。
 - 当前 anchor 表只覆盖 BFS/DFS 这一个演示主题，后续需要扩展到 course concept alias 表或数据库维护的 synonym/alias 配置。
 - 检索仍是 keyword retrieval，不处理深层语义改写、跨语言同义表达或 embedding recall。
 - `npm ci` 在 Windows 上可能被正在运行的 Vite/esbuild 进程占用，需要先停止本地 frontend dev server 再跑完整 verify。
+
+## 2026-06-15 增量：Demo UX and Tutor Agent Tuning
+
+### 目标
+
+根据 `docs/10-demo-ux-and-agent-tuning-plan.md` 完成 P0 组合增量：Tutor loading、Markdown 渲染、Tutor prompt 输出结构调优，并保留 RAG stability 回归。
+
+### 核心功能
+
+- Tutor 区域点击 `Ask tutor` 后立即显示 loading 状态，不遮挡已有 answer。
+- Tutor answer 和通用 Resource answer 改用 `react-markdown` 渲染 Markdown，不使用 `dangerouslySetInnerHTML`。
+- Markdown 样式覆盖标题、加粗、列表、inline code、code block 和段落换行。
+- Tutor prompt 调整为稳定三段输出：
+  - `Direct answer`
+  - `Based on your current profile`
+  - `Grounded next step`
+- Playwright smoke 增加 Tutor loading 和 Markdown container 断言。
+- 后端单测增加 prompt 结构约束检查，保留 LLM fallback guard 和 RAG coverage 回归。
+
+### 架构边界
+
+- 没有修改 `/api/v1/tutor/ask` request / response schema。
+- 没有让前端直接调用 LLM。
+- 没有引入新数据库、向量库或认证依赖。
+- LLM provider 仍通过 adapter 边界调用，失败时继续 fallback 到 rule-based Tutor。
+
+### 验证
+
+已运行：
+
+```text
+python -m unittest tests.test_rag_retrieval tests.test_llm_provider_tutor tests.test_backend_contracts -v
+npm run build
+python -m compileall -q src/backend tests
+./scripts/verify.ps1
+```
+
+验证结果：
+
+- targeted backend tests：25 passed。
+- 完整 `verify.ps1`：55 backend tests passed，frontend production build passed，Playwright smoke passed。
+- `npm install` / `verify.ps1` 仍提示 2 个 high severity npm audit warnings，未在本轮处理。
+
+### 当前状态
+
+状态：已实现并通过完整验证。
+
+Ready for commit：Yes。
+
+### 已知限制
+
+- Markdown rendering 只覆盖安全常用 Markdown，不启用 raw HTML。
+- Tutor loading 只展示请求进行中状态，不显示精确 elapsed timer。
+- Tutor prompt 是 prompt/orchestration tuning，不是 model fine-tuning。
+
+## 2026-06-15 增量：Markdown Math and Agent Loading Polish
+
+### 目标
+
+修复 demo 中 Markdown 已可渲染但数学公式仍显示为原始 `$...$` 的问题，并把 Tutor 已有的请求中提示扩展到其他核心 Agent 操作。
+
+### 核心功能
+
+- 前端 Markdown renderer 接入 `remark-math`、`rehype-katex` 和 `katex`，支持 inline math 与 display math。
+- `MarkdownBlock` 保持安全渲染路径，不启用 raw HTML。
+- 将 Tutor 专用 loading 组件抽成通用 `AgentLoading`。
+- Planner、Resource、Tutor、Quiz、Evaluator 请求中均显示统一 loading 提示。
+- Playwright smoke 覆盖 `.katex` 渲染结果和多 Agent loading 状态。
+
+### 架构边界
+
+- 没有修改 backend API/schema。
+- 没有修改数据库模型。
+- 没有改变 orchestrator / service / adapter 边界。
+- 本轮只增强 frontend presentation 与 smoke coverage。
+
+### 已知限制
+
+- KaTeX 会增加 frontend bundle 体积，`npm run build` 可能出现 Vite chunk size warning。
+- 当前公式渲染覆盖 Markdown math，不处理 raw HTML 中的公式。
+- loading 仍是请求级状态提示，不包含精确 elapsed timer 或 token streaming。
+
+## 2026-06-15 增量：Evaluation Profile Update Control
+
+### 目标
+
+修复提交 Quiz answer 后 UI 将画像更新阶段混同为 evaluator/quiz loading 的问题，并允许演示时控制是否在 evaluation 后自动更新学生画像。
+
+### 核心功能
+
+- 将提交答案流程拆成两个可见阶段：
+  - `Evaluator Agent is scoring the attempt...`
+  - `ProfileUpdater is updating the student profile...`
+- Quiz attempt 区域新增 `Auto-update profile after evaluation` 开关，默认开启。
+- 开关关闭时只显示 evaluator feedback，不自动调用 trace-based profile update。
+- smoke test 覆盖开关可切换、Evaluator loading、ProfileUpdater loading 与自动画像更新结果。
+
+### 架构边界
+
+- 没有修改 backend API/schema。
+- 没有新增数据库字段。
+- 没有改变 ProfileUpdater service 逻辑，只控制前端是否在 evaluation 后调用已有 `update-from-trace` API。
+
+### 已知限制
+
+- 当前开关状态仅保存在页面状态中，刷新后恢复默认开启。
+- ProfileUpdater 仍是请求级 loading，没有展示 trace 分析的内部步骤。

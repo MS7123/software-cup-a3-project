@@ -37,6 +37,15 @@ class NoContextProvider:
         )
 
 
+class PromptCaptureProvider:
+    def __init__(self) -> None:
+        self.messages = []
+
+    def generate(self, messages, response_schema=None) -> LLMResult:
+        self.messages = messages
+        return LLMResult(content="provider answer", metadata={"provider": "fake"})
+
+
 class OpenAICompatibleHandler(BaseHTTPRequestHandler):
     request_payload: dict | None = None
     auth_header: str | None = None
@@ -170,6 +179,21 @@ class LLMProviderTutorTests(unittest.TestCase):
         self.assertTrue(result.source_refs)
         self.assertIn("contradicted non-empty retrieved chunks", result.decision_basis)
         self.assertIn("rule-based", result.output_summary)
+
+    def test_llm_tutor_prompt_requires_stable_sections_profile_and_sources(self) -> None:
+        provider = PromptCaptureProvider()
+        agent = LLMBackedTutorAgent(provider)
+        agent.answer("Why compare BFS and DFS?", [_chunk()], "level=beginner; goal=quiz; time_budget=30m")
+
+        system_prompt = provider.messages[0]["content"]
+        user_prompt = provider.messages[1]["content"]
+        self.assertIn("Direct answer", system_prompt)
+        self.assertIn("Based on your current profile", system_prompt)
+        self.assertIn("Grounded next step", system_prompt)
+        self.assertIn("student profile", system_prompt.lower())
+        self.assertIn("source refs", system_prompt.lower())
+        self.assertIn("level=beginner", user_prompt)
+        self.assertIn("source=demo.md#graph-search", user_prompt)
 
     def test_llm_tutor_agent_falls_back_when_provider_fails(self) -> None:
         agent = LLMBackedTutorAgent(FakeProvider(fail=True))

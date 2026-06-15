@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import rehypeKatex from "rehype-katex";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
 
 import { api } from "./api/client";
 import type {
@@ -31,7 +35,8 @@ type BusyAction =
   | "generate-resource"
   | "ask-tutor"
   | "generate-quiz"
-  | "submit-attempt";
+  | "submit-attempt"
+  | "sync-profile";
 
 const profileLabels: Record<string, string> = {
   weak_foundation: "Foundation repair",
@@ -120,6 +125,7 @@ export function App() {
   const [attemptText, setAttemptText] = useState("");
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [autoProfileUpdate, setAutoProfileUpdate] = useState<string | null>(null);
+  const [autoProfileUpdateEnabled, setAutoProfileUpdateEnabled] = useState(true);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [busy, setBusy] = useState<BusyAction | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -229,6 +235,35 @@ export function App() {
     setKnowledgeError(null);
     const result = await api.searchKnowledge(status.course_id, knowledgeQuery, 3);
     setKnowledgeSearchResults(result.results);
+  }
+
+  async function submitQuizAttempt() {
+    if (!quiz || !selectedProfileId || !attemptText.trim()) return;
+
+    setBusy("submit-attempt");
+    setError(null);
+    setAutoProfileUpdate(null);
+    try {
+      const nextEvaluation = await api.submitAttempt(quiz.id, selectedProfileId, {
+        answer: attemptText
+      });
+      setEvaluation(nextEvaluation);
+      await appendRun(nextEvaluation.agent_run_id);
+
+      if (!autoProfileUpdateEnabled) {
+        setAutoProfileUpdate("Auto profile update is off. Use manual trace update when you want to sync the profile.");
+        return;
+      }
+
+      setBusy("sync-profile");
+      const nextProfile = await api.updateProfileFromTrace(selectedProfileId);
+      refreshSelectedProfile(nextProfile);
+      setAutoProfileUpdate(String(nextProfile.preferences.last_profile_update_reason ?? "Profile updated from trace."));
+    } catch (err) {
+      setError(toErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
   }
 
   useEffect(() => {
@@ -504,6 +539,13 @@ export function App() {
               >
                 {busy === "create-path" ? "Creating path" : "Create path"}
               </button>
+              {busy === "create-path" ? (
+                <AgentLoading
+                  testId="planner-loading"
+                  title="Planner Agent is creating a learning path..."
+                  detail="It is matching the selected profile, course graph, and goal into ordered path items."
+                />
+              ) : null}
             </div>
             <div className="mt-4 grid gap-3 xl:grid-cols-2">
               {pathItems.map((item) => (
@@ -556,6 +598,13 @@ export function App() {
               >
                 {busy === "generate-resource" ? "Generating resource" : "Generate selected resource"}
               </button>
+              {busy === "generate-resource" ? (
+                <AgentLoading
+                  testId="resource-loading"
+                  title="Resource Agent is generating a grounded asset..."
+                  detail="It is retrieving course chunks and formatting the selected resource type."
+                />
+              ) : null}
               {resource ? (
                 <ResourceOutputBlock resource={resource} source={sourceLabel(resource.source_refs)} />
               ) : (
@@ -585,6 +634,13 @@ export function App() {
               >
                 {busy === "ask-tutor" ? "Asking tutor" : "Ask tutor"}
               </button>
+              {busy === "ask-tutor" ? (
+                <AgentLoading
+                  testId="tutor-loading"
+                  title="Retrieving grounded context and waiting for Tutor response..."
+                  detail="Slow LLM calls will fall back to a rule-based answer with the same source refs."
+                />
+              ) : null}
               {answer ? (
                 <OutputBlock title="Tutor answer" text={answer.answer} source={sourceLabel(answer.source_refs)} />
               ) : (
@@ -611,6 +667,13 @@ export function App() {
               >
                 {busy === "generate-quiz" ? "Generating quiz" : "Generate quiz for selected concept"}
               </button>
+              {busy === "generate-quiz" ? (
+                <AgentLoading
+                  testId="quiz-loading"
+                  title="Quiz Agent is preparing an assessment item..."
+                  detail="It is grounding the question in the selected concept and course chunks."
+                />
+              ) : null}
 
               {quiz?.items[0] ? (
                 <div className="mt-4 space-y-3">
@@ -629,25 +692,41 @@ export function App() {
                     aria-label="Quiz answer"
                     placeholder="Type your answer and submit it to the evaluator."
                   />
+                  <label className="setting-toggle" data-testid="auto-profile-update-control">
+                    <input
+                      type="checkbox"
+                      data-testid="auto-profile-update-toggle"
+                      checked={autoProfileUpdateEnabled}
+                      disabled={busy !== null}
+                      onChange={(event) => setAutoProfileUpdateEnabled(event.target.checked)}
+                    />
+                    <span>
+                      <strong>Auto-update profile after evaluation</strong>
+                      <small>ProfileUpdater syncs the student profile from the latest agent trace when enabled.</small>
+                    </span>
+                  </label>
                   <button
                     className="primary-button"
                     data-testid="submit-answer-button"
                     disabled={!attemptText.trim() || busy !== null}
-                    onClick={() =>
-                      void runTask("submit-attempt", async () => {
-                        const nextEvaluation = await api.submitAttempt(quiz.id, selectedProfileId as number, {
-                          answer: attemptText
-                        });
-                        setEvaluation(nextEvaluation);
-                        await appendRun(nextEvaluation.agent_run_id);
-                        const nextProfile = await api.updateProfileFromTrace(selectedProfileId as number);
-                        refreshSelectedProfile(nextProfile);
-                        setAutoProfileUpdate(String(nextProfile.preferences.last_profile_update_reason ?? "Profile updated from trace."));
-                      })
-                    }
+                    onClick={() => void submitQuizAttempt()}
                   >
-                    {busy === "submit-attempt" ? "Submitting answer" : "Submit answer"}
+                    {busy === "submit-attempt" ? "Submitting answer" : busy === "sync-profile" ? "Updating profile" : "Submit answer"}
                   </button>
+                  {busy === "submit-attempt" ? (
+                    <AgentLoading
+                      testId="evaluator-loading"
+                      title="Evaluator Agent is scoring the attempt..."
+                      detail="It is comparing the answer with the quiz rubric and returning feedback."
+                    />
+                  ) : null}
+                  {busy === "sync-profile" ? (
+                    <AgentLoading
+                      testId="profile-update-loading"
+                      title="ProfileUpdater is updating the student profile..."
+                      detail="It is analyzing the latest learning trace after evaluation."
+                    />
+                  ) : null}
                 </div>
               ) : (
                 <EmptyState text="Generate a quiz after selecting a path node or concept." />
@@ -819,9 +898,46 @@ function OutputBlock({ title, text, source }: { title: string; text: string; sou
   return (
     <article className="mt-4 rounded-md border border-slate-200 bg-white p-4" data-testid="output-block">
       <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{text}</p>
+      <MarkdownBlock text={text} />
       <p className="mt-3 rounded-md bg-moss/10 px-3 py-2 text-xs font-semibold text-moss">Grounded source: {source}</p>
     </article>
+  );
+}
+
+function AgentLoading({ testId, title, detail }: { testId: string; title: string; detail: string }) {
+  return (
+    <div className="agent-loading" data-testid={testId} aria-live="polite">
+      <span className="agent-loading-dot" />
+      <div>
+        <p>{title}</p>
+        <span>{detail}</span>
+      </div>
+    </div>
+  );
+}
+
+function MarkdownBlock({ text }: { text: string }) {
+  return (
+    <div className="markdown-body" data-testid="markdown-body">
+      <ReactMarkdown
+        remarkPlugins={[remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          h1: ({ children }) => <h3>{children}</h3>,
+          h2: ({ children }) => <h3>{children}</h3>,
+          h3: ({ children }) => <h4>{children}</h4>,
+          p: ({ children }) => <p>{children}</p>,
+          ul: ({ children }) => <ul>{children}</ul>,
+          ol: ({ children }) => <ol>{children}</ol>,
+          li: ({ children }) => <li>{children}</li>,
+          code: ({ children }) => <code>{children}</code>,
+          pre: ({ children }) => <pre>{children}</pre>,
+          strong: ({ children }) => <strong>{children}</strong>
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
   );
 }
 
@@ -884,10 +1000,8 @@ function ResourceOutputBlock({ resource, source }: { resource: GeneratedResource
     return (
       <article className="resource-card resource-card-reading" data-testid="output-block">
         <ResourceHeader title="Extended reading" source={source} />
-        <div className="reading-plan" data-testid="reading-card">
-          {lines.map((line, index) => (
-            <p key={index}>{line}</p>
-          ))}
+        <div data-testid="reading-card">
+          <MarkdownBlock text={resource.content} />
         </div>
       </article>
     );
@@ -896,7 +1010,7 @@ function ResourceOutputBlock({ resource, source }: { resource: GeneratedResource
   return (
     <article className="resource-card resource-card-note" data-testid="output-block">
       <ResourceHeader title={title} source={source} />
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{resource.content}</p>
+      <MarkdownBlock text={resource.content} />
     </article>
   );
 }
