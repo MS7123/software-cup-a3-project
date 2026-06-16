@@ -22,7 +22,12 @@ class TutorService:
             if course is None:
                 raise NotFoundError("Course", course_id)
 
-        chunks = KnowledgeBaseService(database_url=self.database_url).search(course_id, question, top_k=5)
+        chunks = KnowledgeBaseService(database_url=self.database_url).search(
+            course_id,
+            question,
+            top_k=5,
+            owner_user_id=profile.user_id,
+        )
         profile_summary = f"type={profile.profile_type}; level={profile.level}; goal={profile.goal}; time_budget={profile.time_budget}"
         result = self.agent.answer(question, chunks, profile_summary, course.title)
         source_summary = source_ref_summary(result.source_refs)

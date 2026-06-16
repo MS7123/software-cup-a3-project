@@ -31,6 +31,10 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .field {
   width: 100%;
   border-radius: 0.375rem;
@@ -50,7 +54,8 @@ button:disabled {
 
 .primary-button,
 .action-button,
-.danger-button {
+.danger-button,
+.small-button {
   min-height: 2.75rem;
   border-radius: 0.375rem;
   padding: 0.7rem 1rem;
@@ -74,15 +79,26 @@ button:disabled {
   color: #fff7ed;
 }
 
+.small-button {
+  min-height: 2.15rem;
+  border: 1px solid rgb(203 213 225);
+  background: rgb(255 255 255);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.72rem;
+  color: rgb(51 65 85);
+}
+
 .primary-button:hover:not(:disabled),
 .action-button:hover:not(:disabled),
-.danger-button:hover:not(:disabled) {
+.danger-button:hover:not(:disabled),
+.small-button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
 .primary-button:disabled,
 .action-button:disabled,
-.danger-button:disabled {
+.danger-button:disabled,
+.small-button:disabled {
   opacity: 0.55;
 }
 
@@ -207,7 +223,10 @@ button:disabled {
 
 .knowledge-result,
 .knowledge-search-box,
-.knowledge-search-results {
+.knowledge-search-results,
+.document-management,
+.document-list,
+.file-upload-box {
   display: grid;
   gap: 0.65rem;
 }
@@ -256,6 +275,83 @@ button:disabled {
   color: rgb(51 65 85);
   font-size: 0.78rem;
   line-height: 1.5;
+}
+
+.document-management {
+  border-radius: 0.375rem;
+  border: 1px solid rgb(203 213 225);
+  background: rgb(255 255 255);
+  padding: 0.85rem;
+}
+
+.document-management-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: rgb(15 23 42);
+  font-size: 0.82rem;
+}
+
+.document-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: center;
+  border-radius: 0.375rem;
+  background: rgb(248 250 252);
+  padding: 0.65rem;
+}
+
+.document-row p,
+.document-row span,
+.document-empty {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.document-row p {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: rgb(15 23 42);
+}
+
+.document-row span,
+.document-empty {
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgb(100 116 139);
+}
+
+.document-actions {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.document-delete-button,
+.document-reindex-button {
+  min-height: 2rem;
+  border-radius: 0.375rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.document-delete-button {
+  background: rgb(254 242 242);
+  color: #7f1d1d;
+}
+
+.document-reindex-button {
+  border: 1px solid rgb(203 213 225);
+  background: rgb(255 255 255);
+  color: #17201b;
+}
+
+.document-delete-button:disabled,
+.document-reindex-button:disabled {
+  opacity: 0.5;
 }
 
 .error-note {

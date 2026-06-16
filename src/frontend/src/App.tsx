@@ -12,24 +12,29 @@ import type {
   ConceptGraph,
   DemoDataStatus,
   DocumentIngestionResponse,
+  DocumentReindexResponse,
   EvaluationResult,
   GeneratedResource,
   KnowledgeSearchResult,
   LearningFlow,
   LearningPathItem,
+  ManagedDocument,
   Quiz,
   StudentProfile,
   TutorAnswer
 } from "./api/types";
 
 type BusyAction =
-  | "boot"
   | "load-demo"
   | "reset-demo"
   | "build-profile"
   | "update-profile"
   | "delete-profile"
   | "import-knowledge"
+  | "upload-knowledge"
+  | "refresh-documents"
+  | "delete-document"
+  | "reindex-document"
   | "search-knowledge"
   | "create-path"
   | "generate-resource"
@@ -89,6 +94,17 @@ function excerpt(text: string, maxLength = 160): string {
   return `${normalized.slice(0, maxLength - 1)}...`;
 }
 
+function documentDisplayName(document: {
+  title: string;
+  file_name?: string | null;
+}): string {
+  return document.file_name || document.title || "Imported document";
+}
+
+function resultDisplayName(result: KnowledgeSearchResult): string {
+  return String(result.metadata?.filename ?? result.metadata?.source_title ?? result.source_ref ?? "Knowledge source");
+}
+
 function toErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return "Request failed";
@@ -110,7 +126,10 @@ export function App() {
     "# BFS and DFS\nBFS uses a queue to expand nodes level by level, so in an unweighted graph the first time a node is reached represents the fewest edges. DFS uses a stack or recursion to go deep first, which is better for traversal and backtracking but does not guarantee shortest paths."
   );
   const [knowledgeQuery, setKnowledgeQuery] = useState("BFS shortest path queue DFS");
+  const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null);
   const [knowledgeImportResult, setKnowledgeImportResult] = useState<DocumentIngestionResponse | null>(null);
+  const [knowledgeReindexResult, setKnowledgeReindexResult] = useState<DocumentReindexResponse | null>(null);
+  const [knowledgeDocuments, setKnowledgeDocuments] = useState<ManagedDocument[]>([]);
   const [knowledgeSearchResults, setKnowledgeSearchResults] = useState<KnowledgeSearchResult[]>([]);
   const [knowledgeError, setKnowledgeError] = useState<string | null>(null);
   const [flow, setFlow] = useState<LearningFlow | null>(null);
@@ -125,6 +144,7 @@ export function App() {
   const [autoProfileUpdateEnabled, setAutoProfileUpdateEnabled] = useState(true);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [busy, setBusy] = useState<BusyAction | null>(null);
+  const [booting, setBooting] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
@@ -149,7 +169,14 @@ export function App() {
     } catch (err) {
       const message = toErrorMessage(err);
       setError(message);
-      if (action === "import-knowledge" || action === "search-knowledge") {
+      if (
+        action === "import-knowledge" ||
+        action === "upload-knowledge" ||
+        action === "search-knowledge" ||
+        action === "refresh-documents" ||
+        action === "delete-document" ||
+        action === "reindex-document"
+      ) {
         setKnowledgeError(message);
       }
     } finally {
@@ -170,8 +197,11 @@ export function App() {
     if (nextStatus.course_id) {
       const nextGraph = await api.getCourseGraph(nextStatus.course_id);
       setGraph(nextGraph);
+      const nextDocuments = await api.listCourseDocuments(nextStatus.course_id);
+      setKnowledgeDocuments(nextDocuments);
     } else {
       setGraph(null);
+      setKnowledgeDocuments([]);
     }
   }
 
@@ -218,6 +248,7 @@ export function App() {
   async function importKnowledge() {
     if (!status?.course_id) return;
     setKnowledgeError(null);
+    setKnowledgeReindexResult(null);
     const result = await api.ingestCourseDocument(status.course_id, {
       title: knowledgeTitle,
       source_type: knowledgeSourceType,
@@ -225,6 +256,43 @@ export function App() {
     });
     setKnowledgeImportResult(result);
     setKnowledgeSearchResults([]);
+    await refreshKnowledgeDocuments();
+  }
+
+  async function uploadKnowledgeFile() {
+    if (!status?.course_id || !knowledgeFile) return;
+    setKnowledgeError(null);
+    setKnowledgeReindexResult(null);
+    const result = await api.uploadCourseDocument(status.course_id, knowledgeFile, {
+      title: knowledgeTitle.trim() || knowledgeFile.name,
+      visibility: "course"
+    });
+    setKnowledgeImportResult(result);
+    setKnowledgeSearchResults([]);
+    await refreshKnowledgeDocuments();
+  }
+
+  async function refreshKnowledgeDocuments() {
+    if (!status?.course_id) return;
+    setKnowledgeError(null);
+    const documents = await api.listCourseDocuments(status.course_id);
+    setKnowledgeDocuments(documents);
+  }
+
+  async function deleteKnowledgeDocument(documentId: number) {
+    if (!status?.course_id) return;
+    setKnowledgeError(null);
+    await api.deleteDocument(documentId);
+    setKnowledgeSearchResults([]);
+    setKnowledgeImportResult(null);
+    setKnowledgeReindexResult(null);
+    await refreshKnowledgeDocuments();
+  }
+
+  async function reindexKnowledgeDocument(documentId: number) {
+    setKnowledgeError(null);
+    const result = await api.reindexDocument(documentId);
+    setKnowledgeReindexResult(result);
   }
 
   async function searchKnowledge() {
@@ -264,7 +332,21 @@ export function App() {
   }
 
   useEffect(() => {
-    void runTask("boot", refreshBaseData);
+    let active = true;
+    setBooting(true);
+    setError(null);
+
+    refreshBaseData()
+      .catch((err) => {
+        if (active) setError(toErrorMessage(err));
+      })
+      .finally(() => {
+        if (active) setBooting(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (
@@ -323,7 +405,7 @@ export function App() {
             >
               {busy === "reset-demo" ? "Resetting demo" : "Reset user demo data"}
             </button>
-            <StatusLine busy={busy === "boot"} error={error} />
+            <StatusLine busy={booting} error={error} />
           </Panel>
 
           <Panel title="Knowledge setup" kicker="RAG import">
@@ -352,6 +434,32 @@ export function App() {
                 onChange={(event) => setKnowledgeContent(event.target.value)}
                 aria-label="Knowledge content"
               />
+              <div className="file-upload-box">
+                <input
+                  className="field"
+                  data-testid="knowledge-file"
+                  type="file"
+                  accept=".txt,.md,.markdown,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setKnowledgeFile(file);
+                    if (file) setKnowledgeTitle(file.name);
+                  }}
+                  aria-label="Knowledge file upload"
+                />
+                <button
+                  className="action-button w-full"
+                  data-testid="upload-knowledge-button"
+                  disabled={!status?.course_id || !knowledgeFile || busy !== null}
+                  onClick={() =>
+                    void runTask("upload-knowledge", async () => {
+                      await uploadKnowledgeFile();
+                    })
+                  }
+                >
+                  {busy === "upload-knowledge" ? "Uploading file" : "Upload selected file"}
+                </button>
+              </div>
               <button
                 className="action-button w-full"
                 data-testid="import-knowledge-button"
@@ -366,16 +474,85 @@ export function App() {
               </button>
               {knowledgeImportResult ? (
                 <div className="knowledge-result" data-testid="knowledge-import-result">
+                  <p>{documentDisplayName(knowledgeImportResult.document)}</p>
                   <p>
-                    Document #{knowledgeImportResult.document.id} / {knowledgeImportResult.chunk_count} chunks
+                    Imported / {knowledgeImportResult.chunk_count} chunks / {knowledgeImportResult.document.source_type} /{" "}
+                    {knowledgeImportResult.document.parser_name ?? "parser n/a"}
                   </p>
-                  <div className="source-ref-list">
-                    {knowledgeImportResult.chunks.slice(0, 3).map((chunk) => (
-                      <span key={chunk.id}>{chunk.source_ref}</span>
-                    ))}
-                  </div>
                 </div>
               ) : null}
+              {knowledgeReindexResult ? (
+                <div className="knowledge-result" data-testid="knowledge-reindex-result">
+                  <p>
+                    Reindex complete: indexed {knowledgeReindexResult.indexed}, skipped {knowledgeReindexResult.skipped}, failed{" "}
+                    {knowledgeReindexResult.failed}
+                  </p>
+                  <span>{knowledgeReindexResult.message}</span>
+                </div>
+              ) : null}
+              <div className="document-management" data-testid="document-management">
+                <div className="document-management-header">
+                  <strong>Documents</strong>
+                  <button
+                    className="small-button"
+                    data-testid="refresh-documents-button"
+                    disabled={!status?.course_id || busy !== null}
+                    onClick={() =>
+                      void runTask("refresh-documents", async () => {
+                        await refreshKnowledgeDocuments();
+                      })
+                    }
+                  >
+                    {busy === "refresh-documents" ? "Refreshing" : "Refresh"}
+                  </button>
+                </div>
+                {knowledgeDocuments.length > 0 ? (
+                  <div className="document-list" data-testid="document-list">
+                    {knowledgeDocuments.map((document) => (
+                      <div className="document-row" data-testid="document-row" key={document.id}>
+                        <div>
+                          <p>{documentDisplayName(document)}</p>
+                          <span>
+                            {document.source_type} / {document.chunk_count} chunks / {document.status}
+                            {document.visibility ? ` / ${document.visibility}` : ""}
+                          </span>
+                          <span className="hidden">
+                            #{document.id} / {document.source_type} / {document.chunk_count} chunks / {document.status}
+                          </span>
+                        </div>
+                        <div className="document-actions">
+                          <button
+                            className="document-reindex-button"
+                            data-testid="reindex-document-button"
+                            disabled={busy !== null || document.status === "deleted"}
+                            onClick={() =>
+                              void runTask("reindex-document", async () => {
+                                await reindexKnowledgeDocument(document.id);
+                              })
+                            }
+                          >
+                            {busy === "reindex-document" ? "Indexing" : "Reindex"}
+                          </button>
+                          <button
+                            className="document-delete-button"
+                            data-testid="delete-document-button"
+                            disabled={busy !== null || document.status === "deleted" || document.source_type === "seed"}
+                            onClick={() =>
+                              void runTask("delete-document", async () => {
+                                await deleteKnowledgeDocument(document.id);
+                              })
+                            }
+                          >
+                            {busy === "delete-document" ? "Deleting" : "Delete"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="document-empty" data-testid="document-empty">No documents loaded for this course.</p>
+                )}
+              </div>
               <div className="knowledge-search-box">
                 <input
                   className="field"
@@ -400,7 +577,7 @@ export function App() {
                   <div className="knowledge-search-results" data-testid="knowledge-search-results">
                     {knowledgeSearchResults.map((result) => (
                       <div key={result.chunk_id ?? result.source_ref} className="knowledge-search-result">
-                        <p>{result.source_ref}</p>
+                        <p>{resultDisplayName(result)}</p>
                         <span>
                           score {formatScore(result.score)} · mode {String(result.metadata?.retrieval_mode ?? "n/a")} ·
                           vector {formatScore(result.metadata?.vector_score)} · rerank {formatScore(result.metadata?.rerank_score)} · matched{" "}

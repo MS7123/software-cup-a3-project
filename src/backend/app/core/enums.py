@@ -24,6 +24,7 @@ class ProcessingStatus(StrEnum):
     running = "running"
     completed = "completed"
     failed = "failed"
+    deleted = "deleted"
 
 
 class LearningPathStatus(StrEnum):

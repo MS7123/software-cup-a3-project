@@ -67,6 +67,8 @@ export interface DocumentIngestionRequest {
   title: string;
   source_type: "text" | "markdown";
   content: string;
+  visibility?: "course" | "demo" | "private";
+  owner_user_id?: number | null;
 }
 
 export interface DocumentIngestionResponse {
@@ -77,9 +79,40 @@ export interface DocumentIngestionResponse {
     source_type: string;
     status: string;
     created_at: string | null;
+    visibility: string;
+    owner_user_id: number | null;
+    file_name: string | null;
+    mime_type: string | null;
+    file_size: number | null;
+    parser_name: string | null;
   };
   chunks: DocumentChunk[];
   chunk_count: number;
+}
+
+export interface ManagedDocument {
+  id: number;
+  course_id: number;
+  title: string;
+  source_type: string;
+  status: string;
+  created_at: string | null;
+  chunk_count: number;
+  visibility: string;
+  owner_user_id: number | null;
+  file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  parser_name: string | null;
+}
+
+export interface DocumentReindexResponse {
+  document_id: number;
+  indexed: number;
+  skipped: number;
+  failed: number;
+  enabled: boolean;
+  message: string;
 }
 
 export interface KnowledgeSearchResult {

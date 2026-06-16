@@ -38,12 +38,14 @@ class ResourceService:
             concept_slug = concept.slug
             profile = session.get(StudentProfile, profile_id)
             profile_preferences = profile.preferences if profile is not None and isinstance(profile.preferences, dict) else {}
+            owner_user_id = profile.user_id if profile is not None else None
 
         resource_query = f"{concept_name} {concept_slug} {objective}"
         chunks = KnowledgeBaseService(database_url=self.database_url).search(
             course_id,
             resource_query,
             top_k=5,
+            owner_user_id=owner_user_id,
         )
         result = self.agent.generate(concept_name, objective, resource_type, chunks, profile_preferences)
 

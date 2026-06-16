@@ -16,12 +16,13 @@
 
 ## 当前工作进度
 
-当前分支处于个人敏捷开发模式下的 Phase 2 / Phase 3 交界：
+当前分支处于个人敏捷开发模式下的 RAG Phase 5 演示增强阶段：
 
-- Phase 2：补齐核心智能能力，尤其是真实 LLM opt-in、画像构建、资源生成、评价反馈。
-- Phase 3：优化演示体验，让评委能直观看到 Multi-Agent 协作、个性化和 Agent trace。
+- Phase 2：核心智能能力已基本补齐，包括真实 LLM opt-in、画像构建、资源生成、评价反馈。
+- Phase 3 / Phase 4：RAG reranking、citation quality、source panel 和 Agent trace 证据展示已完成。
+- Phase 5：知识库管理最小闭环已完成，包括 document list、文件上传、PDF / Word 文本解析、删除、reindex 和 scope filter。
 
-截至 2026-06-13，当前分支已具备以下可演示能力。
+截至 2026-06-17，当前分支已具备以下可演示能力。
 
 ### 已完成的主流程能力
 
@@ -65,16 +66,27 @@
   - grounded source 展示
 - 真实 RAG 第一阶段闭环：
   - 前端 `Knowledge setup` 可粘贴 `text` / `markdown` 课程资料。
+  - 前端可上传 `.txt`、`.md`、`.pdf`、`.docx` 资料。
   - 后端创建 `documents` / `document_chunks`。
   - `KnowledgeBaseService.search()` 基于真实导入 chunk 做 keyword retrieval。
   - Tutor / Resource response 保留真实 `source_refs`。
   - Agent trace 可展示具体 `document:{id}#chunk:{index}` 来源。
-- RAG keyword retrieval 小优化：
+- RAG 检索与证据增强：
   - search metadata 包含 `matched_terms`。
   - search metadata 包含 `term_match_count`。
   - BFS/DFS 复合问题支持 anchor-aware coverage ranking，减少只召回 BFS 而漏掉 DFS chunk 的演示风险。
+  - SQLite + Python cosine similarity 的 hybrid retrieval 已作为 opt-in 能力提供。
+  - Rule-based reranking 已作为 opt-in 能力提供。
+  - Tutor / Resource answer 可展示 grounded source panel、excerpt、score、retrieval mode 和 rerank reason。
   - Search UI 展示 `matched_terms`、`anchor_matches` 和 chunk 摘要，方便人工检查检索依据。
   - stack / queue、BFS / DFS 演示资料可用于手动检索验证。
+- RAG Phase 5 知识库管理：
+  - 页面可查看当前课程 document list。
+  - 支持刷新 document list。
+  - 支持删除非 seed document，删除后新检索不再召回旧 chunks。
+  - 支持对单个 document 触发 reindex；embedding 未启用时返回 disabled result，不影响 keyword retrieval。
+  - 支持 course/demo 与 private document 的最小 scope filter。
+  - PDF 使用 `pypdf` 提取文本，Word 使用 `python-docx` 提取段落和表格文本。
 
 ### 已完成的 LLM 接入范围
 
@@ -96,6 +108,8 @@
 - Backend：`FastAPI + Pydantic + SQLAlchemy`
 - 当前演示数据库：`SQLite`
 - 架构目标数据库：`PostgreSQL`
+- 默认向量检索：`SQLite + Python cosine similarity`
+- 后续增强向量检索：`pgvector`
 - Agent trace：`agent_runs` / `agent_run_steps`
 - LLM 边界：OpenAI-compatible `LLMProvider`
 - 当前验证：Python unit tests + frontend build + Playwright smoke
@@ -115,6 +129,11 @@
 - `POST /api/v1/student-profiles/{profile_id}/update-from-trace`
 - `GET /api/v1/courses/{course_id}/graph`
 - `POST /api/v1/courses/{course_id}/documents`
+- `POST /api/v1/courses/{course_id}/documents/upload`
+- `GET /api/v1/courses/{course_id}/documents`
+- `GET /api/v1/documents/{document_id}`
+- `DELETE /api/v1/documents/{document_id}`
+- `POST /api/v1/documents/{document_id}/reindex`
 - `GET /api/v1/documents/{document_id}/chunks`
 - `POST /api/v1/knowledge/search`
 - `POST /api/v1/learning-paths`
@@ -131,8 +150,10 @@
 
 ### 核心能力
 
-- PDF / Word / PPT 等文件上传和解析。
-- pgvector / production-grade vector index / reranker 检索链路。
+- PPT 文件上传和解析。
+- 扫描版 PDF OCR。
+- pgvector / production-grade vector index 检索链路。
+- 生产级 reranker 或 cross-encoder reranker。
 - Tutor / Resource 对复杂真实课程资料的更强 grounded generation。
 - 视频、动画或真实图片类资源生成。
 - 长期学习历史压缩和跨 session 动态画像建模。
@@ -140,7 +161,7 @@
 
 ### 工程与部署
 
-- PostgreSQL migration 和正式数据库初始化脚本。
+- PostgreSQL migration、pgvector 和正式数据库初始化脚本。
 - Redis/RQ 或等价任务队列。
 - 生产级配置、日志、安全和运维脚本。
 - CI/CD。
@@ -235,7 +256,7 @@ cd ../..
 - frontend production build
 - Playwright browser smoke
 
-当前最近一次 Reviewer 验证结果：`54` 个后端测试通过，frontend build 通过，Playwright 主流程 smoke 通过。
+当前最近一次 Reviewer 验证结果会记录在 `docs/05-agile-development-log.md` 和 `reviews/` 下的 review log 中。
 
 ## 真实 LLM 演示配置
 
@@ -295,23 +316,26 @@ $env:LLM_FALLBACK_MODE='rule_based'
 1. 运行 `./scripts/run-local.ps1`。
 2. 打开 frontend 地址。
 3. 点击 `Reset user demo data`，回到干净演示状态。
-4. 在 `Knowledge setup` 粘贴一段 `text` / `markdown` 课程资料并导入。
-5. 查看 `document_id`、`chunk_count` 和 `source_ref`。
-6. 可选使用 `Search imported chunks` 验证检索命中。
-7. 输入自然语言学习目标，生成学生画像。
-8. 查看 6 维画像。
-9. 创建学习路径。
-10. 切换 5 类资源并生成至少 2 类资源。
-11. 向 Tutor 提问，并观察 grounded source。
-12. 生成 Quiz 并提交答案。
-13. 查看 Evaluator 反馈和自动画像更新。
-14. 查看 Agent trace 时间线中的具体 grounded sources。
+4. 在 `Knowledge setup` 粘贴一段 `text` / `markdown` 课程资料并导入，或上传 `.txt` / `.md` / `.pdf` / `.docx` 资料。
+5. 查看 document list、`chunk_count`、parser、status 和 source panel。
+6. 可选点击 `Reindex`，在默认无 embedding 配置时应看到 disabled result，keyword retrieval 仍可用。
+7. 可选使用 `Search imported chunks` 验证检索命中。
+8. 可选删除非 seed document，再次搜索确认旧资料不再被召回。
+9. 输入自然语言学习目标，生成学生画像。
+10. 查看 6 维画像。
+11. 创建学习路径。
+12. 切换 5 类资源并生成至少 2 类资源。
+13. 向 Tutor 提问，并观察 grounded source。
+14. 生成 Quiz 并提交答案。
+15. 查看 Evaluator 反馈和自动画像更新。
+16. 查看 Agent trace 时间线中的具体 grounded sources。
 
 ## 重要边界
 
 - 当前 SQLite 只用于本地开发和比赛演示，不代表正式数据库方向。
-- 当前真实资料导入仅支持 `text` / `markdown` 粘贴，不代表完整文件上传解析平台。
+- 当前真实资料导入支持 `text` / `markdown` 粘贴和 `.txt` / `.md` / `.pdf` / `.docx` 文件上传，但不支持 OCR 和 PPT。
 - 当前 RAG 默认使用 SQLite keyword retrieval；SQLite cosine hybrid retrieval 已作为显式 opt-in 能力提供，不代表 pgvector 或生产级向量索引已完成。
+- 当前知识库 private scope 使用 `owner_user_id` 最小实现，尚未接入正式认证 session。
 - 默认 rule-based fallback 是演示稳定性保障，不等同于完整智能能力。
 - 真实 LLM 需要显式配置 API key 和开关；默认验证不依赖网络。
 - 生图接口目前只是 adapter contract 预留，不是已完成的图片生成能力。

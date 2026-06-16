@@ -2,9 +2,10 @@ import json
 import math
 import os
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.adapters.protocols import EmbeddingProvider
+from app.db.schema_compat import ensure_document_columns
 from app.db.session import session_scope
 from app.models import ChunkEmbedding, Document, DocumentChunk
 from app.schemas import KnowledgeSearchResult
@@ -23,22 +24,37 @@ class SQLiteVectorSearchService:
         self.provider = provider
         self.max_candidates = max_candidates or _int_from_env("RAG_VECTOR_MAX_CANDIDATES", 1000)
 
-    def search(self, course_id: int, query: str, top_k: int) -> list[KnowledgeSearchResult]:
+    def search(
+        self,
+        course_id: int,
+        query: str,
+        top_k: int,
+        owner_user_id: int | None = None,
+    ) -> list[KnowledgeSearchResult]:
         if self.provider is None or top_k <= 0:
             return []
         query_vector = self.provider.embed(query).vector
         if not query_vector:
             return []
 
+        ensure_document_columns(self.database_url)
         with session_scope(self.database_url) as session:
-            rows = session.execute(
+            statement = (
                 select(DocumentChunk, ChunkEmbedding, Document)
                 .join(Document, Document.id == DocumentChunk.document_id)
                 .join(ChunkEmbedding, ChunkEmbedding.chunk_id == DocumentChunk.id)
                 .where(Document.course_id == course_id)
+                .where(Document.status != "deleted")
                 .order_by(ChunkEmbedding.id.desc())
                 .limit(max(1, self.max_candidates))
-            ).all()
+            )
+            if owner_user_id is None:
+                statement = statement.where(Document.visibility.in_(["course", "demo"]))
+            else:
+                statement = statement.where(
+                    or_(Document.visibility.in_(["course", "demo"]), Document.owner_user_id == owner_user_id)
+                )
+            rows = session.execute(statement).all()
 
             ranked: list[KnowledgeSearchResult] = []
             for chunk, embedding, document in rows:

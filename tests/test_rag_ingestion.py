@@ -88,6 +88,52 @@ class RagIngestionTests(unittest.TestCase):
             finally:
                 session.close()
 
+    def test_duplicate_document_ingestion_reuses_existing_active_document(self) -> None:
+        with TestClient(create_app()) as client:
+            client.post("/api/v1/demo-data/load")
+            course_id = client.get("/api/v1/demo-data/status").json()["course_id"]
+            payload = {
+                "title": "bfs-duplicate.md",
+                "source_type": "markdown",
+                "content": "# BFS\nBFS uses a queue for shortest path.",
+            }
+
+            first = client.post(f"/api/v1/courses/{course_id}/documents", json=payload)
+            second = client.post(f"/api/v1/courses/{course_id}/documents", json=payload)
+
+            self.assertEqual(first.status_code, 200)
+            self.assertEqual(second.status_code, 200)
+            self.assertEqual(first.json()["document"]["id"], second.json()["document"]["id"])
+
+            listing = client.get(f"/api/v1/courses/{course_id}/documents")
+            matching = [document for document in listing.json() if document["title"] == "bfs-duplicate.md"]
+            self.assertEqual(len(matching), 1)
+
+    def test_reimport_deleted_duplicate_restores_existing_document_id(self) -> None:
+        with TestClient(create_app()) as client:
+            client.post("/api/v1/demo-data/load")
+            course_id = client.get("/api/v1/demo-data/status").json()["course_id"]
+            payload = {
+                "title": "bfs-restore.md",
+                "source_type": "markdown",
+                "content": "# BFS\nBFS uses a queue for shortest path.",
+            }
+
+            first = client.post(f"/api/v1/courses/{course_id}/documents", json=payload)
+            document_id = first.json()["document"]["id"]
+            delete = client.delete(f"/api/v1/documents/{document_id}")
+            second = client.post(f"/api/v1/courses/{course_id}/documents", json=payload)
+
+            self.assertEqual(delete.status_code, 204)
+            self.assertEqual(second.status_code, 200)
+            self.assertEqual(second.json()["document"]["id"], document_id)
+            self.assertEqual(second.json()["document"]["status"], "completed")
+
+            listing = client.get(f"/api/v1/courses/{course_id}/documents")
+            matching = [document for document in listing.json() if document["title"] == "bfs-restore.md"]
+            self.assertEqual(len(matching), 1)
+            self.assertEqual(matching[0]["id"], document_id)
+
     def test_document_chunks_endpoint_returns_404_for_missing_document(self) -> None:
         with TestClient(create_app()) as client:
             response = client.get("/api/v1/documents/999999/chunks")

@@ -96,6 +96,8 @@ class ConceptGraphResponse(BaseModel):
 class DocumentCreate(BaseModel):
     title: str
     source_type: str
+    visibility: str = "course"
+    owner_user_id: int | None = None
 
 
 class DocumentIngestionRequest(DocumentCreate):
@@ -109,6 +111,16 @@ class DocumentResponse(DocumentCreate):
     course_id: int
     status: ProcessingStatus
     created_at: datetime | None = None
+    visibility: str = "course"
+    owner_user_id: int | None = None
+    file_name: str | None = None
+    mime_type: str | None = None
+    file_size: int | None = None
+    parser_name: str | None = None
+
+
+class DocumentManagementResponse(DocumentResponse):
+    chunk_count: int = 0
 
 
 class DocumentChunkResponse(BaseModel):
@@ -129,10 +141,20 @@ class DocumentIngestionResponse(BaseModel):
     chunk_count: int
 
 
+class DocumentReindexResponse(BaseModel):
+    document_id: int
+    indexed: int
+    skipped: int
+    failed: int
+    enabled: bool
+    message: str
+
+
 class KnowledgeSearchRequest(BaseModel):
     course_id: int
     query: str
     top_k: int = Field(default=5, ge=1, le=20)
+    owner_user_id: int | None = None
 
 
 class KnowledgeSearchResult(BaseModel):

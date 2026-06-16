@@ -73,6 +73,12 @@ class Document(TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     source_type: Mapped[str] = mapped_column(String(80), nullable=False)
     status: Mapped[str] = mapped_column(String(40), nullable=False)
+    visibility: Mapped[str] = mapped_column(String(40), default="course", nullable=False)
+    owner_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file_name: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parser_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document")
 

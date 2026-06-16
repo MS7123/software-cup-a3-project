@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.adapters.protocols import EmbeddingProvider
 from app.db.base import Base
+from app.db.schema_compat import ensure_document_columns
 from app.db.session import get_engine, session_scope
 from app.models import ChunkEmbedding, Document, DocumentChunk
 
@@ -31,21 +32,33 @@ class EmbeddingIndexService:
         self.model = model
 
     def index_course(self, course_id: int) -> EmbeddingIndexResult:
+        return self._index_chunks(course_id=course_id, document_id=None)
+
+    def index_document(self, document_id: int) -> EmbeddingIndexResult:
+        return self._index_chunks(course_id=None, document_id=document_id)
+
+    def _index_chunks(self, course_id: int | None, document_id: int | None) -> EmbeddingIndexResult:
         if self.provider is None:
             return EmbeddingIndexResult(indexed=0, skipped=0, failed=0)
 
         Base.metadata.create_all(get_engine(self.database_url))
+        ensure_document_columns(self.database_url)
         indexed = 0
         skipped = 0
         failed = 0
 
         with session_scope(self.database_url) as session:
-            chunks = session.scalars(
+            statement = (
                 select(DocumentChunk)
                 .join(Document, Document.id == DocumentChunk.document_id)
-                .where(Document.course_id == course_id)
+                .where(Document.status != "deleted")
                 .order_by(DocumentChunk.id)
-            ).all()
+            )
+            if course_id is not None:
+                statement = statement.where(Document.course_id == course_id)
+            if document_id is not None:
+                statement = statement.where(Document.id == document_id)
+            chunks = session.scalars(statement).all()
 
             for chunk in chunks:
                 content_hash = self.content_hash(chunk.content)

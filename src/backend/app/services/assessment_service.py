@@ -35,11 +35,13 @@ class AssessmentService:
             concept_name = concept.name
             concept_slug = concept.slug
             course_id = concept.course_id
+            owner_user_id = profile.user_id
 
         chunks = KnowledgeBaseService(database_url=self.database_url).search(
             course_id,
             concept_slug,
             top_k=1,
+            owner_user_id=owner_user_id,
         )
         result = self.quiz_agent.generate(concept_name, difficulty, chunks[0] if chunks else None)
 

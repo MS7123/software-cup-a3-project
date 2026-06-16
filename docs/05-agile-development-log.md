@@ -1163,3 +1163,67 @@ Ready for commit：Yes。
 - 当前 reranker 是 rule-based，适合 demo 可解释排序，不等价于语义 cross-encoder rerank。
 - Citation coverage check 只做轻量正则检查，不做句级 claim-source 对齐。
 - Source panel 展示前 5 个来源，完整知识库 source browser 留给后续管理后台阶段。
+
+## 2026-06-16 增量：RAG Knowledge Management Phase 5
+
+### 目标
+
+根据 `docs/15-rag-knowledge-management-plan.md` 完成知识库管理最小闭环：页面可查看课程 documents、刷新列表、删除非 seed document，并保证删除后新检索不再命中旧 chunks。
+
+### 核心功能
+
+- 新增 `DocumentManagementService`，负责 document list、detail、soft delete。
+- 新增 API：`GET /api/v1/courses/{course_id}/documents`、`GET /api/v1/documents/{document_id}`、`DELETE /api/v1/documents/{document_id}`。
+- `ProcessingStatus` 增加 `deleted`，删除使用 soft delete，保留历史 trace 中的 `source_ref` 字符串。
+- `KnowledgeBaseService` 和 `SQLiteVectorSearchService` 只检索 `completed` document。
+- `DocumentIngestionService.list_chunks()` 对 deleted document 返回 404，避免删除后继续浏览 chunk 原文。
+- 前端 Knowledge setup 新增 document list、Refresh、Delete 和 empty state。
+
+### 架构边界
+
+- 没有修改 Tutor / Resource / Quiz / Evaluator API contract。
+- 没有引入 PostgreSQL、pgvector 或新向量库。
+- 没有在 frontend 或 API handler 中实现 parser / chunking / retrieval scoring。
+- seed document 使用 `source_type=seed` 保护，不允许删除。
+
+### 已知限制
+
+- 该小增量后已继续完成 multipart file upload、PDF / Word parser、private scope 和 reindex API。
+- 删除是 soft delete，历史记录仍显示原 `source_ref`，但不再反查 deleted chunk 原文。
+
+## 2026-06-16 增量：RAG Knowledge Management Phase 5 Completion
+
+### 目标
+
+完成 `docs/15-rag-knowledge-management-plan.md` 中剩余开发阶段：multipart upload、PDF/Word parser、course/private scope、document reindex control 和前端知识库管理入口。
+
+### 核心功能
+
+- 新增 `POST /api/v1/courses/{course_id}/documents/upload`，支持 `.txt`、`.md`、`.pdf`、`.docx` 文件上传。
+- 扩展 backend parser adapter：PDF 使用 `pypdf` 提取文本，Word 使用 `python-docx` 提取段落和表格文本；扫描版 PDF 返回明确 no OCR error。
+- `Document` 增加 `visibility`、`owner_user_id`、`file_name`、`mime_type`、`file_size`、`parser_name` 字段，并用 schema compatibility helper 兼容既有 SQLite。
+- `KnowledgeBaseService` 和 `SQLiteVectorSearchService` 支持 course/demo 与 owner private scope 过滤。
+- 新增 `POST /api/v1/documents/{document_id}/reindex`，embedding 关闭时返回 disabled result，不影响 keyword retrieval。
+- 前端 Knowledge setup 增加 file upload、document reindex、upload/reindex loading/error/result 展示。
+
+### 验证
+
+已运行：
+
+```text
+python -m unittest tests.test_document_management tests.test_document_upload tests.test_document_scope tests.test_rag_ingestion tests.test_rag_retrieval tests.test_vector_retrieval tests.test_backend_contracts -v
+npm run build  # from src/frontend
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
+```
+
+验证结果：
+- backend targeted regression：35 tests passed。
+- frontend production build：passed。
+- full verification：Python compile、81 backend tests、pip check、backend wheel build、frontend dependency install、frontend production build、Playwright smoke passed。
+- 首次完整验证因 Windows 锁定 project-local `esbuild.exe` 导致 `npm ci` 无法删除文件；停止相关 `node/esbuild` 进程后重跑通过，非代码缺陷。
+
+### 已知限制
+
+- 默认仍使用 SQLite，不引入 PostgreSQL / pgvector。
+- PDF 不支持 OCR，扫描版 PDF 会返回明确错误。
+- private scope 使用 `owner_user_id` 最小实现，后续正式认证接入后可替换为 session/auth user。

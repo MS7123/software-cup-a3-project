@@ -2,8 +2,9 @@ import os
 import re
 
 from app.adapters.embedding_provider import EmbeddingSettings, build_embedding_provider
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
+from app.db.schema_compat import ensure_document_columns
 from app.db.session import session_scope
 from app.models import Document, DocumentChunk
 from app.schemas import KnowledgeSearchResult
@@ -39,33 +40,54 @@ class KnowledgeBaseService:
         self.database_url = database_url
         self.embedding_provider = embedding_provider
 
-    def search(self, course_id: int, query: str, top_k: int) -> list[KnowledgeSearchResult]:
+    def search(
+        self,
+        course_id: int,
+        query: str,
+        top_k: int,
+        owner_user_id: int | None = None,
+    ) -> list[KnowledgeSearchResult]:
         if top_k <= 0:
             return []
         mode = _retrieval_mode()
-        keyword_results = self._keyword_search(course_id, query, top_k)
+        keyword_results = self._keyword_search(course_id, query, top_k, owner_user_id)
         if mode == "keyword":
             return self._maybe_rerank(keyword_results, top_k)
 
-        vector_results = self._vector_search(course_id, query, top_k)
+        vector_results = self._vector_search(course_id, query, top_k, owner_user_id)
         if mode == "vector":
             return self._maybe_rerank(vector_results or keyword_results, top_k)
         if not vector_results:
             return self._maybe_rerank(keyword_results, top_k)
         return self._maybe_rerank(self._hybrid_rank(keyword_results, vector_results, top_k), top_k)
 
-    def _keyword_search(self, course_id: int, query: str, top_k: int) -> list[KnowledgeSearchResult]:
+    def _keyword_search(
+        self,
+        course_id: int,
+        query: str,
+        top_k: int,
+        owner_user_id: int | None = None,
+    ) -> list[KnowledgeSearchResult]:
         query_terms = self._query_terms(query)
         if not query_terms:
             return []
         required_anchors = self._anchor_matches(query.lower())
+        ensure_document_columns(self.database_url)
         with session_scope(self.database_url) as session:
-            rows = session.execute(
+            statement = (
                 select(DocumentChunk, Document)
                 .join(Document, Document.id == DocumentChunk.document_id)
                 .where(Document.course_id == course_id)
+                .where(Document.status != "deleted")
                 .order_by(DocumentChunk.id)
-            ).all()
+            )
+            if owner_user_id is None:
+                statement = statement.where(Document.visibility.in_(["course", "demo"]))
+            else:
+                statement = statement.where(
+                    or_(Document.visibility.in_(["course", "demo"]), Document.owner_user_id == owner_user_id)
+                )
+            rows = session.execute(statement).all()
             ranked: list[KnowledgeSearchResult] = []
             for chunk, document in rows:
                 haystack = f"{chunk.content} {chunk.source_ref or ''} {chunk.metadata_json}".lower()
@@ -115,7 +137,13 @@ class KnowledgeBaseService:
         except Exception:
             return results
 
-    def _vector_search(self, course_id: int, query: str, top_k: int) -> list[KnowledgeSearchResult]:
+    def _vector_search(
+        self,
+        course_id: int,
+        query: str,
+        top_k: int,
+        owner_user_id: int | None = None,
+    ) -> list[KnowledgeSearchResult]:
         if os.getenv("RAG_EMBEDDING_ENABLED", "").strip().lower() not in {"1", "true", "yes", "on"}:
             return []
         settings = EmbeddingSettings.from_env()
@@ -123,7 +151,12 @@ class KnowledgeBaseService:
         if provider is None:
             return []
         try:
-            return SQLiteVectorSearchService(database_url=self.database_url, provider=provider).search(course_id, query, top_k)
+            return SQLiteVectorSearchService(database_url=self.database_url, provider=provider).search(
+                course_id,
+                query,
+                top_k,
+                owner_user_id=owner_user_id,
+            )
         except Exception:
             return []
 

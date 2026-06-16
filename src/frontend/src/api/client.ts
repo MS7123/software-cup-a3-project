@@ -4,10 +4,12 @@ import type {
   DemoDataStatus,
   DocumentIngestionRequest,
   DocumentIngestionResponse,
+  DocumentReindexResponse,
   EvaluationResult,
   GeneratedResource,
   KnowledgeSearchResponse,
   LearningFlow,
+  ManagedDocument,
   Quiz,
   StudentProfileDialogueCreate,
   StudentProfile,
@@ -17,9 +19,10 @@ import type {
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(init?.headers ?? {})
     },
     ...init
@@ -56,6 +59,29 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  uploadCourseDocument: (
+    courseId: number,
+    file: File,
+    payload: { title?: string; visibility?: string; ownerUserId?: number | null } = {}
+  ) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (payload.title) formData.append("title", payload.title);
+    if (payload.visibility) formData.append("visibility", payload.visibility);
+    if (payload.ownerUserId !== undefined && payload.ownerUserId !== null) {
+      formData.append("owner_user_id", String(payload.ownerUserId));
+    }
+    return request<DocumentIngestionResponse>(`/courses/${courseId}/documents/upload`, {
+      method: "POST",
+      body: formData
+    });
+  },
+  listCourseDocuments: (courseId: number) => request<ManagedDocument[]>(`/courses/${courseId}/documents`),
+  deleteDocument: async (documentId: number) => {
+    await request<void>(`/documents/${documentId}`, { method: "DELETE" });
+  },
+  reindexDocument: (documentId: number) =>
+    request<DocumentReindexResponse>(`/documents/${documentId}/reindex`, { method: "POST" }),
   searchKnowledge: (courseId: number, query: string, topK = 3) =>
     request<KnowledgeSearchResponse>("/knowledge/search", {
       method: "POST",

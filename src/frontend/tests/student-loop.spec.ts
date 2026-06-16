@@ -14,11 +14,25 @@ test("student UI completes the current MVP learning loop", async ({ page }) => {
       "# BFS and DFS\nBFS uses a queue to expand nodes level by level, so in an unweighted graph the first time a node is reached represents the fewest edges. DFS uses a stack or recursion to go deep first."
     );
   await page.getByTestId("import-knowledge-button").click();
-  await expect(page.getByTestId("knowledge-import-result")).toContainText("Document #");
-  await expect(page.getByTestId("knowledge-import-result")).toContainText("document:");
+  await expect(page.getByTestId("knowledge-import-result")).toContainText("bfs-dfs-smoke.md");
+  await expect(page.getByTestId("knowledge-import-result")).toContainText("Imported");
+  await expect(page.getByTestId("document-list")).toBeVisible();
+  await expect(page.getByTestId("document-row").first()).toContainText("bfs-dfs-smoke.md");
+  await expect(page.getByTestId("delete-document-button").first()).toBeVisible();
+  await page.getByTestId("knowledge-file").setInputFiles({
+    name: "bfs-dfs-upload-smoke.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Uploaded smoke BFS uses queue and DFS uses stack.")
+  });
+  await page.getByTestId("upload-knowledge-button").click();
+  await expect(page.getByTestId("knowledge-import-result")).toContainText("bfs-dfs-upload-smoke.txt");
+  await expect(page.getByTestId("document-row").first()).toContainText("bfs-dfs-upload-smoke.txt");
+  await expect(page.getByTestId("reindex-document-button").first()).toBeVisible();
+  await page.getByTestId("reindex-document-button").first().click();
+  await expect(page.getByTestId("knowledge-reindex-result")).toContainText("Reindex complete");
   await page.getByTestId("knowledge-query").fill("BFS shortest path queue DFS stack");
   await page.getByTestId("search-knowledge-button").click();
-  await expect(page.getByTestId("knowledge-search-results")).toContainText("document:");
+  await expect(page.getByTestId("knowledge-search-results")).toContainText("bfs-dfs-smoke.md");
   await expect(page.getByTestId("knowledge-search-results")).toContainText("matched");
   await expect(page.getByTestId("knowledge-search-results")).toContainText("BFS uses");
 

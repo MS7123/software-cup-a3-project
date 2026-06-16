@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
 from app.domain.exceptions import NotFoundError, ProtectedResourceError
 from app.schemas import (
@@ -10,6 +10,8 @@ from app.schemas import (
     DocumentChunkResponse,
     DocumentIngestionRequest,
     DocumentIngestionResponse,
+    DocumentManagementResponse,
+    DocumentReindexResponse,
     EvaluationResult,
     GeneratedResourceResponse,
     KnowledgeSearchRequest,
@@ -31,6 +33,7 @@ from app.services.agent_run_service import AgentRunService
 from app.services.assessment_service import AssessmentService
 from app.services.course_service import CourseService
 from app.services.demo_data_service import DemoDataService
+from app.services.document_management_service import DocumentManagementService
 from app.services.document_ingestion_service import DocumentIngestionService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.learning_path_service import LearningPathService
@@ -116,6 +119,65 @@ def ingest_course_document(course_id: int, payload: DocumentIngestionRequest) ->
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+@api_router.post("/courses/{course_id}/documents/upload", response_model=DocumentIngestionResponse)
+async def upload_course_document(
+    course_id: int,
+    file: UploadFile = File(...),
+    title: str | None = Form(default=None),
+    visibility: str = Form(default="course"),
+    owner_user_id: int | None = Form(default=None),
+) -> DocumentIngestionResponse:
+    try:
+        content = await file.read()
+        return DocumentIngestionService().ingest_upload(
+            course_id,
+            filename=file.filename or "uploaded-document",
+            content_type=file.content_type,
+            content=content,
+            title=title,
+            visibility=visibility,
+            owner_user_id=owner_user_id,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@api_router.get("/courses/{course_id}/documents", response_model=list[DocumentManagementResponse])
+def list_course_documents(course_id: int) -> list[DocumentManagementResponse]:
+    try:
+        return DocumentManagementService().list_course_documents(course_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.get("/documents/{document_id}", response_model=DocumentManagementResponse)
+def get_document(document_id: int) -> DocumentManagementResponse:
+    try:
+        return DocumentManagementService().get_document(document_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(document_id: int) -> None:
+    try:
+        DocumentManagementService().delete_document(document_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ProtectedResourceError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@api_router.post("/documents/{document_id}/reindex", response_model=DocumentReindexResponse)
+def reindex_document(document_id: int) -> DocumentReindexResponse:
+    try:
+        return DocumentManagementService().reindex_document(document_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
 @api_router.get("/documents/{document_id}/chunks", response_model=list[DocumentChunkResponse])
 def list_document_chunks(document_id: int) -> list[DocumentChunkResponse]:
     try:
@@ -126,7 +188,7 @@ def list_document_chunks(document_id: int) -> list[DocumentChunkResponse]:
 
 @api_router.post("/knowledge/search", response_model=KnowledgeSearchResponse)
 def search_knowledge(payload: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
-    results = KnowledgeBaseService().search(payload.course_id, payload.query, payload.top_k)
+    results = KnowledgeBaseService().search(payload.course_id, payload.query, payload.top_k, payload.owner_user_id)
     return KnowledgeSearchResponse(results=results)
 
 
