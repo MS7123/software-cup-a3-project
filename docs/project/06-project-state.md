@@ -23,9 +23,9 @@
 - A3 开源项目技术调研与技术路线建议已整理到 `docs/research/a3-open-source-research.md`。
 - 第三方开源项目使用边界已整理到 `docs/compliance/open-source-compliance.md`。
 - A6 赛题讨论总结已整理到 `docs/research/a6-project-discussion-summary.md`，作为赛题比较材料。
-- 项目简介已整理到 `docs/00-project-brief.md`，当前明确定位为 A3。
-- 架构设计已整理到 `docs/03-architecture.md`。
-- 架构基线 ADR 已在 `docs/decisions/0001-architecture-baseline.md` 中标记为 `Accepted`。
+- 项目简介已整理到 `docs/project/00-project-brief.md`，当前明确定位为 A3。
+- 架构设计已整理到 `docs/architecture/03-architecture.md`。
+- 架构基线 ADR 已在 `docs/architecture/0001-architecture-baseline.md` 中标记为 `Accepted`。
 - Task Manager 已建立正式任务流转规则：`Backlog -> Current -> Review -> Done`、`Backlog -> Current -> Blocked`、`Blocked -> Backlog / Current`。
 - Architect Agent 已补充长期生效的 MVP implementation boundary standard，用于约束 demo data、mock provider 和 rule-based logic；该标准不修改 ADR 0001，不新增 ADR，不引入新技术栈。
 - 从当前阶段开始，`Implementation Boundary Check` 成为所有 `IMPL-*` Review 的常规检查项。
@@ -42,7 +42,7 @@
 - `IMPL-008` 已通过 Review，范围限定为自动化测试与基础验证脚本。
 - `IMPL-009` 已通过 Review，范围限定为本地部署与演示运行配置。
 - `IMPL-010` 已通过 Review，范围限定为 OpenAI-compatible `LLMProvider` 接入 `Tutor Agent` 的最小实现。
-- Architect Agent 已完成真实 LLM 最小接入架构方案，写入 `docs/03-architecture.md` 的“真实 LLM 最小接入方案”章节；结论是不新增 ADR、不修改架构基线，第一批建议只接入 `Tutor Agent`。
+- Architect Agent 已完成真实 LLM 最小接入架构方案，写入 `docs/architecture/03-architecture.md` 的“真实 LLM 最小接入方案”章节；结论是不新增 ADR、不修改架构基线，第一批建议只接入 `Tutor Agent`。
 - 根据用户最新优先级，`PLAN-007` 不再单独执行，其边界约束已并入 `IMPL-010`；`IMPL-010` 复测通过后，当前任务推进到 `PLAN-002: 编写测试计划`。
 
 已新增实现：
@@ -125,7 +125,7 @@ Review & Test Agent 验证结论：
 | R10 | 前端核心界面 | Partial | `src/frontend/src/App.tsx`, `src/frontend/src/styles.css`, `src/frontend/tests/student-loop.spec.ts`, Review & Test Agent IMPL-006 / IMPL-007 / IMPL-008 结论 | 已有可 build 的前端学生端工程、关键交互和 Playwright smoke；更完整失败路径覆盖和生产级测试矩阵仍未完成 |
 | R11 | 后端 API、数据库、任务队列、LLM 封装 | Partial | `src/backend/app/`, `pyproject.toml`, `deployment/README.md`, `deployment/local.env.example`, `scripts/run-local.ps1`, `src/backend/app/adapters/llm_provider.py`, Review & Test Agent IMPL-001 / IMPL-002 / IMPL-003 / IMPL-009 / IMPL-010 结论 | 已有 FastAPI、schema、model、demo persistence、部分 API、package 配置、本地演示部署说明和 OpenAI-compatible LLMProvider 最小封装；尚未实现数据库迁移、正式 PostgreSQL 配置、队列和生产级 LLM 运维能力 |
 | R12 | 开源合规边界 | Partial | `docs/compliance/open-source-compliance.md`, `pyproject.toml` | 已有原则文档和基础依赖声明，但依赖 license 清单仍需补全 |
-| R13 | 架构基线与模块边界 | Partial | `docs/03-architecture.md`, `docs/decisions/0001-architecture-baseline.md`, Review & Test Agent IMPL-003 结论 | service / API 分层边界已修正；外部能力仍为 protocol / adapter 骨架；完整业务闭环未完成 |
+| R13 | 架构基线与模块边界 | Partial | `docs/architecture/03-architecture.md`, `docs/architecture/0001-architecture-baseline.md`, Review & Test Agent IMPL-003 结论 | service / API 分层边界已修正；外部能力仍为 protocol / adapter 骨架；完整业务闭环未完成 |
 
 ## 3. 已完成任务
 
@@ -160,12 +160,12 @@ Review & Test Agent 验证结论：
 | 编号 | 问题 | 影响 | 状态 |
 |---|---|---|---|
 | I1 | A6 讨论材料仍存在，但项目简介、ADR 和用户确认均明确当前仓库按 A3 推进 | 新 Agent 可能误读 A6 材料为当前方向 | Mitigated |
-| I2 | `docs/02-acceptance-criteria.md` 的“当前不可验收项”描述曾过期 | 新 Agent 可能误以为仓库仍无实现代码、依赖配置和测试文件 | Mitigated：`PLAN-004` 已更新为 2026-06-04 的当前事实 |
+| I2 | `docs/project/02-acceptance-criteria.md` 的“当前不可验收项”描述曾过期 | 新 Agent 可能误以为仓库仍无实现代码、依赖配置和测试文件 | Mitigated：`PLAN-004` 已更新为 2026-06-04 的当前事实 |
 | I3 | 仓库此前缺少 `.gitignore` | 测试运行可能生成 `__pycache__` / `.pyc` 并被误提交 | Mitigated：`PLAN-005` 已补充 Python、frontend、build 和 demo database ignore 规则 |
 | I4 | 默认 SQLite demo database 需明确为开发/演示用途 | ADR 业务数据库方向为 PostgreSQL，后续需要正式配置路径 | Mitigated：`PLAN-006` 已在部署文档和示例环境变量中明确 SQLite 仅用于 demo / local，正式路径通过 `APP_DATABASE_URL` 切换到 PostgreSQL |
 | I5 | `ProfileService.list_demo_profiles()` 当前返回所有 `StudentProfile` | 若默认数据库中已有用户创建画像，列表可能不再只包含 3 个 demo profiles | Backlog |
 | I6 | `IMPL-001` 到 `IMPL-004` 均只完成阶段范围 | 不得将完整 MVP、完整 AC1/AC2/AC3/AC4/AC9 标记为 Done | Tracked |
-| I7 | Demo data、mock provider 和 rule-based logic 此前没有进入常规 Review 检查项 | 后续 Resource / Tutor / Quiz / Evaluator 容易退化为 hardcoded demo，影响真实 LLM / RAG / VectorStore 替换 | Mitigated：已写入 `docs/02-acceptance-criteria.md` 和 `tasks/README.md` |
+| I7 | Demo data、mock provider 和 rule-based logic 此前没有进入常规 Review 检查项 | 后续 Resource / Tutor / Quiz / Evaluator 容易退化为 hardcoded demo，影响真实 LLM / RAG / VectorStore 替换 | Mitigated：已写入 `docs/project/02-acceptance-criteria.md` 和 `tasks/README.md` |
 | I8 | `IMPL-002` 到 `IMPL-004` 完成或开发时尚未应用 implementation boundary standard | 早期阶段可能存在 demo/mock/rule-based 边界遗漏 | Mitigated：Targeted Boundary Review 已补审，结论为 Pass |
 | I9 | Planner 当前按 `Concept.id` 顺序生成路径，未显式使用 `concept_relations` 计算先修顺序 | 后续真实课程数据顺序变化时，学习路径顺序可能偏离先修关系 | Backlog |
 | I10 | `AgentOrchestrator.run_learning_flow()` 先创建学习路径再创建 `agent_run` | 若 run 记录失败，可能出现有路径但无 run 的不一致状态 | Backlog |

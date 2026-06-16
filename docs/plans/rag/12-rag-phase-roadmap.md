@@ -67,9 +67,9 @@ Phase 5 full knowledge management
 
 相关文档：
 
-- `docs/07-rag-implementation-plan.md`
-- `docs/09-rag-retrieval-coverage-plan.md`
-- `docs/rag-demo-runbook.md`
+- `docs/plans/rag/07-rag-implementation-plan.md`
+- `docs/plans/rag/09-rag-retrieval-coverage-plan.md`
+- `docs/runbooks/rag-demo-runbook.md`
 
 ### 3.2 已实现能力
 
@@ -133,7 +133,7 @@ Phase 1 建立在：
 
 相关文档：
 
-- `docs/11-sqlite-vector-retrieval-plan.md`
+- `docs/plans/rag/11-sqlite-vector-retrieval-plan.md`
 
 ### 4.2 目标
 
@@ -444,11 +444,11 @@ Reviewer 审查 RAG 增量时必须按阶段判断，不要把后续阶段未完
 
 | 文档 | 作用 |
 |---|---|
-| `docs/07-rag-implementation-plan.md` | Phase 1 最小真实 RAG 闭环 |
-| `docs/09-rag-retrieval-coverage-plan.md` | Phase 1 keyword coverage 增强 |
-| `docs/11-sqlite-vector-retrieval-plan.md` | Phase 2 SQLite hybrid retrieval 实现计划 |
-| `docs/12-rag-phase-roadmap.md` | Phase 1 到 Phase 5 总路线图 |
-| `docs/rag-demo-runbook.md` | 当前 RAG 手动演示和排错 |
+| `docs/plans/rag/07-rag-implementation-plan.md` | Phase 1 最小真实 RAG 闭环 |
+| `docs/plans/rag/09-rag-retrieval-coverage-plan.md` | Phase 1 keyword coverage 增强 |
+| `docs/plans/rag/11-sqlite-vector-retrieval-plan.md` | Phase 2 SQLite hybrid retrieval 实现计划 |
+| `docs/plans/rag/12-rag-phase-roadmap.md` | Phase 1 到 Phase 5 总路线图 |
+| `docs/runbooks/rag-demo-runbook.md` | 当前 RAG 手动演示和排错 |
 
 后续如果更新具体实现细节，优先更新对应阶段文档，不要把所有实现细节塞进本路线图。
 

@@ -2,7 +2,7 @@
 
 最后更新：2026-06-06  
 状态：Phase 1 冻结版  
-依据：[A3 官网赛题要求](https://www.cnsoftbei.com/content-3-1286-1.html)、`docs/00-project-brief.md`、`docs/01-requirements.md`、`docs/02-acceptance-criteria.md`、`docs/04-development-roadmap.md`、`docs/06-project-state.md`
+依据：[A3 官网赛题要求](https://www.cnsoftbei.com/content-3-1286-1.html)、`docs/project/00-project-brief.md`、`docs/project/01-requirements.md`、`docs/project/02-acceptance-criteria.md`、`docs/process/04-development-roadmap.md`、`docs/project/06-project-state.md`
 
 ## 1. A3 赛题关键要求摘要
 

@@ -12,7 +12,7 @@
 - Agent 编排：第一阶段轻量自研 `AgentOrchestrator`，如状态图和多轮工具调用复杂度上升再评估 `LangGraph`
 - LLM 接入：统一封装 OpenAI-compatible API
 
-该决策见 `docs/decisions/0001-architecture-baseline.md`。
+该决策见 `docs/architecture/0001-architecture-baseline.md`。
 
 ## 设计理由
 
@@ -193,7 +193,7 @@ API 路径使用 `/api/v1` 前缀。所有请求和响应必须有 `Pydantic` Sc
 3. 所有 LLM 调用必须通过 `LLMProvider` adapter；业务服务中不得直接 import 具体供应商 SDK。
 4. 所有向量检索必须通过 `VectorStore` adapter；不得在 API handler 中直接调用 `Chroma`。
 5. 先实现一条可演示闭环：画像创建、课程和知识点、路径生成、资源生成、测验、评价、Agent 日志。
-6. 每完成一个跨模块能力，更新 `docs/06-project-state.md`。
+6. 每完成一个跨模块能力，更新 `docs/project/06-project-state.md`。
 7. 如果连续两次修复同一问题失败，停止直接改代码，先补充 failure analysis：复现、根因假设、最小验证、最小修复。
 
 ## 数据结构 MVP 架构细化
@@ -337,7 +337,7 @@ VectorStore.search(collection, query, top_k, filters=None) -> list[VectorSearchR
 8. 第一阶段知识图谱用 `PostgreSQL` 表表达，不引入 `Neo4j`。
 9. 第一阶段可以使用模拟资料和 seed data，但 seed data 必须通过脚本或明确 API 加载，不要散落硬编码在业务逻辑里。
 10. 每个核心 API 都必须有明确 request/response schema；返回错误时使用统一错误结构。
-11. 每完成一个跨模块能力，更新 `docs/06-project-state.md`。
+11. 每完成一个跨模块能力，更新 `docs/project/06-project-state.md`。
 12. 如果同一问题连续两次修复失败，停止继续 trial-and-error，先写 failure analysis。
 
 ## 真实 LLM 最小接入方案

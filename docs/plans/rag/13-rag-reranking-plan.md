@@ -95,8 +95,8 @@ src/backend/app/services/retrieval_reranker.py
 - 新增 reranking service。
 - `tests/test_rag_reranking.py`
 - `tests/test_rag_retrieval.py`
-- `docs/05-agile-development-log.md`
-- `docs/rag-demo-runbook.md`
+- `docs/process/05-agile-development-log.md`
+- `docs/runbooks/rag-demo-runbook.md`
 
 ### 4.3 禁止修改方向
 

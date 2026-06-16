@@ -43,7 +43,7 @@
 | R10 | 提供学生端界面展示学习路径、资源、问答、测验、掌握度和 Agent 流程记录 | 高 | Not Started | 用户确认第一阶段只做学生端闭环 |
 | R11 | 提供后端 API、数据库、向量检索、任务队列和 LLM 接入封装 | 中 | Not Started | `README.md` |
 | R12 | 保持开源合规，不复制高风险或无 license 项目的核心代码 | 高 | Partial | `docs/compliance/open-source-compliance.md` |
-| R13 | 按已接受架构基线推进：前后端分离、adapter 隔离 LLM / VectorStore / TaskQueue | 高 | Partial | `docs/03-architecture.md`, `docs/decisions/0001-architecture-baseline.md` |
+| R13 | 按已接受架构基线推进：前后端分离、adapter 隔离 LLM / VectorStore / TaskQueue | 高 | Partial | `docs/architecture/03-architecture.md`, `docs/architecture/0001-architecture-baseline.md` |
 | R14 | 第一阶段排除教师端、管理端、真实学生数据和 A6 校园事务流程 | 高 | Confirmed | 用户确认第一阶段只做学生端闭环 |
 | R15 | 在需求文档中记录需求侧架构影响，但不修改已 Accepted 的架构基线 | 高 | Confirmed | 用户确认 Requirement Agent 不能调整架构基线 |
 
@@ -63,7 +63,7 @@
 
 ## 需求侧架构影响分析
 
-> 本节不是架构变更，也不修改 `docs/03-architecture.md` 或 ADR。它只说明需求对后续 Architect Agent 的影响。
+> 本节不是架构变更，也不修改 `docs/architecture/03-architecture.md` 或 ADR。它只说明需求对后续 Architect Agent 的影响。
 
 - 知识点范围已收敛到 5 类，课程知识模型第一阶段不需要覆盖完整数据结构课程，但应保留后续扩展到排序、查找、图论进阶等知识点的空间。
 - 因为展示重点是 `Multi-Agent` 协作摘要，Agent run 记录至少需要支持：Agent 名称、调用顺序、输入摘要、输出摘要、状态、关键决策依据和最终整合结果。

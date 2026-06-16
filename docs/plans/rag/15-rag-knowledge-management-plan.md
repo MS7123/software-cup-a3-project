@@ -144,7 +144,7 @@ src/backend/app/adapters/document_parsers.py
 - `tests/test_rag_ingestion.py`
 - `tests/test_rag_retrieval.py`
 - `tests/test_document_management.py`
-- `docs/05-agile-development-log.md`
+- `docs/process/05-agile-development-log.md`
 
 ### 4.3 禁止修改方向
 

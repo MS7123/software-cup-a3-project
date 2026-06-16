@@ -256,7 +256,7 @@ cd ../..
 - frontend production build
 - Playwright browser smoke
 
-当前最近一次 Reviewer 验证结果会记录在 `docs/05-agile-development-log.md` 和 `reviews/` 下的 review log 中。
+当前最近一次 Reviewer 验证结果会记录在 `docs/process/05-agile-development-log.md` 和 `reviews/` 下的 review log 中。
 
 ## 真实 LLM / RAG 演示配置
 
@@ -358,13 +358,14 @@ $env:RAG_RERANK_CONTEXT_CHAR_LIMIT='3500'
 
 ## 相关文档
 
-- [项目简介](docs/00-project-brief.md)
-- [需求说明](docs/01-requirements.md)
-- [验收标准](docs/02-acceptance-criteria.md)
-- [架构设计](docs/03-architecture.md)
-- [开发路线](docs/04-development-roadmap.md)
-- [敏捷开发记录](docs/05-agile-development-log.md)
-- [项目状态](docs/06-project-state.md)
+- [文档总入口](docs/README.md)
+- [项目简介](docs/project/00-project-brief.md)
+- [需求说明](docs/project/01-requirements.md)
+- [验收标准](docs/project/02-acceptance-criteria.md)
+- [架构设计](docs/architecture/03-architecture.md)
+- [开发路线](docs/process/04-development-roadmap.md)
+- [敏捷开发记录](docs/process/05-agile-development-log.md)
+- [项目状态](docs/project/06-project-state.md)
 - [Review 日志](reviews/review-log.md)
 - [本地部署说明](deployment/README.md)
 - [开源调研](docs/research/a3-open-source-research.md)

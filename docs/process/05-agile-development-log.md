@@ -879,7 +879,7 @@ Ready for commit：Yes。
 
 ### 目标
 
-完成 `docs/08-next-demo-increments-plan.md` 中列出的 4 个轻量演示增量：前端知识导入 UI、LLM + RAG Tutor 手动验证文档、Agent trace 具体来源展示、RAG keyword retrieval 小优化。
+完成 `docs/plans/demo/08-next-demo-increments-plan.md` 中列出的 4 个轻量演示增量：前端知识导入 UI、LLM + RAG Tutor 手动验证文档、Agent trace 具体来源展示、RAG keyword retrieval 小优化。
 
 ### 核心功能
 
@@ -894,7 +894,7 @@ Ready for commit：Yes。
   - `ingestCourseDocument(courseId, payload)`
   - `searchKnowledge(courseId, query, topK)`
 - 新增 LLM + RAG Tutor 手动验证文档：
-  - `docs/llm-rag-tutor-manual-verification.md`
+  - `docs/runbooks/llm-rag-tutor-manual-verification.md`
   - 明确 rule-based 基线、远程 Tutor LLM opt-in、输入样例、预期输出和失败判定。
 - Agent trace 来源增强：
   - Tutor step 的 `output_summary` / `decision_basis` 追加 `Grounded sources: ...`。
@@ -949,7 +949,7 @@ Ready for commit：Yes。
 
 ### 目标
 
-根据 `docs/09-rag-retrieval-coverage-plan.md` 完成最小可演示增量：让真实 RAG 的 keyword retrieval 在 BFS/DFS 对比类问题中稳定召回 DFS chunk 与 compare chunk，并把检索证据展示到前端。
+根据 `docs/plans/rag/09-rag-retrieval-coverage-plan.md` 完成最小可演示增量：让真实 RAG 的 keyword retrieval 在 BFS/DFS 对比类问题中稳定召回 DFS chunk 与 compare chunk，并把检索证据展示到前端。
 
 ### 核心功能
 
@@ -1004,7 +1004,7 @@ Ready for commit：Yes。
 
 ### 目标
 
-根据 `docs/10-demo-ux-and-agent-tuning-plan.md` 完成 P0 组合增量：Tutor loading、Markdown 渲染、Tutor prompt 输出结构调优，并保留 RAG stability 回归。
+根据 `docs/plans/demo/10-demo-ux-and-agent-tuning-plan.md` 完成 P0 组合增量：Tutor loading、Markdown 渲染、Tutor prompt 输出结构调优，并保留 RAG stability 回归。
 
 ### 核心功能
 
@@ -1111,7 +1111,7 @@ Ready for commit：Yes。
 
 ### 目标
 
-根据 `docs/11-sqlite-vector-retrieval-plan.md` 完成 RAG 第二阶段最小闭环：在不改变默认 SQLite keyword demo 的前提下，提供可选的 embedding indexing、SQLite cosine vector search 和 hybrid ranking。
+根据 `docs/plans/rag/11-sqlite-vector-retrieval-plan.md` 完成 RAG 第二阶段最小闭环：在不改变默认 SQLite keyword demo 的前提下，提供可选的 embedding indexing、SQLite cosine vector search 和 hybrid ranking。
 
 ### 核心功能
 
@@ -1140,7 +1140,7 @@ Ready for commit：Yes。
 
 ### 目标
 
-根据 `docs/13-rag-reranking-plan.md` 和 `docs/14-rag-citation-quality-plan.md` 完成轻量可演示增量：在不改变 API schema、不引入远程 rerank provider 的前提下，为 RAG 检索结果增加可选 rule-based reranking、context budget、真实来源 excerpt 和前端来源面板。
+根据 `docs/plans/rag/13-rag-reranking-plan.md` 和 `docs/plans/rag/14-rag-citation-quality-plan.md` 完成轻量可演示增量：在不改变 API schema、不引入远程 rerank provider 的前提下，为 RAG 检索结果增加可选 rule-based reranking、context budget、真实来源 excerpt 和前端来源面板。
 
 ### 核心功能
 
@@ -1168,7 +1168,7 @@ Ready for commit：Yes。
 
 ### 目标
 
-根据 `docs/15-rag-knowledge-management-plan.md` 完成知识库管理最小闭环：页面可查看课程 documents、刷新列表、删除非 seed document，并保证删除后新检索不再命中旧 chunks。
+根据 `docs/plans/rag/15-rag-knowledge-management-plan.md` 完成知识库管理最小闭环：页面可查看课程 documents、刷新列表、删除非 seed document，并保证删除后新检索不再命中旧 chunks。
 
 ### 核心功能
 
@@ -1195,7 +1195,7 @@ Ready for commit：Yes。
 
 ### 目标
 
-完成 `docs/15-rag-knowledge-management-plan.md` 中剩余开发阶段：multipart upload、PDF/Word parser、course/private scope、document reindex control 和前端知识库管理入口。
+完成 `docs/plans/rag/15-rag-knowledge-management-plan.md` 中剩余开发阶段：multipart upload、PDF/Word parser、course/private scope、document reindex control 和前端知识库管理入口。
 
 ### 核心功能
 
