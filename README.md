@@ -258,58 +258,73 @@ cd ../..
 
 当前最近一次 Reviewer 验证结果会记录在 `docs/05-agile-development-log.md` 和 `reviews/` 下的 review log 中。
 
-## 真实 LLM 演示配置
+## 真实 LLM / RAG 演示配置
 
-默认本地演示不依赖真实 LLM。需要真实 LLM 效果时，使用显式 opt-in。
+默认本地演示不依赖真实 LLM 或 embedding API。需要真实效果时，使用显式 opt-in；完整说明见 [deployment/README.md](deployment/README.md)。
 
-### 阿里云百炼 Flash
+### API Key 设置
 
-先配置用户级 API key：
+DeepSeek Chat LLM：
+
+```powershell
+[Environment]::SetEnvironmentVariable('DEEPSEEK_API_KEY', '<your-deepseek-api-key>', 'User')
+```
+
+阿里云百炼 Chat / Embedding：
 
 ```powershell
 [Environment]::SetEnvironmentVariable('ALIYUN_BAILIAN_API_KEY', '<your-aliyun-bailian-api-key>', 'User')
 ```
 
-然后启动：
+不要把真实 API key 写入仓库、`.env`、测试输出、前端 bundle 或 Agent trace。
+
+### RAG 检索模式
+
+| 模式 | 环境变量 | 是否需要 embedding API | 说明 |
+|---|---|---:|---|
+| Keyword | `RAG_RETRIEVAL_MODE=keyword` | 否 | 默认模式，最稳，使用 SQLite chunk 文本检索。 |
+| Vector | `RAG_RETRIEVAL_MODE=vector` | 是 | 使用 SQLite `chunk_embeddings` + Python cosine similarity。 |
+| Hybrid | `RAG_RETRIEVAL_MODE=hybrid` | 是 | keyword + vector 融合，推荐用于真实 RAG 演示。 |
+
+手动启用 hybrid 示例：
 
 ```powershell
-./scripts/run-local-aliyun-flash.ps1
+$env:RAG_RETRIEVAL_MODE='hybrid'
+$env:RAG_EMBEDDING_ENABLED='true'
+$env:RAG_VECTOR_STORE='sqlite_cosine'
+$env:EMBEDDING_PROVIDER='openai_compatible'
+$env:EMBEDDING_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
+$env:EMBEDDING_MODEL='text-embedding-v3'
+$env:EMBEDDING_API_KEY=$env:ALIYUN_BAILIAN_API_KEY
+./scripts/run-local.ps1
 ```
 
-该脚本默认设置：
-
-- `LLM_PROVIDER=openai_compatible`
-- `LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`
-- `LLM_MODEL=qwen3.5-flash`
-- `LLM_ENABLE_FOR_TUTOR=true`
-- `LLM_ENABLE_FOR_RESOURCE=true`
-- `LLM_ENABLE_FOR_EVALUATOR=true`
-- `LLM_ENABLE_FOR_PROFILE_UPDATER=true`
-- `LLM_FALLBACK_MODE=rule_based`
-- `LLM_BYPASS_PROXY=true`
-
-临时换模型：
+Rerank 是本地 rule-based 重排序，默认关闭：
 
 ```powershell
-./scripts/run-local-aliyun-flash.ps1 -Model qwen3.5-plus
+$env:RAG_RERANK_ENABLED='true'
+$env:RAG_RERANK_MAX_CANDIDATES='12'
+$env:RAG_RERANK_TOP_CONTEXT='5'
+$env:RAG_RERANK_CONTEXT_CHAR_LIMIT='3500'
 ```
 
-### 通用 OpenAI-compatible Provider
+### 便捷启动脚本
 
-```powershell
-$env:LLM_PROVIDER='openai_compatible'
-$env:LLM_BASE_URL='<provider-base-url>'
-$env:LLM_MODEL='<model-name>'
-$env:LLM_API_KEY='<your-api-key>'
-$env:LLM_ENABLE_FOR_TUTOR='true'
-$env:LLM_ENABLE_FOR_RESOURCE='true'
-$env:LLM_ENABLE_FOR_EVALUATOR='true'
-$env:LLM_ENABLE_FOR_PROFILE_UPDATER='true'
-$env:LLM_FALLBACK_MODE='rule_based'
-./scripts/run-local.ps1 -UseRemoteTutorLLM
-```
+| 脚本 | 需要的 API key | 启动结果 |
+|---|---|---|
+| `./scripts/run-local.ps1` | 无 | 离线 rule-based Agent + keyword RAG，最适合评委本地快速启动。 |
+| `./scripts/run-local-deepseek.ps1` | `DEEPSEEK_API_KEY` | Tutor / Resource / Evaluator / ProfileUpdater 使用 DeepSeek，RAG 仍默认 keyword。 |
+| `./scripts/run-local-aliyun-flash.ps1` | `ALIYUN_BAILIAN_API_KEY` | 全部 LLM Agent 使用 Qwen Flash，RAG 仍默认 keyword。 |
+| `./scripts/run-local-aliyun-hybrid.ps1` | `ALIYUN_BAILIAN_API_KEY` | Qwen Flash + 阿里云 `text-embedding-v3` + SQLite hybrid retrieval。 |
+| `./scripts/run-local-deepseek-hybrid.ps1` | `DEEPSEEK_API_KEY` + `ALIYUN_BAILIAN_API_KEY` | DeepSeek 负责 Agent 输出，阿里云 embedding 负责 hybrid RAG。 |
+| `./scripts/run-local-deepseek-rerank.ps1` | `DEEPSEEK_API_KEY` | DeepSeek + rule-based rerank，用于观察 source panel 中的 `rerank_score`。 |
 
-不要把真实 `LLM_API_KEY` 写入仓库、`.env`、测试输出、前端 bundle 或 Agent trace。
+推荐比赛演示组合：
+
+- 无网络稳定演示：`./scripts/run-local.ps1`
+- 真实 LLM 演示：`./scripts/run-local-deepseek.ps1`
+- 真实 LLM + hybrid RAG：`./scripts/run-local-deepseek-hybrid.ps1`
+- 阿里云全家桶：`./scripts/run-local-aliyun-hybrid.ps1`
 
 ## 演示流程建议
 

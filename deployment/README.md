@@ -1,14 +1,19 @@
 # Deployment and Local Demo
 
-最后更新：2026-06-04
+最后更新：2026-06-17
 
-本文档只覆盖当前 MVP 阶段可运行的本地开发和演示配置。当前后端默认使用 SQLite demo database；`PostgreSQL`、`Redis/RQ`、真实 `LLMProvider` 和生产级 `pgvector` 仍是架构目标，后续应通过独立任务补迁移、队列和真实外部能力配置。
+本文档覆盖当前比赛演示可运行的本地部署配置，包括默认离线启动、真实 LLM API 设置、embedding / 向量模型 API 设置、RAG 检索模式切换，以及各便捷启动脚本会得到什么效果。
+
+当前后端默认使用 SQLite demo database；`PostgreSQL`、`Redis/RQ` 和生产级 `pgvector` 仍是后续增强目标，不是当前本地演示的必需条件。
 
 ## Current vs Target
 
 - 当前本地演示数据库：`sqlite:///./data/demo.sqlite3`
 - 当前用途：本地开发、比赛演示、`run-local.ps1` smoke
-- 正式数据库方向：`PostgreSQL`
+- 默认 RAG 检索：SQLite keyword retrieval
+- 可选 RAG 检索：SQLite + Python cosine similarity hybrid retrieval
+- 后续数据库方向：`PostgreSQL`
+- 后续向量检索方向：`pgvector`
 - 正式配置路径：后续统一通过环境变量 `APP_DATABASE_URL` 切换到 `postgresql+psycopg://...`
 - 当前仓库状态：尚未提供 PostgreSQL migration、seed、运维脚本或生产级连接配置
 
@@ -42,7 +47,170 @@ $env:PLAYWRIGHT_CHANNEL='chromium'
 | `VITE_PROXY_TARGET` | `http://127.0.0.1:8000` | Vite `/api` proxy 指向的后端地址。 |
 | `PLAYWRIGHT_CHANNEL` | `msedge` on Windows | Playwright browser channel override。 |
 
-### LLM Provider Variables
+## API Key 设置
+
+### 设置原则
+
+真实 API key 只放在当前 PowerShell session、Windows User-scope environment variable 或部署平台 secret 中。
+
+禁止写入：
+
+- `deployment/local.env.example`
+- `.env`
+- README / docs 示例中的真实值
+- frontend bundle
+- test output
+- Agent trace
+- Git commit
+
+### DeepSeek Chat LLM
+
+DeepSeek 脚本读取 `DEEPSEEK_API_KEY`，并在启动时映射成后端实际使用的 `LLM_API_KEY`。
+
+一次性写入 Windows User scope：
+
+```powershell
+[Environment]::SetEnvironmentVariable('DEEPSEEK_API_KEY', '<your-deepseek-api-key>', 'User')
+```
+
+只在当前 PowerShell 临时设置：
+
+```powershell
+$env:DEEPSEEK_API_KEY='<your-deepseek-api-key>'
+```
+
+DeepSeek 启动脚本默认配置：
+
+| 变量 | 值 |
+|---|---|
+| `LLM_PROVIDER` | `openai_compatible` |
+| `LLM_BASE_URL` | `https://api.deepseek.com` |
+| `LLM_MODEL` | `deepseek-v4-flash` |
+| `LLM_ENABLE_FOR_TUTOR` | `true` |
+| `LLM_ENABLE_FOR_RESOURCE` | `true` |
+| `LLM_ENABLE_FOR_EVALUATOR` | `true` |
+| `LLM_ENABLE_FOR_PROFILE_UPDATER` | `true` |
+| `LLM_FALLBACK_MODE` | `rule_based` |
+
+启动：
+
+```powershell
+./scripts/run-local-deepseek.ps1
+```
+
+临时换模型：
+
+```powershell
+./scripts/run-local-deepseek.ps1 -Model deepseek-chat
+```
+
+### 阿里云百炼 Chat LLM
+
+阿里云脚本读取 `ALIYUN_BAILIAN_API_KEY`，用于 Qwen Chat LLM，也可用于阿里云 embedding。
+
+一次性写入 Windows User scope：
+
+```powershell
+[Environment]::SetEnvironmentVariable('ALIYUN_BAILIAN_API_KEY', '<your-aliyun-bailian-api-key>', 'User')
+```
+
+只在当前 PowerShell 临时设置：
+
+```powershell
+$env:ALIYUN_BAILIAN_API_KEY='<your-aliyun-bailian-api-key>'
+```
+
+阿里云 Flash 启动脚本默认配置：
+
+| 变量 | 值 |
+|---|---|
+| `LLM_PROVIDER` | `openai_compatible` |
+| `LLM_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `LLM_MODEL` | `qwen3.5-flash` |
+| `LLM_ENABLE_FOR_TUTOR` | `true` |
+| `LLM_ENABLE_FOR_RESOURCE` | `true` |
+| `LLM_ENABLE_FOR_EVALUATOR` | `true` |
+| `LLM_ENABLE_FOR_PROFILE_UPDATER` | `true` |
+| `LLM_FALLBACK_MODE` | `rule_based` |
+| `LLM_BYPASS_PROXY` | `true` |
+
+启动：
+
+```powershell
+./scripts/run-local-aliyun-flash.ps1
+```
+
+临时换模型：
+
+```powershell
+./scripts/run-local-aliyun-flash.ps1 -Model qwen3.5-plus
+```
+
+### 通用 OpenAI-compatible LLM
+
+如果不用现成脚本，也可以手动设置通用 provider：
+
+```powershell
+$env:LLM_PROVIDER='openai_compatible'
+$env:LLM_BASE_URL='<provider-base-url>'
+$env:LLM_API_KEY='<your-llm-api-key>'
+$env:LLM_MODEL='<chat-model-name>'
+$env:LLM_ENABLE_FOR_TUTOR='true'
+$env:LLM_ENABLE_FOR_RESOURCE='true'
+$env:LLM_ENABLE_FOR_EVALUATOR='true'
+$env:LLM_ENABLE_FOR_PROFILE_UPDATER='true'
+$env:LLM_TIMEOUT_SECONDS='20'
+$env:LLM_MAX_RETRIES='0'
+$env:LLM_FALLBACK_MODE='rule_based'
+$env:LLM_BYPASS_PROXY='false'
+./scripts/run-local.ps1 -UseRemoteTutorLLM
+```
+
+`-UseRemoteTutorLLM` 的名字是历史遗留；当前只要相关 `LLM_ENABLE_FOR_*` 为 `true`，Tutor、Resource、Evaluator、ProfileUpdater 都可以走真实 LLM。
+
+### 向量模型 / Embedding API
+
+当前默认向量检索不依赖 PostgreSQL、pgvector、Chroma 或 FAISS。启用 embedding 后，系统会：
+
+```text
+document chunks
+-> embedding provider
+-> chunk_embeddings table in SQLite
+-> Python cosine similarity
+-> hybrid ranking
+```
+
+阿里云 embedding 推荐配置：
+
+```powershell
+$env:RAG_EMBEDDING_ENABLED='true'
+$env:RAG_VECTOR_STORE='sqlite_cosine'
+$env:EMBEDDING_PROVIDER='openai_compatible'
+$env:EMBEDDING_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
+$env:EMBEDDING_MODEL='text-embedding-v3'
+$env:EMBEDDING_API_KEY=$env:ALIYUN_BAILIAN_API_KEY
+$env:EMBEDDING_TIMEOUT_SECONDS='10'
+$env:EMBEDDING_MAX_RETRIES='0'
+$env:EMBEDDING_BYPASS_PROXY='false'
+```
+
+通用 OpenAI-compatible embedding 配置：
+
+```powershell
+$env:RAG_EMBEDDING_ENABLED='true'
+$env:RAG_VECTOR_STORE='sqlite_cosine'
+$env:EMBEDDING_PROVIDER='openai_compatible'
+$env:EMBEDDING_BASE_URL='<provider-base-url>'
+$env:EMBEDDING_MODEL='<embedding-model-name>'
+$env:EMBEDDING_API_KEY='<your-embedding-api-key>'
+$env:EMBEDDING_TIMEOUT_SECONDS='10'
+$env:EMBEDDING_MAX_RETRIES='0'
+$env:EMBEDDING_BYPASS_PROXY='false'
+```
+
+启用 embedding 后，导入资料时会尝试写入 `chunk_embeddings`。也可以在页面的 document list 对单个 document 点击 `Reindex`。如果 embedding 未配置或失败，keyword retrieval 仍然可用。
+
+## LLM Provider Variables
 
 当前本地 demo 默认不依赖真实 LLM。后续接入 OpenAI-compatible provider 时，应通过环境变量注入配置，并保留 rule-based fallback。
 
@@ -63,9 +231,25 @@ $env:PLAYWRIGHT_CHANNEL='chromium'
 
 默认 `verify.ps1`、`run-local.ps1 -SmokeOnly` 和 Playwright smoke 不应依赖真实 LLM 网络调用。需要验证真实 LLM 时，应使用显式 opt-in 的本地环境变量或独立手动验证路径。
 
-### Optional SQLite Hybrid Retrieval
+## RAG 检索模式设置
 
-默认 RAG 仍使用 `RAG_RETRIEVAL_MODE=keyword`。需要本地验证 embedding 召回时，显式配置：
+### 模式说明
+
+| 模式 | 设置 | 是否需要 embedding API | 结果 |
+|---|---|---:|---|
+| Keyword | `RAG_RETRIEVAL_MODE=keyword` | 否 | 只使用 SQLite 中的 chunk 文本做关键词/anchor-aware 检索，默认最稳。 |
+| Vector | `RAG_RETRIEVAL_MODE=vector` | 是 | 只使用 SQLite `chunk_embeddings` + Python cosine similarity；无 embedding 时会回退到 keyword。 |
+| Hybrid | `RAG_RETRIEVAL_MODE=hybrid` | 是 | keyword + vector 加权融合，当前推荐的真实 RAG 演示模式。 |
+
+默认配置：
+
+```powershell
+$env:RAG_RETRIEVAL_MODE='keyword'
+$env:RAG_EMBEDDING_ENABLED='false'
+$env:RAG_VECTOR_STORE='sqlite_cosine'
+```
+
+启用 hybrid retrieval：
 
 ```powershell
 $env:RAG_RETRIEVAL_MODE='hybrid'
@@ -80,76 +264,57 @@ $env:EMBEDDING_API_KEY='<your-embedding-api-key>'
 
 `EMBEDDING_API_KEY` 不得写入仓库、日志、frontend bundle 或 agent run 记录。未配置 embedding provider 时，系统继续走 keyword retrieval。
 
-DeepSeek OpenAI-compatible 本地显式 opt-in 示例：
+### Rerank 设置
+
+Rerank 是在 keyword/vector/hybrid 召回之后的轻量重排序，不是远程 rerank model。
+
+默认关闭：
 
 ```powershell
-$env:LLM_PROVIDER='openai_compatible'
-$env:LLM_ENABLE_FOR_TUTOR='true'
-$env:LLM_ENABLE_FOR_RESOURCE='true'
-$env:LLM_ENABLE_FOR_EVALUATOR='true'
-$env:LLM_ENABLE_FOR_PROFILE_UPDATER='true'
-$env:LLM_BASE_URL='https://api.deepseek.com'
-$env:LLM_MODEL='deepseek-v4-flash'
-$env:LLM_API_KEY='<your-deepseek-api-key>'
-$env:LLM_BYPASS_PROXY='true'
-./scripts/run-local.ps1 -UseRemoteTutorLLM
+$env:RAG_RERANK_ENABLED='false'
 ```
 
-阿里云百炼 Flash 一键启动脚本：
+启用：
 
 ```powershell
-[Environment]::SetEnvironmentVariable('ALIYUN_BAILIAN_API_KEY', '<your-aliyun-bailian-api-key>', 'User')
-./scripts/run-local-aliyun-flash.ps1
+$env:RAG_RERANK_ENABLED='true'
+$env:RAG_RERANK_MAX_CANDIDATES='12'
+$env:RAG_RERANK_TOP_CONTEXT='5'
+$env:RAG_RERANK_CONTEXT_CHAR_LIMIT='3500'
 ```
 
-该脚本默认使用：
+启用后，source panel 中可以看到 `rerank_score` 和 `rerank_reasons`。
 
-- `LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`
-- `LLM_MODEL=qwen3.5-flash`
-- `LLM_ENABLE_FOR_TUTOR=true`
-- `LLM_ENABLE_FOR_RESOURCE=true`
-- `LLM_ENABLE_FOR_EVALUATOR=true`
-- `LLM_ENABLE_FOR_PROFILE_UPDATER=true`
-- `LLM_FALLBACK_MODE=rule_based`
+## 便捷启动脚本对照
 
-如需临时换模型：
+| 脚本 | 需要的 API key | LLM 结果 | RAG 检索结果 | 适合场景 |
+|---|---|---|---|---|
+| `./scripts/run-local.ps1` | 无 | 全部 Agent 使用 rule-based fallback | `keyword` 默认检索 | 最稳的离线演示、无网络、评委本地快速启动 |
+| `./scripts/run-local.ps1 -UseRemoteTutorLLM` | 手动设置 `LLM_*` | 按当前 shell 中 `LLM_ENABLE_FOR_*` 决定哪些 Agent 调 LLM | 默认仍是 `keyword`，除非手动设置 RAG 变量 | 自定义 provider 调试 |
+| `./scripts/run-local-deepseek.ps1` | `DEEPSEEK_API_KEY` | Tutor / Resource / Evaluator / ProfileUpdater 全部使用 DeepSeek，失败回退 rule-based | 默认 `keyword` | 使用 DeepSeek 做真实 Agent 输出 |
+| `./scripts/run-local-aliyun-flash.ps1` | `ALIYUN_BAILIAN_API_KEY` | Tutor / Resource / Evaluator / ProfileUpdater 全部使用 Qwen Flash，失败回退 rule-based | 默认 `keyword` | 使用阿里云 Qwen Flash 做真实 Agent 输出 |
+| `./scripts/run-local-aliyun-hybrid.ps1` | `ALIYUN_BAILIAN_API_KEY` | 全部 Agent 使用 Qwen Flash | `hybrid`，阿里云 `text-embedding-v3` 写入 SQLite 后做 Python cosine similarity | 阿里云 Chat + embedding 一体演示 |
+| `./scripts/run-local-deepseek-hybrid.ps1` | `DEEPSEEK_API_KEY` + `ALIYUN_BAILIAN_API_KEY` | 全部 Agent 使用 DeepSeek | `hybrid`，阿里云 `text-embedding-v3` 作为 embedding | DeepSeek 负责回答，阿里云负责向量召回 |
+| `./scripts/run-local-deepseek-rerank.ps1` | `DEEPSEEK_API_KEY` | 全部 Agent 使用 DeepSeek | 默认 `keyword` + rule-based rerank，除非 shell 里另行启用 hybrid | 验证 rerank metadata、source panel 和 context budget |
 
-```powershell
-./scripts/run-local-aliyun-flash.ps1 -Model qwen3.5-plus
-```
+所有脚本都基于 `run-local.ps1` 启动：
 
-阿里云百炼 Flash + SQLite hybrid retrieval 一键启动脚本：
+- FastAPI backend。
+- Vite frontend。
+- `POST /api/v1/demo-data/load` 加载 demo data，除非设置 `-SkipDemoLoad`。
+- 默认 SQLite database：`sqlite:///./data/demo.sqlite3`。
+- 默认 frontend：`http://127.0.0.1:5173`。
+- 默认 backend：`http://127.0.0.1:8000`。
 
-```powershell
-./scripts/run-local-aliyun-hybrid.ps1
-```
+### 推荐启动组合
 
-该脚本默认启用：
-
-- `RAG_RETRIEVAL_MODE=hybrid`
-- `RAG_EMBEDDING_ENABLED=true`
-- `EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`
-- `EMBEDDING_MODEL=text-embedding-v3`
-
-如需临时换 embedding 模型：
-
-```powershell
-./scripts/run-local-aliyun-hybrid.ps1 -EmbeddingModel text-embedding-v4
-```
-
-DeepSeek Chat + 阿里云 embedding hybrid 启动脚本：
-
-```powershell
-./scripts/run-local-deepseek-hybrid.ps1
-```
-
-该脚本使用：
-
-- `run-local-deepseek.ps1` 启动远程 Chat LLM。
-- `ALIYUN_BAILIAN_API_KEY` 调用阿里云 `text-embedding-v3`。
-- `RAG_RETRIEVAL_MODE=hybrid` 和 `RAG_VECTOR_STORE=sqlite_cosine`。
-
-不要把真实 `LLM_API_KEY` 写入 `deployment/local.env.example`、`.env`、测试输出或 agent run 记录。
+| 目标 | 推荐命令 | 说明 |
+|---|---|---|
+| 无网络稳定演示 | `./scripts/run-local.ps1` | 所有核心流程可跑，输出是 rule-based。 |
+| 真实 LLM 演示但不启用向量 | `./scripts/run-local-deepseek.ps1` | 回答更自然，但检索仍是 keyword。 |
+| 真实 LLM + hybrid RAG | `./scripts/run-local-deepseek-hybrid.ps1` | 当前最完整的 RAG 演示组合。 |
+| 阿里云全家桶 | `./scripts/run-local-aliyun-hybrid.ps1` | Chat 与 embedding 都使用阿里云百炼。 |
+| 检查 rerank 展示 | `./scripts/run-local-deepseek-rerank.ps1` | 重点观察 source panel 中的 rerank 信息。 |
 
 ## Install Dependencies
 
