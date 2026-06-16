@@ -9,6 +9,12 @@ class LLMResult:
 
 
 @dataclass(frozen=True)
+class EmbeddingResult:
+    vector: list[float]
+    metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class VectorSearchResult:
     content: str
     score: float
@@ -29,6 +35,11 @@ class LLMProvider(Protocol):
         messages: list[dict[str, str]],
         response_schema: type[Any] | None = None,
     ) -> LLMResult:
+        raise NotImplementedError
+
+
+class EmbeddingProvider(Protocol):
+    def embed(self, text: str) -> EmbeddingResult:
         raise NotImplementedError
 
 

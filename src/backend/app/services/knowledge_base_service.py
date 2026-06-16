@@ -1,10 +1,13 @@
+import os
 import re
 
+from app.adapters.embedding_provider import EmbeddingSettings, build_embedding_provider
 from sqlalchemy import select
 
 from app.db.session import session_scope
 from app.models import Document, DocumentChunk
 from app.schemas import KnowledgeSearchResult
+from app.services.vector_search_service import SQLiteVectorSearchService
 
 
 ANCHOR_TERMS = {
@@ -30,12 +33,26 @@ ANCHOR_EXPANSIONS = {
 
 
 class KnowledgeBaseService:
-    def __init__(self, database_url: str | None = None) -> None:
+    def __init__(self, database_url: str | None = None, embedding_provider=None) -> None:
         self.database_url = database_url
+        self.embedding_provider = embedding_provider
 
     def search(self, course_id: int, query: str, top_k: int) -> list[KnowledgeSearchResult]:
         if top_k <= 0:
             return []
+        mode = _retrieval_mode()
+        keyword_results = self._keyword_search(course_id, query, top_k)
+        if mode == "keyword":
+            return keyword_results
+
+        vector_results = self._vector_search(course_id, query, top_k)
+        if mode == "vector":
+            return vector_results or keyword_results
+        if not vector_results:
+            return keyword_results
+        return self._hybrid_rank(keyword_results, vector_results, top_k)
+
+    def _keyword_search(self, course_id: int, query: str, top_k: int) -> list[KnowledgeSearchResult]:
         query_terms = self._query_terms(query)
         if not query_terms:
             return []
@@ -83,6 +100,87 @@ class KnowledgeBaseService:
             ranked.sort(key=lambda item: item.score or 0, reverse=True)
             deduped = self._dedupe_by_content(ranked)
             return self._coverage_rank(deduped, required_anchors, top_k)
+
+    def _vector_search(self, course_id: int, query: str, top_k: int) -> list[KnowledgeSearchResult]:
+        if os.getenv("RAG_EMBEDDING_ENABLED", "").strip().lower() not in {"1", "true", "yes", "on"}:
+            return []
+        settings = EmbeddingSettings.from_env()
+        provider = self.embedding_provider or build_embedding_provider(settings)
+        if provider is None:
+            return []
+        try:
+            return SQLiteVectorSearchService(database_url=self.database_url, provider=provider).search(course_id, query, top_k)
+        except Exception:
+            return []
+
+    def _hybrid_rank(
+        self,
+        keyword_results: list[KnowledgeSearchResult],
+        vector_results: list[KnowledgeSearchResult],
+        top_k: int,
+    ) -> list[KnowledgeSearchResult]:
+        keyword_weight = _float_from_env("RAG_KEYWORD_WEIGHT", 0.45)
+        vector_weight = _float_from_env("RAG_VECTOR_WEIGHT", 0.55)
+        keyword_max = max((item.score or 0 for item in keyword_results), default=0)
+        vector_max = max((item.score or 0 for item in vector_results), default=0)
+        merged: dict[int | str, KnowledgeSearchResult] = {}
+
+        def key_for(item: KnowledgeSearchResult) -> int | str:
+            return item.chunk_id if item.chunk_id is not None else item.source_ref or item.content
+
+        def normalized(score: float | None, max_score: float) -> float:
+            if not score or max_score <= 0:
+                return 0.0
+            return score / max_score
+
+        for item in keyword_results:
+            key = key_for(item)
+            keyword_score = item.score or 0.0
+            final_score = keyword_weight * normalized(keyword_score, keyword_max)
+            metadata = {
+                **item.metadata,
+                "retrieval_mode": "hybrid",
+                "keyword_score": keyword_score,
+                "vector_score": 0.0,
+            }
+            merged[key] = item.model_copy(update={"score": round(final_score, 4), "metadata": metadata})
+
+        for item in vector_results:
+            key = key_for(item)
+            vector_score = item.score or 0.0
+            if key in merged:
+                current = merged[key]
+                keyword_score = float(current.metadata.get("keyword_score") or 0.0)
+                final_score = (
+                    keyword_weight * normalized(keyword_score, keyword_max)
+                    + vector_weight * normalized(vector_score, vector_max)
+                )
+                metadata = {
+                    **item.metadata,
+                    **current.metadata,
+                    "retrieval_mode": "hybrid",
+                    "keyword_score": keyword_score,
+                    "vector_score": round(vector_score, 4),
+                }
+                merged[key] = current.model_copy(update={"score": round(final_score, 4), "metadata": metadata})
+            else:
+                final_score = vector_weight * normalized(vector_score, vector_max)
+                metadata = {
+                    **item.metadata,
+                    "retrieval_mode": "hybrid",
+                    "keyword_score": 0.0,
+                    "vector_score": round(vector_score, 4),
+                    "matched_terms": item.metadata.get("matched_terms", []),
+                    "term_match_count": item.metadata.get("term_match_count", 0),
+                    "anchor_matches": item.metadata.get("anchor_matches", []),
+                    "required_anchors": item.metadata.get("required_anchors", []),
+                    "coverage_bucket": item.metadata.get("coverage_bucket", "general"),
+                }
+                merged[key] = item.model_copy(update={"score": round(final_score, 4), "metadata": metadata})
+
+        ranked = list(merged.values())
+        ranked.sort(key=lambda item: item.score or 0, reverse=True)
+        return ranked[:top_k]
 
     def _query_terms(self, query: str) -> list[str]:
         normalized = query.strip().lower()
@@ -229,3 +327,20 @@ class KnowledgeBaseService:
                 break
 
         return selected[:top_k]
+
+
+def _retrieval_mode() -> str:
+    mode = os.getenv("RAG_RETRIEVAL_MODE", "keyword").strip().lower()
+    if mode not in {"keyword", "vector", "hybrid"}:
+        return "keyword"
+    return mode
+
+
+def _float_from_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default

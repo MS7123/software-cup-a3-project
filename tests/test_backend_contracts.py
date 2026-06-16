@@ -29,6 +29,7 @@ class BackendContractTests(unittest.TestCase):
             "concept_relations",
             "documents",
             "document_chunks",
+            "chunk_embeddings",
             "learning_paths",
             "learning_path_items",
             "generated_resources",

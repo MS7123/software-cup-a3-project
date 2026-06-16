@@ -2,7 +2,7 @@
 
 最后更新：2026-06-04
 
-本文档只覆盖当前 MVP 阶段可运行的本地开发和演示配置。当前后端默认使用 SQLite demo database；`PostgreSQL`、`Redis/RQ`、真实 `LLMProvider` 和真实 `VectorStore` 仍是架构目标，后续应通过独立任务补迁移、队列和真实外部能力配置。
+本文档只覆盖当前 MVP 阶段可运行的本地开发和演示配置。当前后端默认使用 SQLite demo database；`PostgreSQL`、`Redis/RQ`、真实 `LLMProvider` 和生产级 `pgvector` 仍是架构目标，后续应通过独立任务补迁移、队列和真实外部能力配置。
 
 ## Current vs Target
 
@@ -63,6 +63,23 @@ $env:PLAYWRIGHT_CHANNEL='chromium'
 
 默认 `verify.ps1`、`run-local.ps1 -SmokeOnly` 和 Playwright smoke 不应依赖真实 LLM 网络调用。需要验证真实 LLM 时，应使用显式 opt-in 的本地环境变量或独立手动验证路径。
 
+### Optional SQLite Hybrid Retrieval
+
+默认 RAG 仍使用 `RAG_RETRIEVAL_MODE=keyword`。需要本地验证 embedding 召回时，显式配置：
+
+```powershell
+$env:RAG_RETRIEVAL_MODE='hybrid'
+$env:RAG_EMBEDDING_ENABLED='true'
+$env:RAG_VECTOR_STORE='sqlite_cosine'
+$env:EMBEDDING_PROVIDER='openai_compatible'
+$env:EMBEDDING_BASE_URL='<provider-base-url>'
+$env:EMBEDDING_MODEL='<embedding-model>'
+$env:EMBEDDING_API_KEY='<your-embedding-api-key>'
+./scripts/run-local.ps1
+```
+
+`EMBEDDING_API_KEY` 不得写入仓库、日志、frontend bundle 或 agent run 记录。未配置 embedding provider 时，系统继续走 keyword retrieval。
+
 DeepSeek OpenAI-compatible 本地显式 opt-in 示例：
 
 ```powershell
@@ -100,6 +117,37 @@ $env:LLM_BYPASS_PROXY='true'
 ```powershell
 ./scripts/run-local-aliyun-flash.ps1 -Model qwen3.5-plus
 ```
+
+阿里云百炼 Flash + SQLite hybrid retrieval 一键启动脚本：
+
+```powershell
+./scripts/run-local-aliyun-hybrid.ps1
+```
+
+该脚本默认启用：
+
+- `RAG_RETRIEVAL_MODE=hybrid`
+- `RAG_EMBEDDING_ENABLED=true`
+- `EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`
+- `EMBEDDING_MODEL=text-embedding-v3`
+
+如需临时换 embedding 模型：
+
+```powershell
+./scripts/run-local-aliyun-hybrid.ps1 -EmbeddingModel text-embedding-v4
+```
+
+DeepSeek Chat + 阿里云 embedding hybrid 启动脚本：
+
+```powershell
+./scripts/run-local-deepseek-hybrid.ps1
+```
+
+该脚本使用：
+
+- `run-local-deepseek.ps1` 启动远程 Chat LLM。
+- `ALIYUN_BAILIAN_API_KEY` 调用阿里云 `text-embedding-v3`。
+- `RAG_RETRIEVAL_MODE=hybrid` 和 `RAG_VECTOR_STORE=sqlite_cosine`。
 
 不要把真实 `LLM_API_KEY` 写入 `deployment/local.env.example`、`.env`、测试输出或 agent run 记录。
 

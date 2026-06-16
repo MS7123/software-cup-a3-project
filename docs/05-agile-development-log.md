@@ -1106,3 +1106,32 @@ Ready for commit：Yes。
 
 - 当前开关状态仅保存在页面状态中，刷新后恢复默认开启。
 - ProfileUpdater 仍是请求级 loading，没有展示 trace 分析的内部步骤。
+
+## 2026-06-16 增量：SQLite Vector Retrieval Phase 2
+
+### 目标
+
+根据 `docs/11-sqlite-vector-retrieval-plan.md` 完成 RAG 第二阶段最小闭环：在不改变默认 SQLite keyword demo 的前提下，提供可选的 embedding indexing、SQLite cosine vector search 和 hybrid ranking。
+
+### 核心功能
+
+- 新增 `EmbeddingProvider` protocol 与 OpenAI-compatible embedding adapter。
+- 新增 `chunk_embeddings` 表，保存 chunk embedding、provider、model、dimension 和 content hash。
+- 新增 `EmbeddingIndexService`，支持对已导入 chunk 生成 embedding，并跳过相同 provider/model/content_hash 的重复索引。
+- 新增 `SQLiteVectorSearchService`，从 SQLite 读取当前 course 的 chunk embeddings，并用 Python cosine similarity 排序。
+- `KnowledgeBaseService.search()` 支持 `keyword`、`vector`、`hybrid` 三种模式。
+- hybrid metadata 返回 `retrieval_mode`、`keyword_score`、`vector_score`，不改变 search API schema。
+
+### 架构边界
+
+- 默认 `RAG_RETRIEVAL_MODE=keyword`。
+- 默认 `RAG_EMBEDDING_ENABLED=false`，`verify.ps1` 不需要 embedding key。
+- 没有引入 Chroma、FAISS、Qdrant、Milvus、PostgreSQL 或 pgvector 默认依赖。
+- API handler 和 frontend 不计算 embedding / cosine similarity。
+- embedding provider 失败时 fallback 到 keyword retrieval。
+
+### 已知限制
+
+- 当前 vector search 是 SQLite 全量候选 + Python cosine，适合比赛 demo 和小规模资料，不是生产级向量索引。
+- 当前没有前端 embedding indexing 管理页，导入时只在显式启用 embedding 后自动索引。
+- pgvector 仍是后续 opt-in 增强项。

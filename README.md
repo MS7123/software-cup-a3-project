@@ -132,7 +132,7 @@
 ### 核心能力
 
 - PDF / Word / PPT 等文件上传和解析。
-- embedding / VectorStore / hybrid retrieval 检索链路。
+- pgvector / production-grade vector index / reranker 检索链路。
 - Tutor / Resource 对复杂真实课程资料的更强 grounded generation。
 - 视频、动画或真实图片类资源生成。
 - 长期学习历史压缩和跨 session 动态画像建模。
@@ -311,7 +311,7 @@ $env:LLM_FALLBACK_MODE='rule_based'
 
 - 当前 SQLite 只用于本地开发和比赛演示，不代表正式数据库方向。
 - 当前真实资料导入仅支持 `text` / `markdown` 粘贴，不代表完整文件上传解析平台。
-- 当前 RAG 使用 SQLite keyword retrieval，不代表 embedding / VectorStore / pgvector 已完成。
+- 当前 RAG 默认使用 SQLite keyword retrieval；SQLite cosine hybrid retrieval 已作为显式 opt-in 能力提供，不代表 pgvector 或生产级向量索引已完成。
 - 默认 rule-based fallback 是演示稳定性保障，不等同于完整智能能力。
 - 真实 LLM 需要显式配置 API key 和开关；默认验证不依赖网络。
 - 生图接口目前只是 adapter contract 预留，不是已完成的图片生成能力。

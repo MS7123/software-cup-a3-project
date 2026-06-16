@@ -1,5 +1,8 @@
+import os
+
 from sqlalchemy import select
 
+from app.adapters.embedding_provider import EmbeddingSettings, build_embedding_provider
 from app.adapters.document_parser import build_document_parser
 from app.core.enums import ProcessingStatus
 from app.db.base import Base
@@ -8,6 +11,7 @@ from app.domain.exceptions import NotFoundError
 from app.models import Course, Document, DocumentChunk
 from app.schemas import DocumentChunkResponse, DocumentIngestionRequest, DocumentIngestionResponse, DocumentResponse
 from app.services.chunking_service import ChunkingService
+from app.services.embedding_index_service import EmbeddingIndexService
 
 
 class DocumentIngestionService:
@@ -64,6 +68,7 @@ class DocumentIngestionService:
             document_response = DocumentResponse.model_validate(document)
             chunk_responses = [self._chunk_response(chunk) for chunk in chunk_models]
 
+        self._maybe_index_embeddings(course_id)
         return DocumentIngestionResponse(
             document=document_response,
             chunks=chunk_responses,
@@ -91,3 +96,17 @@ class DocumentIngestionService:
             metadata=chunk.metadata_json,
             source_ref=chunk.source_ref,
         )
+
+    def _maybe_index_embeddings(self, course_id: int) -> None:
+        if os.getenv("RAG_EMBEDDING_ENABLED", "").strip().lower() not in {"1", "true", "yes", "on"}:
+            return
+        settings = EmbeddingSettings.from_env()
+        provider = build_embedding_provider(settings)
+        if provider is None:
+            return
+        EmbeddingIndexService(
+            database_url=self.database_url,
+            provider=provider,
+            provider_name=settings.provider or "configured",
+            model=settings.model or "configured",
+        ).index_course(course_id)
