@@ -8,6 +8,7 @@ from app.adapters.protocols import EmbeddingProvider
 from app.db.session import session_scope
 from app.models import ChunkEmbedding, Document, DocumentChunk
 from app.schemas import KnowledgeSearchResult
+from app.services.citation_service import build_source_metadata
 from app.services.embedding_index_service import EmbeddingIndexService
 
 
@@ -31,7 +32,7 @@ class SQLiteVectorSearchService:
 
         with session_scope(self.database_url) as session:
             rows = session.execute(
-                select(DocumentChunk, ChunkEmbedding)
+                select(DocumentChunk, ChunkEmbedding, Document)
                 .join(Document, Document.id == DocumentChunk.document_id)
                 .join(ChunkEmbedding, ChunkEmbedding.chunk_id == DocumentChunk.id)
                 .where(Document.course_id == course_id)
@@ -40,7 +41,7 @@ class SQLiteVectorSearchService:
             ).all()
 
             ranked: list[KnowledgeSearchResult] = []
-            for chunk, embedding in rows:
+            for chunk, embedding, document in rows:
                 if embedding.content_hash != EmbeddingIndexService.content_hash(chunk.content):
                     continue
                 try:
@@ -50,16 +51,21 @@ class SQLiteVectorSearchService:
                 score = cosine_similarity(query_vector, vector)
                 if score <= 0:
                     continue
-                metadata = {
-                    **(chunk.metadata_json if isinstance(chunk.metadata_json, dict) else {}),
-                    "document_id": chunk.document_id,
-                    "chunk_id": chunk.id,
-                    "source_ref": chunk.source_ref,
-                    "retrieval_mode": "vector",
-                    "vector_score": round(score, 4),
-                    "embedding_provider": embedding.provider,
-                    "embedding_model": embedding.model,
-                }
+                metadata = build_source_metadata(
+                    content=chunk.content,
+                    document_title=document.title,
+                    metadata={
+                        **(chunk.metadata_json if isinstance(chunk.metadata_json, dict) else {}),
+                        "document_id": chunk.document_id,
+                        "chunk_id": chunk.id,
+                        "retrieval_mode": "vector",
+                        "vector_score": round(score, 4),
+                        "embedding_provider": embedding.provider,
+                        "embedding_model": embedding.model,
+                    },
+                    source_ref=chunk.source_ref,
+                    score=round(score, 4),
+                )
                 ranked.append(
                     KnowledgeSearchResult(
                         chunk_id=chunk.id,

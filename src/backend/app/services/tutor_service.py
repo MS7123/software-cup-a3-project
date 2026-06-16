@@ -4,18 +4,8 @@ from app.models import Course, StudentProfile
 from app.db.session import session_scope
 from app.schemas import TutorAskResponse
 from app.services.agent_run_service import AgentRunService
+from app.services.citation_service import source_ref_summary, validate_citations
 from app.services.knowledge_base_service import KnowledgeBaseService
-
-
-def _source_ref_summary(source_refs: list[dict]) -> str:
-    refs = [
-        str(source.get("source_ref"))
-        for source in source_refs[:3]
-        if source.get("source_ref")
-    ]
-    if not refs:
-        return "Grounded sources: none retrieved."
-    return f"Grounded sources: {', '.join(refs)}"
 
 
 class TutorService:
@@ -35,15 +25,27 @@ class TutorService:
         chunks = KnowledgeBaseService(database_url=self.database_url).search(course_id, question, top_k=5)
         profile_summary = f"type={profile.profile_type}; level={profile.level}; goal={profile.goal}; time_budget={profile.time_budget}"
         result = self.agent.answer(question, chunks, profile_summary, course.title)
+        source_summary = source_ref_summary(result.source_refs)
+        citation_check = validate_citations(result.answer, result.source_refs)
+        citation_note = _citation_trace_note(citation_check)
         run_service = AgentRunService(database_url=self.database_url)
         run = run_service.start_run("tutor_answer", profile_id, course_id, input_summary=result.input_summary)
         run_service.record_step(
             run.id,
             "tutor",
             result.input_summary,
-            f"{result.output_summary} {_source_ref_summary(result.source_refs)}",
-            f"{result.decision_basis} {_source_ref_summary(result.source_refs)}",
+            f"{result.output_summary} {source_summary}{citation_note}",
+            f"{result.decision_basis} {source_summary}{citation_note}",
             "completed",
         )
         run_service.complete_run(run.id, f"Tutor Agent 已回答 profile {profile_id} 的问题。")
         return TutorAskResponse(answer=result.answer, source_refs=result.source_refs, agent_run_id=run.id)
+
+
+def _citation_trace_note(citation_check: dict) -> str:
+    fake_refs = citation_check.get("fake_source_refs") or []
+    if fake_refs:
+        return f" Citation warning: fake sources {', '.join(str(ref) for ref in fake_refs)}."
+    if citation_check.get("missing_citation"):
+        return " Citation warning: answer did not cite retrieved sources inline."
+    return ""

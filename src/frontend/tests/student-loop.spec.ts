@@ -81,6 +81,8 @@ test("student UI completes the current MVP learning loop", async ({ page }) => {
   await expect(page.getByTestId("tutor-loading")).toBeVisible();
   await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" })).toBeVisible();
   await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" })).toContainText("document:");
+  await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" }).getByTestId("source-panel")).toBeVisible();
+  await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" }).getByTestId("source-detail").first()).toBeVisible();
   await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" }).getByTestId("markdown-body")).toBeVisible();
 
   await page.route("**/api/v1/quizzes/generate", async (route) => {

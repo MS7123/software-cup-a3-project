@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.schemas import KnowledgeSearchResult
+from app.services.citation_service import source_ref_payload
 
 
 @dataclass(frozen=True)
@@ -138,10 +139,7 @@ class RuleBasedResourceAgent:
         )
 
     def _source_refs(self, chunks: list[KnowledgeSearchResult]) -> list[dict[str, Any]]:
-        return [
-            {"chunk_id": chunk.chunk_id, "source_ref": chunk.source_ref, "score": chunk.score}
-            for chunk in chunks
-        ]
+        return [source_ref_payload(chunk) for chunk in chunks]
 
 
 class RuleBasedTutorAgent:
@@ -152,10 +150,7 @@ class RuleBasedTutorAgent:
         profile_summary: str = "",
         course_title: str = "",
     ) -> TutorAgentResult:
-        source_refs = [
-            {"chunk_id": chunk.chunk_id, "source_ref": chunk.source_ref, "score": chunk.score}
-            for chunk in chunks
-        ]
+        source_refs = [source_ref_payload(chunk) for chunk in chunks]
         if chunks:
             evidence = chunks[0].content
             answer = f"根据课程资料：{evidence} 针对你的问题“{question}”，建议先抓住资料中的定义和适用场景，再做一个小例子验证理解。"

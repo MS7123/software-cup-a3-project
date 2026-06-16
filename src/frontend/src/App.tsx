@@ -73,17 +73,14 @@ function labelProfile(type: string): string {
   return profileLabels[type] ?? type.replaceAll("_", " ");
 }
 
-function sourceLabel(sourceRefs: Array<Record<string, unknown>>): string {
-  if (sourceRefs.length === 0) return "No source returned";
-  return sourceRefs
-    .slice(0, 3)
-    .map((source) => String(source.source_ref ?? source.chunk_id ?? "source"))
-    .join(" / ");
-}
-
 function formatMetadataList(value: unknown): string {
   if (!Array.isArray(value) || value.length === 0) return "none";
   return value.map((item) => String(item)).join(", ");
+}
+
+function formatScore(value: unknown): string {
+  if (typeof value !== "number" || Number.isNaN(value)) return "n/a";
+  return value.toFixed(2);
 }
 
 function excerpt(text: string, maxLength = 160): string {
@@ -405,11 +402,12 @@ export function App() {
                       <div key={result.chunk_id ?? result.source_ref} className="knowledge-search-result">
                         <p>{result.source_ref}</p>
                         <span>
-                          score {result.score ?? "n/a"} · matched{" "}
+                          score {formatScore(result.score)} · mode {String(result.metadata?.retrieval_mode ?? "n/a")} ·
+                          vector {formatScore(result.metadata?.vector_score)} · rerank {formatScore(result.metadata?.rerank_score)} · matched{" "}
                           {formatMetadataList(result.metadata?.matched_terms)} · anchors{" "}
                           {formatMetadataList(result.metadata?.anchor_matches)}
                         </span>
-                        <p className="knowledge-search-excerpt">{excerpt(result.content)}</p>
+                        <p className="knowledge-search-excerpt">{String(result.metadata?.excerpt ?? excerpt(result.content))}</p>
                       </div>
                     ))}
                   </div>
@@ -606,7 +604,7 @@ export function App() {
                 />
               ) : null}
               {resource ? (
-                <ResourceOutputBlock resource={resource} source={sourceLabel(resource.source_refs)} />
+                <ResourceOutputBlock resource={resource} />
               ) : (
                 <EmptyState text="The generated resource will appear here after the backend Resource Agent responds." />
               )}
@@ -642,7 +640,7 @@ export function App() {
                 />
               ) : null}
               {answer ? (
-                <OutputBlock title="Tutor answer" text={answer.answer} source={sourceLabel(answer.source_refs)} />
+                <OutputBlock title="Tutor answer" text={answer.answer} sourceRefs={answer.source_refs} />
               ) : (
                 <EmptyState text="Tutor answers are grounded by backend document chunks and include returned source refs." />
               )}
@@ -894,12 +892,12 @@ function Metric({ label, value, dark = false }: { label: string; value: string; 
   );
 }
 
-function OutputBlock({ title, text, source }: { title: string; text: string; source: string }) {
+function OutputBlock({ title, text, sourceRefs }: { title: string; text: string; sourceRefs: Array<Record<string, unknown>> }) {
   return (
     <article className="mt-4 rounded-md border border-slate-200 bg-white p-4" data-testid="output-block">
       <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
       <MarkdownBlock text={text} />
-      <p className="mt-3 rounded-md bg-moss/10 px-3 py-2 text-xs font-semibold text-moss">Grounded source: {source}</p>
+      <SourcePanel sourceRefs={sourceRefs} />
     </article>
   );
 }
@@ -941,7 +939,7 @@ function MarkdownBlock({ text }: { text: string }) {
   );
 }
 
-function ResourceOutputBlock({ resource, source }: { resource: GeneratedResource; source: string }) {
+function ResourceOutputBlock({ resource }: { resource: GeneratedResource }) {
   const lines = resource.content
     .split("\n")
     .map((line) => line.trim())
@@ -953,9 +951,10 @@ function ResourceOutputBlock({ resource, source }: { resource: GeneratedResource
     const nodes = extractMindMapNodes(lines);
     return (
       <article className="resource-card resource-card-map" data-testid="output-block">
-        <ResourceHeader title="Mind map" source={source} />
+        <ResourceHeader title="Mind map" />
         <MindMapDiagram center={center} nodes={nodes} />
         <FullResourceText text={resource.content} />
+        <SourcePanel sourceRefs={resource.source_refs} />
       </article>
     );
   }
@@ -965,7 +964,7 @@ function ResourceOutputBlock({ resource, source }: { resource: GeneratedResource
     const tasks = extractNumberedItems(lines).slice(0, 5);
     return (
       <article className="resource-card resource-card-code" data-testid="output-block">
-        <ResourceHeader title="Coding case" source={source} />
+        <ResourceHeader title="Coding case" />
         {code ? (
           <pre className="code-case-block" data-testid="coding-case-card">{code}</pre>
         ) : (
@@ -977,6 +976,7 @@ function ResourceOutputBlock({ resource, source }: { resource: GeneratedResource
           ))}
         </div>
         <FullResourceText text={resource.content} />
+        <SourcePanel sourceRefs={resource.source_refs} />
       </article>
     );
   }
@@ -985,13 +985,14 @@ function ResourceOutputBlock({ resource, source }: { resource: GeneratedResource
     const questions = extractPracticeQuestions(lines);
     return (
       <article className="resource-card resource-card-practice" data-testid="output-block">
-        <ResourceHeader title="Practice questions" source={source} />
+        <ResourceHeader title="Practice questions" />
         <ol className="practice-list" data-testid="practice-card">
           {(questions.length ? questions : extractQuestionLikeLines(lines)).map((line, index) => (
             <li key={index}>{line.replace(/^题目\s*\d+[:：]\s*/, "")}</li>
           ))}
         </ol>
         <FullResourceText text={resource.content} />
+        <SourcePanel sourceRefs={resource.source_refs} />
       </article>
     );
   }
@@ -999,18 +1000,20 @@ function ResourceOutputBlock({ resource, source }: { resource: GeneratedResource
   if (resource.resource_type === "extended_reading") {
     return (
       <article className="resource-card resource-card-reading" data-testid="output-block">
-        <ResourceHeader title="Extended reading" source={source} />
+        <ResourceHeader title="Extended reading" />
         <div data-testid="reading-card">
           <MarkdownBlock text={resource.content} />
         </div>
+        <SourcePanel sourceRefs={resource.source_refs} />
       </article>
     );
   }
 
   return (
     <article className="resource-card resource-card-note" data-testid="output-block">
-      <ResourceHeader title={title} source={source} />
+      <ResourceHeader title={title} />
       <MarkdownBlock text={resource.content} />
+      <SourcePanel sourceRefs={resource.source_refs} />
     </article>
   );
 }
@@ -1093,11 +1096,44 @@ function FullResourceText({ text }: { text: string }) {
   );
 }
 
-function ResourceHeader({ title, source }: { title: string; source: string }) {
+function ResourceHeader({ title }: { title: string }) {
   return (
     <div className="resource-header">
       <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
-      <p className="grounded-source">Grounded source: {source}</p>
+    </div>
+  );
+}
+
+function SourcePanel({ sourceRefs }: { sourceRefs: Array<Record<string, unknown>> }) {
+  const visibleSources = sourceRefs.slice(0, 5);
+  return (
+    <div className="source-panel" data-testid="source-panel">
+      <p className="source-panel-title">Grounded sources</p>
+      {visibleSources.length === 0 ? (
+        <p className="source-panel-empty" data-testid="source-empty">No source returned</p>
+      ) : (
+        <div className="source-panel-list">
+          {visibleSources.map((source, index) => (
+            <details className="source-detail" data-testid="source-detail" key={`${String(source.source_ref ?? source.chunk_id ?? "source")}-${index}`}>
+              <summary>
+                <span>{String(source.source_ref ?? source.chunk_id ?? "source")}</span>
+                <small>
+                  score {formatScore(source.rerank_score ?? source.score)}
+                  {source.retrieval_mode ? ` · ${String(source.retrieval_mode)}` : ""}
+                </small>
+              </summary>
+              {source.source_title ? <p className="source-title">{String(source.source_title)}</p> : null}
+              {source.excerpt ? <p className="source-excerpt">{String(source.excerpt)}</p> : null}
+              <p className="source-meta">
+                matched {formatMetadataList(source.matched_terms)} · anchors {formatMetadataList(source.anchor_matches)}
+                {Array.isArray(source.rerank_reasons) && source.rerank_reasons.length
+                  ? ` · rerank ${formatMetadataList(source.rerank_reasons)}`
+                  : ""}
+              </p>
+            </details>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

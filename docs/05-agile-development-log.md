@@ -1135,3 +1135,31 @@ Ready for commit：Yes。
 - 当前 vector search 是 SQLite 全量候选 + Python cosine，适合比赛 demo 和小规模资料，不是生产级向量索引。
 - 当前没有前端 embedding indexing 管理页，导入时只在显式启用 embedding 后自动索引。
 - pgvector 仍是后续 opt-in 增强项。
+
+## 2026-06-16 增量：RAG Reranking and Citation Quality
+
+### 目标
+
+根据 `docs/13-rag-reranking-plan.md` 和 `docs/14-rag-citation-quality-plan.md` 完成轻量可演示增量：在不改变 API schema、不引入远程 rerank provider 的前提下，为 RAG 检索结果增加可选 rule-based reranking、context budget、真实来源 excerpt 和前端来源面板。
+
+### 核心功能
+
+- 新增 `RuleBasedReranker`，通过 retrieval score、anchor coverage、source diversity、concept alignment、chunk length 生成 `rerank_score` 和 `rerank_reasons`。
+- 默认保持 `RAG_RERANK_ENABLED=false`，启用后只在 service 层重排 `KnowledgeSearchResult`，不改变 API schema。
+- keyword / vector / hybrid 检索结果 metadata 增加 `source_title`、`excerpt`、`source_ref`、`score`。
+- Tutor / Resource `source_refs` 保留 excerpt、retrieval_mode、rerank_score、matched_terms、anchor_matches。
+- Tutor trace 增加 citation coverage warning，检测回答未引用已检索 source 或引用伪造 `document:x#chunk:y`。
+- 前端新增 `SourcePanel`，支持展开查看 source title、score、retrieval mode、excerpt 和 rerank reason。
+
+### 架构边界
+
+- 没有修改 `/api/v1/knowledge/search`、Tutor、Resource API contract。
+- 没有在 frontend 或 API handler 中计算 rerank score。
+- 没有引入 cross-encoder、LLM reranker、Chroma、FAISS、pgvector。
+- Citation excerpt 来自真实 chunk content，不由前端或 LLM 生成。
+
+### 已知限制
+
+- 当前 reranker 是 rule-based，适合 demo 可解释排序，不等价于语义 cross-encoder rerank。
+- Citation coverage check 只做轻量正则检查，不做句级 claim-source 对齐。
+- Source panel 展示前 5 个来源，完整知识库 source browser 留给后续管理后台阶段。

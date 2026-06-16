@@ -7,6 +7,8 @@ from sqlalchemy import select
 from app.db.session import session_scope
 from app.models import Document, DocumentChunk
 from app.schemas import KnowledgeSearchResult
+from app.services.citation_service import build_source_metadata
+from app.services.reranking_service import RuleBasedReranker, rerank_enabled
 from app.services.vector_search_service import SQLiteVectorSearchService
 
 
@@ -43,14 +45,14 @@ class KnowledgeBaseService:
         mode = _retrieval_mode()
         keyword_results = self._keyword_search(course_id, query, top_k)
         if mode == "keyword":
-            return keyword_results
+            return self._maybe_rerank(keyword_results, top_k)
 
         vector_results = self._vector_search(course_id, query, top_k)
         if mode == "vector":
-            return vector_results or keyword_results
+            return self._maybe_rerank(vector_results or keyword_results, top_k)
         if not vector_results:
-            return keyword_results
-        return self._hybrid_rank(keyword_results, vector_results, top_k)
+            return self._maybe_rerank(keyword_results, top_k)
+        return self._maybe_rerank(self._hybrid_rank(keyword_results, vector_results, top_k), top_k)
 
     def _keyword_search(self, course_id: int, query: str, top_k: int) -> list[KnowledgeSearchResult]:
         query_terms = self._query_terms(query)
@@ -58,14 +60,14 @@ class KnowledgeBaseService:
             return []
         required_anchors = self._anchor_matches(query.lower())
         with session_scope(self.database_url) as session:
-            chunks = session.scalars(
-                select(DocumentChunk)
+            rows = session.execute(
+                select(DocumentChunk, Document)
                 .join(Document, Document.id == DocumentChunk.document_id)
                 .where(Document.course_id == course_id)
                 .order_by(DocumentChunk.id)
             ).all()
             ranked: list[KnowledgeSearchResult] = []
-            for chunk in chunks:
+            for chunk, document in rows:
                 haystack = f"{chunk.content} {chunk.source_ref or ''} {chunk.metadata_json}".lower()
                 content_text = chunk.content.lower()
                 matched_terms = self._matched_terms(haystack, query_terms)
@@ -74,20 +76,24 @@ class KnowledgeBaseService:
                 if score <= 0:
                     continue
                 content_fingerprint = self._content_fingerprint(chunk.content)
-                metadata = {
-                    **(chunk.metadata_json if isinstance(chunk.metadata_json, dict) else {}),
-                    "document_id": chunk.document_id,
-                    "chunk_id": chunk.id,
-                    "source_ref": chunk.source_ref,
-                    "score": score,
-                    "retrieval_mode": "keyword",
-                    "matched_terms": matched_terms[:12],
-                    "term_match_count": len(matched_terms),
-                    "anchor_matches": anchor_matches,
-                    "required_anchors": required_anchors,
-                    "coverage_bucket": self._coverage_bucket(anchor_matches),
-                    "content_fingerprint": content_fingerprint,
-                }
+                metadata = build_source_metadata(
+                    content=chunk.content,
+                    document_title=document.title,
+                    metadata={
+                        **(chunk.metadata_json if isinstance(chunk.metadata_json, dict) else {}),
+                        "document_id": chunk.document_id,
+                        "chunk_id": chunk.id,
+                        "retrieval_mode": "keyword",
+                        "matched_terms": matched_terms[:12],
+                        "term_match_count": len(matched_terms),
+                        "anchor_matches": anchor_matches,
+                        "required_anchors": required_anchors,
+                        "coverage_bucket": self._coverage_bucket(anchor_matches),
+                        "content_fingerprint": content_fingerprint,
+                    },
+                    source_ref=chunk.source_ref,
+                    score=score,
+                )
                 ranked.append(
                     KnowledgeSearchResult(
                         chunk_id=chunk.id,
@@ -100,6 +106,14 @@ class KnowledgeBaseService:
             ranked.sort(key=lambda item: item.score or 0, reverse=True)
             deduped = self._dedupe_by_content(ranked)
             return self._coverage_rank(deduped, required_anchors, top_k)
+
+    def _maybe_rerank(self, results: list[KnowledgeSearchResult], top_k: int) -> list[KnowledgeSearchResult]:
+        if not rerank_enabled():
+            return results
+        try:
+            return RuleBasedReranker().rerank(results, top_k)
+        except Exception:
+            return results
 
     def _vector_search(self, course_id: int, query: str, top_k: int) -> list[KnowledgeSearchResult]:
         if os.getenv("RAG_EMBEDDING_ENABLED", "").strip().lower() not in {"1", "true", "yes", "on"}:

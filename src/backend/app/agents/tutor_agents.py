@@ -5,6 +5,7 @@ from app.adapters.llm_provider import LLMProviderError
 from app.agents.rule_based_agents import RuleBasedTutorAgent, TutorAgentResult
 from app.agents.tutor_prompts import build_tutor_messages
 from app.schemas import KnowledgeSearchResult
+from app.services.citation_service import source_ref_payload
 
 
 class TutorAgent(Protocol):
@@ -36,10 +37,7 @@ class LLMBackedTutorAgent:
         profile_summary: str = "",
         course_title: str = "",
     ) -> TutorAgentResult:
-        source_refs = [
-            {"chunk_id": chunk.chunk_id, "source_ref": chunk.source_ref, "score": chunk.score}
-            for chunk in chunks
-        ]
+        source_refs = [source_ref_payload(chunk) for chunk in chunks]
         try:
             result = self.provider.generate(
                 build_tutor_messages(question, chunks, profile_summary, course_title),
