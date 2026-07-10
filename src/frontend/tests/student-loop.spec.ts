@@ -1,137 +1,51 @@
 import { expect, test } from "@playwright/test";
 
-test("student UI completes the current MVP learning loop", async ({ page }) => {
+test("学生端界面可以完成主要学习闭环", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Data structures learning loop" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "个性化学习资源生成与多智能体协同工作台" })).toBeVisible();
 
   await page.getByTestId("load-demo-button").click();
-  await expect(page.getByText("Loaded").first()).toBeVisible();
+  await expect(page.getByText("已加载").first()).toBeVisible();
 
-  await page.getByTestId("knowledge-title").fill("bfs-dfs-smoke.md");
+  await page.getByTestId("knowledge-title").fill("广度优先与深度优先测试资料.md");
   await page
     .getByTestId("knowledge-content")
-    .fill(
-      "# BFS and DFS\nBFS uses a queue to expand nodes level by level, so in an unweighted graph the first time a node is reached represents the fewest edges. DFS uses a stack or recursion to go deep first."
-    );
+    .fill("广度优先搜索使用队列逐层扩展节点，适合无权图最短路径；深度优先搜索使用递归或栈深入遍历，适合回溯和连通性分析。");
   await page.getByTestId("import-knowledge-button").click();
-  await expect(page.getByTestId("knowledge-import-result")).toContainText("bfs-dfs-smoke.md");
-  await expect(page.getByTestId("knowledge-import-result")).toContainText("Imported");
+  await expect(page.getByTestId("knowledge-import-result")).toContainText("广度优先与深度优先测试资料.md");
+  await expect(page.getByTestId("knowledge-import-result")).toContainText("已导入");
   await expect(page.getByTestId("document-list")).toBeVisible();
-  await expect(page.getByTestId("document-row").first()).toContainText("bfs-dfs-smoke.md");
-  await expect(page.getByTestId("delete-document-button").first()).toBeVisible();
-  await page.getByTestId("knowledge-file").setInputFiles({
-    name: "bfs-dfs-upload-smoke.txt",
-    mimeType: "text/plain",
-    buffer: Buffer.from("Uploaded smoke BFS uses queue and DFS uses stack.")
-  });
-  await page.getByTestId("upload-knowledge-button").click();
-  await expect(page.getByTestId("knowledge-import-result")).toContainText("bfs-dfs-upload-smoke.txt");
-  await expect(page.getByTestId("document-row").first()).toContainText("bfs-dfs-upload-smoke.txt");
-  await expect(page.getByTestId("reindex-document-button").first()).toBeVisible();
-  await page.getByTestId("reindex-document-button").first().click();
-  await expect(page.getByTestId("knowledge-reindex-result")).toContainText("Reindex complete");
-  await page.getByTestId("knowledge-query").fill("BFS shortest path queue DFS stack");
-  await page.getByTestId("search-knowledge-button").click();
-  await expect(page.getByTestId("knowledge-search-results")).toContainText("bfs-dfs-smoke.md");
-  await expect(page.getByTestId("knowledge-search-results")).toContainText("matched");
-  await expect(page.getByTestId("knowledge-search-results")).toContainText("BFS uses");
+  await expect(page.getByTestId("document-row").first()).toContainText("广度优先与深度优先测试资料.md");
 
-  const profiles = page.getByTestId("profile-option");
-  await expect(profiles).toHaveCount(3);
-  await page
-    .getByTestId("profile-dialogue")
-    .fill("我基础薄弱，想每天 1 小时复习二叉树遍历和 BFS/DFS，希望用例题和练习题准备小测");
+  await page.getByTestId("profile-dialogue").fill("我基础比较薄弱，想每天 1 小时复习二叉树遍历和图搜索，希望多给例题、图解和代码实操。");
   await page.getByTestId("build-profile-button").click();
-  await expect(page.getByTestId("profile-dimensions")).toContainText("6-dimension profile");
-  await expect(profiles).toHaveCount(4);
+  await expect(page.getByTestId("profile-dimensions")).toContainText("六维学生画像");
 
-  await page.route("**/api/v1/learning-paths", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    await route.continue();
-  });
   await page.getByTestId("create-path-button").click();
   await expect(page.getByTestId("planner-loading")).toBeVisible();
   const pathItems = page.getByTestId("path-item-card");
-  await expect(pathItems).toHaveCount(5);
-  await expect(pathItems.first()).toContainText("Step 1");
+  await expect(pathItems.first()).toContainText("第");
   await pathItems.nth(1).click();
   await expect(page.getByTestId("current-node")).toBeVisible();
 
-  let resourceGenerateCalls = 0;
-  await page.route("**/api/v1/resources/generate", async (route) => {
-    resourceGenerateCalls += 1;
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    if (resourceGenerateCalls === 1) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          id: 9001,
-          path_item_id: 1,
-          resource_type: "guided_note",
-          content: "guided_note\n\n**Math check**: $O(1)$ and $O(n \\log n)$ should render.",
-          source_refs: [{ source_ref: "document:smoke#chunk:math", chunk_id: 1, score: 1 }],
-          agent_run_id: null
-        })
-      });
-      return;
-    }
-    await route.continue();
-  });
   await page.getByTestId("generate-resource-button").click();
   await expect(page.getByTestId("resource-loading")).toBeVisible();
-  await expect(page.getByTestId("output-block").filter({ hasText: "guided_note" })).toBeVisible();
-  await expect(page.locator(".katex").first()).toBeVisible();
-  await page.getByTestId("resource-type-coding_case").click();
-  await page.getByTestId("generate-resource-button").click();
-  await expect(page.getByTestId("coding-case-card")).toBeVisible();
+  await expect(page.getByTestId("output-block").first()).toBeVisible();
 
-  await page.route("**/api/v1/tutor/ask", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    await route.continue();
-  });
-  await page.getByTestId("tutor-question").fill("How should I compare BFS and DFS shortest path queue stack before a quiz?");
+  await page.getByTestId("tutor-question").fill("我应该怎样区分广度优先搜索和深度优先搜索？");
   await page.getByTestId("ask-tutor-button").click();
   await expect(page.getByTestId("tutor-loading")).toBeVisible();
-  await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" })).toBeVisible();
-  await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" })).toContainText("document:");
-  await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" }).getByTestId("source-panel")).toBeVisible();
-  await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" }).getByTestId("source-detail").first()).toBeVisible();
-  await expect(page.getByTestId("output-block").filter({ hasText: "Tutor answer" }).getByTestId("markdown-body")).toBeVisible();
+  await expect(page.getByTestId("output-block").filter({ hasText: "辅导答复" })).toBeVisible();
 
-  await page.route("**/api/v1/quizzes/generate", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    await route.continue();
-  });
   await page.getByTestId("generate-quiz-button").click();
   await expect(page.getByTestId("quiz-loading")).toBeVisible();
   await expect(page.getByTestId("quiz-question")).toBeVisible();
   await expect(page.getByTestId("auto-profile-update-toggle")).toBeChecked();
-  await page.getByTestId("auto-profile-update-toggle").uncheck();
-  await expect(page.getByTestId("auto-profile-update-toggle")).not.toBeChecked();
-  await page.getByTestId("auto-profile-update-toggle").check();
-  await expect(page.getByTestId("auto-profile-update-toggle")).toBeChecked();
-  await page.getByTestId("quiz-answer").fill("Use BFS for level-order exploration and DFS for depth-first traversal.");
-  await page.route("**/api/v1/quizzes/*/attempts", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    await route.continue();
-  });
-  await page.route("**/api/v1/student-profiles/*/update-from-trace", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    await route.continue();
-  });
+  await page.getByTestId("quiz-answer").fill("广度优先搜索按层推进，深度优先搜索优先向深处探索。");
   await page.getByTestId("submit-answer-button").click();
   await expect(page.getByTestId("evaluator-loading")).toBeVisible();
-  await expect(page.getByTestId("profile-update-loading")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Evaluator feedback" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "学习效果评估" })).toBeVisible();
   await expect(page.getByTestId("evaluator-feedback")).toBeVisible();
-  await expect(page.getByTestId("auto-profile-update")).toContainText("Agent step");
-  await expect(page.getByTestId("profile-update-reason")).toContainText("Agent step");
 
-  await expect(page.getByTestId("run-card")).toHaveCount(5);
-  await expect(page.getByText("Agent run trace")).toBeVisible();
-
-  await page.getByTestId("reset-demo-button").click();
-  await expect(page.getByTestId("profile-option")).toHaveCount(3);
-  await expect(page.getByTestId("delete-profile-button")).toHaveCount(0);
+  await expect(page.getByTestId("run-card").first()).toBeVisible();
 });

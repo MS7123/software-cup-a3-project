@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import rehypeKatex from "rehype-katex";
 import ReactMarkdown from "react-markdown";
@@ -20,15 +20,13 @@ import type {
   LearningPathItem,
   ManagedDocument,
   Quiz,
-  StudentProfile,
-  TutorAnswer
+  StudentProfile
 } from "./api/types";
 
 type BusyAction =
   | "load-demo"
   | "reset-demo"
   | "build-profile"
-  | "update-profile"
   | "delete-profile"
   | "import-knowledge"
   | "upload-knowledge"
@@ -43,71 +41,131 @@ type BusyAction =
   | "submit-attempt"
   | "sync-profile";
 
-const profileLabels: Record<string, string> = {
-  weak_foundation: "Foundation repair",
-  exam_sprint: "Exam sprint",
-  algorithm_practice: "Algorithm practice"
+type StepKey = "profile" | "kb" | "path" | "resource" | "tutor" | "quiz" | "assess";
+
+type TutorMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sourceRefs?: Array<Record<string, unknown>>;
 };
 
-const agentTone: Record<string, string> = {
-  planner: "Path design",
-  resource: "Learning asset",
-  tutor: "Grounded answer",
-  quiz: "Assessment item",
-  evaluator: "Mastery signal"
+type TrackerStep = {
+  label: string;
+  detail: string;
+  status: "done" | "active" | "pending";
+};
+
+const profileLabels: Record<string, string> = {
+  weak_foundation: "基础薄弱型",
+  exam_sprint: "考试冲刺型",
+  algorithm_practice: "算法训练型"
 };
 
 const profileDimensions = [
-  ["learning_goal", "Goal"],
-  ["foundation_level", "Level"],
-  ["learning_preference", "Preference"],
-  ["available_time", "Time"],
-  ["weak_points", "Weak points"],
-  ["resource_preference", "Resource"]
+  ["learning_goal", "学习目标"],
+  ["foundation_level", "知识基础"],
+  ["learning_preference", "认知风格"],
+  ["available_time", "可用时间"],
+  ["weak_points", "易错短板"],
+  ["resource_preference", "资源偏好"]
 ] as const;
 
 const resourceOptions = [
-  { type: "guided_note", label: "讲解" },
-  { type: "practice_questions", label: "练习" },
-  { type: "mind_map", label: "导图" },
-  { type: "extended_reading", label: "拓展" },
-  { type: "coding_case", label: "代码" }
+  { type: "guided_note", label: "讲解文档" },
+  { type: "practice_questions", label: "练习题库" },
+  { type: "mind_map", label: "思维导图" },
+  { type: "extended_reading", label: "拓展阅读" },
+  { type: "coding_case", label: "代码实操" },
+  { type: "teaching_video", label: "教学动画" }
 ] as const;
+
+const stepFlow: Array<{ key: StepKey; label: string; desc: string }> = [
+  { key: "profile", label: "学生画像", desc: "通过自然语言对话抽取特征，形成六维动态画像" },
+  { key: "kb", label: "知识库", desc: "导入课程资料，检索可追溯证据片段" },
+  { key: "path", label: "学习路径", desc: "根据画像、课程图谱和目标规划学习顺序" },
+  { key: "resource", label: "资源生成", desc: "生成文档、题库、思维导图、拓展阅读和实操案例" },
+  { key: "tutor", label: "教师答疑", desc: "基于证据进行个性化答疑" },
+  { key: "quiz", label: "智能测验", desc: "生成当前节点练习题并收集作答" },
+  { key: "assess", label: "学习评估", desc: "评估学习效果并触发画像回写" }
+];
+
+const agentRoster = [
+  { id: "profile", name: "画像顾问", role: "对话抽取特征，维护动态学生画像" },
+  { id: "retriever", name: "资料管理员", role: "检索课程资料，输出可追溯证据" },
+  { id: "planner", name: "学习规划师", role: "结合画像和掌握度重排学习路径" },
+  { id: "resource", name: "资源设计师", role: "生成多类型个性化学习资源" },
+  { id: "tutor", name: "答疑教师", role: "基于证据进行多轮答疑引导" },
+  { id: "evaluator", name: "测评教师", role: "分析作答表现并回写画像建议" }
+];
+
+const stepAgents: Record<StepKey, { lead: string; support: string[] }> = {
+  profile: { lead: "profile", support: [] },
+  kb: { lead: "retriever", support: ["profile"] },
+  path: { lead: "planner", support: ["profile", "evaluator"] },
+  resource: { lead: "resource", support: ["retriever", "profile"] },
+  tutor: { lead: "tutor", support: ["retriever"] },
+  quiz: { lead: "evaluator", support: ["resource"] },
+  assess: { lead: "evaluator", support: ["planner", "profile"] }
+};
+
+const agentTypeLabels: Record<string, string> = {
+  planner: "学习规划师",
+  resource: "资源设计师",
+  tutor: "答疑教师",
+  quiz: "出题老师",
+  evaluator: "测评教师",
+  profile_updater: "画像顾问",
+  retriever: "资料管理员"
+};
+
+const runTypeLabels: Record<string, string> = {
+  planner: "学习路径规划",
+  resource: "学习资源生成",
+  tutor: "教师答疑辅导",
+  quiz: "练习测验生成",
+  evaluator: "学习效果评估",
+  profile_update: "学生画像更新"
+};
+
+const statusLabels: Record<string, string> = {
+  completed: "已完成",
+  success: "已完成",
+  running: "执行中",
+  failed: "失败",
+  pending: "等待中",
+  queued: "排队中"
+};
 
 function labelProfile(type: string): string {
   return profileLabels[type] ?? type.replaceAll("_", " ");
 }
 
-function formatMetadataList(value: unknown): string {
-  if (!Array.isArray(value) || value.length === 0) return "none";
-  return value.map((item) => String(item)).join(", ");
+function toErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return "请求失败，请检查后端服务是否正常运行。";
 }
 
 function formatScore(value: unknown): string {
-  if (typeof value !== "number" || Number.isNaN(value)) return "n/a";
+  if (typeof value !== "number" || Number.isNaN(value)) return "暂无";
   return value.toFixed(2);
 }
 
-function excerpt(text: string, maxLength = 160): string {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 1)}...`;
+function formatList(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return "暂无";
+  return value.map((item) => String(item)).join("、");
 }
 
-function documentDisplayName(document: {
-  title: string;
-  file_name?: string | null;
-}): string {
-  return document.file_name || document.title || "Imported document";
+function resourceLabel(type: string): string {
+  return resourceOptions.find((item) => item.type === type)?.label ?? type;
+}
+
+function documentDisplayName(document: { title: string; file_name?: string | null }): string {
+  return document.file_name || document.title || "未命名资料";
 }
 
 function resultDisplayName(result: KnowledgeSearchResult): string {
-  return String(result.metadata?.filename ?? result.metadata?.source_title ?? result.source_ref ?? "Knowledge source");
-}
-
-function toErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return "Request failed";
+  return String(result.metadata?.filename ?? result.metadata?.source_title ?? result.source_ref ?? "知识来源");
 }
 
 export function App() {
@@ -117,15 +175,15 @@ export function App() {
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [selectedPathItemId, setSelectedPathItemId] = useState<number | null>(null);
   const [profileDialogue, setProfileDialogue] = useState(
-    "我基础薄弱，想每天 1 小时复习二叉树遍历和 BFS/DFS，希望用例题和练习题准备小测"
+    "我最近在学习二叉树遍历和图搜索，递归边界容易出错。每天可以投入 1 小时，希望系统多给我图解、例题和代码实操。"
   );
-  const [goal, setGoal] = useState("Review tree traversal and graph search for a short quiz");
-  const [knowledgeTitle, setKnowledgeTitle] = useState("bfs-dfs-note.md");
+  const [goal, setGoal] = useState("巩固二叉树遍历和图搜索，为课程小测做准备");
+  const [knowledgeTitle, setKnowledgeTitle] = useState("数据结构学习笔记.md");
   const [knowledgeSourceType, setKnowledgeSourceType] = useState<"text" | "markdown">("markdown");
   const [knowledgeContent, setKnowledgeContent] = useState(
-    "# BFS and DFS\nBFS uses a queue to expand nodes level by level, so in an unweighted graph the first time a node is reached represents the fewest edges. DFS uses a stack or recursion to go deep first, which is better for traversal and backtracking but does not guarantee shortest paths."
+    "# 广度优先搜索与深度优先搜索\n广度优先搜索通常使用队列逐层扩展节点，适合求无权图最短路径；深度优先搜索通常使用递归或栈深入遍历，适合连通性判断、回溯和拓扑类问题。"
   );
-  const [knowledgeQuery, setKnowledgeQuery] = useState("BFS shortest path queue DFS");
+  const [knowledgeQuery, setKnowledgeQuery] = useState("广度优先 搜索 队列 最短路径 深度优先");
   const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null);
   const [knowledgeImportResult, setKnowledgeImportResult] = useState<DocumentIngestionResponse | null>(null);
   const [knowledgeReindexResult, setKnowledgeReindexResult] = useState<DocumentReindexResponse | null>(null);
@@ -135,8 +193,8 @@ export function App() {
   const [flow, setFlow] = useState<LearningFlow | null>(null);
   const [resource, setResource] = useState<GeneratedResource | null>(null);
   const [resourceType, setResourceType] = useState<(typeof resourceOptions)[number]["type"]>("guided_note");
-  const [question, setQuestion] = useState("How are BFS and DFS different in data structures?");
-  const [answer, setAnswer] = useState<TutorAnswer | null>(null);
+  const [question, setQuestion] = useState("我应该如何区分广度优先搜索和深度优先搜索？");
+  const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([]);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attemptText, setAttemptText] = useState("");
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
@@ -146,20 +204,29 @@ export function App() {
   const [busy, setBusy] = useState<BusyAction | null>(null);
   const [booting, setBooting] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [activeStep, setActiveStep] = useState<StepKey>("profile");
+  const [profileDraft, setProfileDraft] = useState("");
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
-  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
+  const latestProfile = profiles[0] ?? null;
   const pathItems = flow?.learning_path.items ?? [];
   const selectedItem = pathItems.find((item) => item.id === selectedPathItemId) ?? pathItems[0] ?? null;
   const selectedConcept = useMemo<Concept | null>(() => {
     if (!graph) return null;
-    if (selectedItem) {
-      return graph.concepts.find((concept) => concept.id === selectedItem.concept_id) ?? null;
-    }
+    if (selectedItem) return graph.concepts.find((concept) => concept.id === selectedItem.concept_id) ?? null;
     return graph.concepts[0] ?? null;
   }, [graph, selectedItem]);
 
   const canCreatePath = Boolean(selectedProfileId && status?.course_id);
   const canUseLoop = Boolean(selectedProfileId && status?.course_id && selectedConcept);
+  const stepInfo = stepFlow.find((step) => step.key === activeStep) ?? stepFlow[0];
+  const profileQuickReplies = [
+    "我这学期数据结构最吃力，图搜索和递归容易混淆，每天能学 1 小时。",
+    "我想备考人工智能课程，希望多给我图解、例题和代码实操。",
+    "我基础一般，喜欢先看案例再总结概念，希望学习路径更细一些。"
+  ];
 
   async function runTask(action: BusyAction, task: () => Promise<void>) {
     setBusy(action);
@@ -169,16 +236,7 @@ export function App() {
     } catch (err) {
       const message = toErrorMessage(err);
       setError(message);
-      if (
-        action === "import-knowledge" ||
-        action === "upload-knowledge" ||
-        action === "search-knowledge" ||
-        action === "refresh-documents" ||
-        action === "delete-document" ||
-        action === "reindex-document"
-      ) {
-        setKnowledgeError(message);
-      }
+      if (action.includes("knowledge") || action.includes("document")) setKnowledgeError(message);
     } finally {
       setBusy(null);
     }
@@ -187,18 +245,14 @@ export function App() {
   async function refreshBaseData() {
     const nextStatus = await api.getDemoStatus();
     setStatus(nextStatus);
-
     const nextProfiles = await api.listProfiles();
     setProfiles(nextProfiles);
     setSelectedProfileId((current) =>
       current && nextProfiles.some((profile) => profile.id === current) ? current : nextProfiles[0]?.id ?? null
     );
-
     if (nextStatus.course_id) {
-      const nextGraph = await api.getCourseGraph(nextStatus.course_id);
-      setGraph(nextGraph);
-      const nextDocuments = await api.listCourseDocuments(nextStatus.course_id);
-      setKnowledgeDocuments(nextDocuments);
+      setGraph(await api.getCourseGraph(nextStatus.course_id));
+      setKnowledgeDocuments(await api.listCourseDocuments(nextStatus.course_id));
     } else {
       setGraph(null);
       setKnowledgeDocuments([]);
@@ -208,16 +262,25 @@ export function App() {
   async function appendRun(runId: number | null) {
     if (!runId) return;
     const run = await api.getAgentRun(runId);
-    setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 8));
+    setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 10));
+  }
+
+  function resetLoopOutputs() {
+    setResource(null);
+    setTutorMessages([]);
+    setQuiz(null);
+    setAttemptText("");
+    setEvaluation(null);
+    setAutoProfileUpdate(null);
   }
 
   function replaceOrAppendProfile(nextProfile: StudentProfile) {
     setProfiles((current) => [nextProfile, ...current.filter((profile) => profile.id !== nextProfile.id)]);
     setSelectedProfileId(nextProfile.id);
-    resetLoopOutputs();
     setFlow(null);
     setSelectedPathItemId(null);
     setRuns([]);
+    resetLoopOutputs();
   }
 
   function refreshSelectedProfile(nextProfile: StudentProfile) {
@@ -225,105 +288,30 @@ export function App() {
     setSelectedProfileId(nextProfile.id);
   }
 
-  async function deleteProfile(profileId: number) {
-    await api.deleteProfile(profileId);
-    const nextProfiles = await api.listProfiles();
-    setProfiles(nextProfiles);
-    setSelectedProfileId(nextProfiles[0]?.id ?? null);
-    resetLoopOutputs();
-    setFlow(null);
-    setSelectedPathItemId(null);
-    setRuns([]);
-  }
-
-  function resetLoopOutputs() {
-    setResource(null);
-    setAnswer(null);
-    setQuiz(null);
-    setAttemptText("");
-    setEvaluation(null);
-    setAutoProfileUpdate(null);
-  }
-
-  async function importKnowledge() {
-    if (!status?.course_id) return;
-    setKnowledgeError(null);
-    setKnowledgeReindexResult(null);
-    const result = await api.ingestCourseDocument(status.course_id, {
-      title: knowledgeTitle,
-      source_type: knowledgeSourceType,
-      content: knowledgeContent
-    });
-    setKnowledgeImportResult(result);
-    setKnowledgeSearchResults([]);
-    await refreshKnowledgeDocuments();
-  }
-
-  async function uploadKnowledgeFile() {
-    if (!status?.course_id || !knowledgeFile) return;
-    setKnowledgeError(null);
-    setKnowledgeReindexResult(null);
-    const result = await api.uploadCourseDocument(status.course_id, knowledgeFile, {
-      title: knowledgeTitle.trim() || knowledgeFile.name,
-      visibility: "course"
-    });
-    setKnowledgeImportResult(result);
-    setKnowledgeSearchResults([]);
-    await refreshKnowledgeDocuments();
-  }
-
   async function refreshKnowledgeDocuments() {
     if (!status?.course_id) return;
     setKnowledgeError(null);
-    const documents = await api.listCourseDocuments(status.course_id);
-    setKnowledgeDocuments(documents);
-  }
-
-  async function deleteKnowledgeDocument(documentId: number) {
-    if (!status?.course_id) return;
-    setKnowledgeError(null);
-    await api.deleteDocument(documentId);
-    setKnowledgeSearchResults([]);
-    setKnowledgeImportResult(null);
-    setKnowledgeReindexResult(null);
-    await refreshKnowledgeDocuments();
-  }
-
-  async function reindexKnowledgeDocument(documentId: number) {
-    setKnowledgeError(null);
-    const result = await api.reindexDocument(documentId);
-    setKnowledgeReindexResult(result);
-  }
-
-  async function searchKnowledge() {
-    if (!status?.course_id) return;
-    setKnowledgeError(null);
-    const result = await api.searchKnowledge(status.course_id, knowledgeQuery, 3);
-    setKnowledgeSearchResults(result.results);
+    setKnowledgeDocuments(await api.listCourseDocuments(status.course_id));
   }
 
   async function submitQuizAttempt() {
     if (!quiz || !selectedProfileId || !attemptText.trim()) return;
-
     setBusy("submit-attempt");
     setError(null);
     setAutoProfileUpdate(null);
     try {
-      const nextEvaluation = await api.submitAttempt(quiz.id, selectedProfileId, {
-        answer: attemptText
-      });
+      const nextEvaluation = await api.submitAttempt(quiz.id, selectedProfileId, { answer: attemptText });
       setEvaluation(nextEvaluation);
       await appendRun(nextEvaluation.agent_run_id);
-
+      setActiveStep("assess");
       if (!autoProfileUpdateEnabled) {
-        setAutoProfileUpdate("Auto profile update is off. Use manual trace update when you want to sync the profile.");
+        setAutoProfileUpdate("自动画像更新已关闭，可稍后手动同步。");
         return;
       }
-
       setBusy("sync-profile");
       const nextProfile = await api.updateProfileFromTrace(selectedProfileId);
       refreshSelectedProfile(nextProfile);
-      setAutoProfileUpdate(String(nextProfile.preferences.last_profile_update_reason ?? "Profile updated from trace."));
+      setAutoProfileUpdate(String(nextProfile.preferences.last_profile_update_reason ?? "画像已根据最新学习轨迹更新。"));
     } catch (err) {
       setError(toErrorMessage(err));
     } finally {
@@ -334,8 +322,6 @@ export function App() {
   useEffect(() => {
     let active = true;
     setBooting(true);
-    setError(null);
-
     refreshBaseData()
       .catch((err) => {
         if (active) setError(toErrorMessage(err));
@@ -343,666 +329,854 @@ export function App() {
       .finally(() => {
         if (active) setBooting(false);
       });
-
     return () => {
       active = false;
     };
   }, []);
 
-  return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <section className="border-b border-white/10 bg-[linear-gradient(135deg,#0f172a_0%,#19352e_54%,#b9432f_100%)]">
-        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-8 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.26em] text-emerald-200">A3 Student Console</p>
-            <h1 className="mt-4 max-w-3xl font-display text-5xl leading-tight text-white md:text-6xl">
-              Data structures learning loop
-            </h1>
-            <p className="mt-5 max-w-2xl text-base leading-7 text-slate-200">
-              A student-facing workspace for profile selection, path planning, resources, tutor answers, quiz attempts,
-              evaluator feedback, and agent run review. All domain output is loaded from the backend API.
-            </p>
+  useEffect(() => {
+    if (activeStep !== "tutor") return;
+    chatScrollRef.current?.scrollTo({
+      top: chatScrollRef.current.scrollHeight,
+      behavior: "smooth"
+    });
+  }, [tutorMessages, busy, activeStep]);
+
+  const profileStep = (
+    <div className="content-grid profile-content-grid">
+      <Panel title="对话式学生画像" kicker="画像随学随新">
+        <div className="profile-onboarding">
+          <div className="onboarding-messages">
+            <article className="onboarding-bubble onboarding-bubble-guide">
+              <span>学习管家</span>
+              <p>同学你好，我是你的专属学习管家。这学期哪门课程最让你头疼？你希望我用什么方式帮你学？</p>
+            </article>
+            {(profileDialogue || profileDraft) ? (
+              <article className="onboarding-bubble onboarding-bubble-user">
+                <span>你的回复</span>
+                <p>{profileDraft || profileDialogue}</p>
+              </article>
+            ) : null}
           </div>
-          <div className="grid content-end gap-3 sm:grid-cols-2">
-            <Metric label="Demo data" value={status?.is_loaded ? "Loaded" : "Pending"} dark />
-            <Metric label="Profiles" value={String(status?.profile_count ?? 0)} dark />
-            <Metric label="Concepts" value={String(status?.concept_count ?? 0)} dark />
-            <Metric label="Agent runs" value={String(runs.length)} dark />
+          <div className="quick-reply-row" aria-label="快捷回复">
+            {profileQuickReplies.map((reply) => (
+              <button key={reply} className="pill-button" type="button" onClick={() => setProfileDraft(reply)}>
+                {reply}
+              </button>
+            ))}
+          </div>
+          <div className="onboarding-composer">
+            <input
+              className="onboarding-input"
+              data-testid="profile-dialogue"
+              value={profileDraft}
+              onChange={(event) => setProfileDraft(event.target.value)}
+              aria-label="画像对话内容"
+              placeholder="例如：我基础一般，图搜索总出错，每天晚上能学 1 小时..."
+            />
+            <button
+              className="chat-send-button onboarding-send"
+              data-testid="build-profile-button"
+              disabled={!profileDraft.trim() || busy !== null}
+              onClick={() =>
+                void runTask("build-profile", async () => {
+                  const submitted = profileDraft.trim();
+                  setProfileDialogue(submitted);
+                  const nextProfile = await api.createProfileFromDialogue({ dialogue: submitted });
+                  replaceOrAppendProfile(nextProfile);
+                  setProfileDraft("");
+                })
+              }
+            >
+              {busy === "build-profile" ? "分析中" : "生成画像"}
+            </button>
           </div>
         </div>
+        <div className="profile-summary-stack">
+          {latestProfile ? (
+            <article className="profile-current-card" data-testid="profile-option">
+              <div>
+                <p className="eyebrow">最新画像</p>
+                <strong>{labelProfile(latestProfile.profile_type)}</strong>
+                <span>{latestProfile.goal}</span>
+              </div>
+              {latestProfile.id !== selectedProfileId ? (
+                <button
+                  className="small-button"
+                  onClick={() => {
+                    setSelectedProfileId(latestProfile.id);
+                    setFlow(null);
+                    setSelectedPathItemId(null);
+                    resetLoopOutputs();
+                  }}
+                >
+                  使用此画像
+                </button>
+              ) : null}
+            </article>
+          ) : null}
+          {busy === "build-profile" ? (
+            <ProfileSkeleton />
+          ) : latestProfile ? (
+            <ProfileDimensionList profile={latestProfile} />
+          ) : (
+            <EmptyState text="请先通过对话生成一个学生画像。" />
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+
+  const knowledgeStep = (
+    <div className="knowledge-step">
+      <KnowledgePanel
+        status={status}
+        busy={busy}
+        knowledgeTitle={knowledgeTitle}
+        setKnowledgeTitle={setKnowledgeTitle}
+        knowledgeSourceType={knowledgeSourceType}
+        setKnowledgeSourceType={setKnowledgeSourceType}
+        knowledgeContent={knowledgeContent}
+        setKnowledgeContent={setKnowledgeContent}
+        knowledgeFile={knowledgeFile}
+        setKnowledgeFile={setKnowledgeFile}
+        knowledgeImportResult={knowledgeImportResult}
+        knowledgeReindexResult={knowledgeReindexResult}
+        knowledgeDocuments={knowledgeDocuments}
+        knowledgeError={knowledgeError}
+        knowledgeQuery={knowledgeQuery}
+        setKnowledgeQuery={setKnowledgeQuery}
+        knowledgeSearchResults={knowledgeSearchResults}
+        onRunTask={runTask}
+        onImport={async () => {
+          if (!status?.course_id) return;
+          setKnowledgeError(null);
+          setKnowledgeReindexResult(null);
+          const result = await api.ingestCourseDocument(status.course_id, {
+            title: knowledgeTitle,
+            source_type: knowledgeSourceType,
+            content: knowledgeContent
+          });
+          setKnowledgeImportResult(result);
+          setKnowledgeSearchResults([]);
+          await refreshKnowledgeDocuments();
+        }}
+        onUpload={async () => {
+          if (!status?.course_id || !knowledgeFile) return;
+          setKnowledgeError(null);
+          setKnowledgeReindexResult(null);
+          const result = await api.uploadCourseDocument(status.course_id, knowledgeFile, {
+            title: knowledgeTitle.trim() || knowledgeFile.name,
+            visibility: "course"
+          });
+          setKnowledgeImportResult(result);
+          setKnowledgeSearchResults([]);
+          await refreshKnowledgeDocuments();
+        }}
+        onRefresh={refreshKnowledgeDocuments}
+        onDelete={async (documentId) => {
+          await api.deleteDocument(documentId);
+          setKnowledgeImportResult(null);
+          setKnowledgeReindexResult(null);
+          setKnowledgeSearchResults([]);
+          await refreshKnowledgeDocuments();
+        }}
+        onReindex={async (documentId) => {
+          setKnowledgeReindexResult(await api.reindexDocument(documentId));
+        }}
+        onSearch={async () => {
+          if (!status?.course_id) return;
+          const result = await api.searchKnowledge(status.course_id, knowledgeQuery, 4);
+          setKnowledgeSearchResults(result.results);
+        }}
+      />
+    </div>
+  );
+
+  const pathStep = (
+    <Panel title="路径规划" kicker="学习规划师">
+      <input className="field" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="学习目标" />
+      <button
+        className="primary-button mt-3"
+        data-testid="create-path-button"
+        disabled={!canCreatePath || busy !== null}
+        onClick={() =>
+          void runTask("create-path", async () => {
+            if (!selectedProfileId || !status?.course_id) return;
+            const nextFlow = await api.createLearningPath(selectedProfileId, status.course_id, goal);
+            setFlow(nextFlow);
+            setSelectedPathItemId(nextFlow.learning_path.items[0]?.id ?? null);
+            await appendRun(nextFlow.agent_run.id);
+            resetLoopOutputs();
+          })
+        }
+      >
+        {busy === "create-path" ? "正在规划学习路径" : "生成个性化学习路径"}
+      </button>
+      {busy === "create-path" ? <AgentLoading testId="planner-loading" title="学习规划师正在编排路径" detail="系统正在结合画像、课程图谱和学习目标排序。" /> : null}
+      <div className="path-grid">
+        {pathItems.map((item) => (
+          <PathItemCard
+            key={item.id}
+            item={item}
+            concept={graph?.concepts.find((concept) => concept.id === item.concept_id) ?? null}
+            selected={item.id === selectedItem?.id}
+            onSelect={() => setSelectedPathItemId(item.id)}
+          />
+        ))}
+        {pathItems.length === 0 ? <EmptyState text="生成学习路径后，这里会展示按顺序排列的学习节点。" /> : null}
+      </div>
+    </Panel>
+  );
+
+  const resourceStep = (
+    <div className="content-grid resource-layout">
+      <Panel title="资源生成" kicker="资源设计师">
+        <NodeSummary item={selectedItem} concept={selectedConcept} />
+        <div className="resource-tabs">
+          {resourceOptions.map((option) => (
+            <button
+              key={option.type}
+              className={`resource-tab ${resourceType === option.type ? "resource-tab-active" : ""}`}
+              data-testid={`resource-type-${option.type}`}
+              onClick={() => setResourceType(option.type)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <button
+          className="primary-button mt-3"
+          data-testid="generate-resource-button"
+          disabled={!selectedItem || busy !== null}
+          onClick={() =>
+            void runTask("generate-resource", async () => {
+              if (!selectedItem) return;
+              const backendResourceType = resourceType === "teaching_video" ? "guided_note" : resourceType;
+              const nextResource = await api.generateResource(selectedItem.id, backendResourceType);
+              setResource(resourceType === "teaching_video" ? { ...nextResource, resource_type: "teaching_video" } : nextResource);
+              await appendRun(nextResource.agent_run_id);
+            })
+          }
+        >
+          {busy === "generate-resource" ? "正在生成学习资源" : "生成选中类型资源"}
+        </button>
+        {busy === "generate-resource" ? (
+          <StatusTracker
+            testId="resource-loading"
+            steps={[
+              { label: "检索课程资料", detail: "资料管理员正在获取相关证据片段", status: "done" },
+              { label: "组织资源结构", detail: "资源设计师正在匹配画像与知识短板", status: "active" },
+              { label: "流式生成内容", detail: "即将输出文档、图解与实操材料", status: "pending" }
+            ]}
+          />
+        ) : null}
+      </Panel>
+      {resource ? <ResourceOutputBlock resource={resource} /> : <EmptyState text="请选择路径节点和资源类型后生成内容。" />}
+    </div>
+  );
+
+  const tutorStep = (
+    <section className="tutor-workspace" aria-label="教师答疑">
+      <div className="chat-shell">
+        <div className="chat-heading">
+          <div>
+            <p className="eyebrow">答疑教师</p>
+            <h2>教师答疑</h2>
+          </div>
+        </div>
+        <div className="chat-messages" ref={chatScrollRef}>
+          <article className="chat-message chat-message-assistant">
+            <span>答疑教师</span>
+            <p>我会结合你的学生画像和课程知识库，用可追溯证据解释问题。可以直接输入你的困惑。</p>
+          </article>
+          {tutorMessages.map((message) => (
+            <article
+              className={`chat-message ${message.role === "user" ? "chat-message-user" : "chat-message-assistant chat-message-rich"}`}
+              key={message.id}
+            >
+              <span>{message.role === "user" ? "学生提问" : "辅导答复"}</span>
+              {message.role === "assistant" ? <TypewriterMarkdown text={message.content} /> : <p>{message.content}</p>}
+              {message.role === "assistant" ? <SourceEvidence sourceRefs={message.sourceRefs ?? []} /> : null}
+            </article>
+          ))}
+          {busy === "ask-tutor" ? (
+            <article className="chat-message chat-message-assistant">
+              <span>答疑教师</span>
+              <StatusTracker
+                compact
+                testId="tutor-loading"
+                steps={[
+                  { label: "检索证据", detail: "已锁定课程资料与相关知识点", status: "done" },
+                  { label: "组织解释", detail: "答疑教师正在按你的画像调整讲解方式", status: "active" },
+                  { label: "流式生成", detail: "回答即将逐字呈现", status: "pending" }
+                ]}
+              />
+            </article>
+          ) : null}
+        </div>
+        <div className="chat-composer">
+          <textarea
+            className="field chat-input resize-none"
+            data-testid="tutor-question"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            aria-label="辅导问题"
+            placeholder="输入你想追问的知识点、代码问题或解题思路..."
+          />
+          <button
+            className="chat-send-button"
+            data-testid="ask-tutor-button"
+            disabled={!canUseLoop || !question.trim() || busy !== null}
+            onClick={() =>
+              void runTask("ask-tutor", async () => {
+                if (!selectedProfileId || !status?.course_id) return;
+                const submittedQuestion = question.trim();
+                const messageStamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                setQuestion("");
+                setTutorMessages((current) => [
+                  ...current,
+                  { id: `user-${messageStamp}`, role: "user", content: submittedQuestion }
+                ]);
+                const nextAnswer = await api.askTutor(selectedProfileId, status.course_id, submittedQuestion);
+                setTutorMessages((current) => [
+                  ...current,
+                  {
+                    id: `assistant-${messageStamp}`,
+                    role: "assistant",
+                    content: nextAnswer.answer,
+                    sourceRefs: nextAnswer.source_refs
+                  }
+                ]);
+                await appendRun(nextAnswer.agent_run_id);
+              })
+            }
+          >
+            {busy === "ask-tutor" ? "生成中" : "发送"}
+          </button>
+        </div>
+        <p className="ai-disclaimer">* 教师团队生成内容仅供参考，请注意甄别事实（已开启内容安全与防幻觉过滤机制）*</p>
+      </div>
+    </section>
+  );
+
+  const quizStep = (
+    <Panel title="练习测验" kicker="出题与评估">
+      <button
+        className="primary-button"
+        data-testid="generate-quiz-button"
+        disabled={!selectedConcept || !selectedProfileId || busy !== null}
+        onClick={() =>
+          void runTask("generate-quiz", async () => {
+            if (!selectedConcept || !selectedProfileId) return;
+            const nextQuiz = await api.generateQuiz(selectedProfileId, selectedConcept.id, "medium");
+            setQuiz(nextQuiz);
+            await appendRun(nextQuiz.agent_run_id);
+          })
+        }
+      >
+        {busy === "generate-quiz" ? "正在生成测验" : "生成当前节点测验"}
+      </button>
+      {busy === "generate-quiz" ? <AgentLoading testId="quiz-loading" title="出题老师正在生成测验" detail="题目会结合当前概念和学生画像。" /> : null}
+      {quiz ? (
+        <div className="quiz-box">
+          {quiz.items.map((item, index) => (
+            <article key={index} className="quiz-question" data-testid="quiz-question">
+              <strong>第 {index + 1} 题</strong>
+              <p>{item.question}</p>
+            </article>
+          ))}
+          <textarea
+            className="field min-h-28 resize-none"
+            data-testid="quiz-answer"
+            value={attemptText}
+            onChange={(event) => setAttemptText(event.target.value)}
+            aria-label="作答内容"
+            placeholder="在这里输入你的作答思路"
+          />
+          <label className="setting-toggle">
+            <input
+              data-testid="auto-profile-update-toggle"
+              type="checkbox"
+              checked={autoProfileUpdateEnabled}
+              disabled={busy !== null}
+              onChange={(event) => setAutoProfileUpdateEnabled(event.target.checked)}
+            />
+            <span>
+              <strong>评估后自动更新学生画像</strong>
+              <small>测评教师完成评分后，画像顾问会读取学习轨迹并回写画像。</small>
+            </span>
+          </label>
+          <button className="primary-button" data-testid="submit-answer-button" disabled={!attemptText.trim() || busy !== null} onClick={() => void submitQuizAttempt()}>
+            {busy === "submit-attempt" ? "正在提交作答" : busy === "sync-profile" ? "正在更新画像" : "提交作答并评估"}
+          </button>
+          {busy === "submit-attempt" ? <AgentLoading testId="evaluator-loading" title="测评教师正在评分" detail="系统正在比较评分规则和作答内容。" /> : null}
+          {busy === "sync-profile" ? <AgentLoading testId="profile-update-loading" title="画像顾问正在更新画像" detail="系统正在分析最新学习轨迹。" /> : null}
+        </div>
+      ) : (
+        <EmptyState text="生成测验后，这里会展示当前节点的练习题。" />
+      )}
+    </Panel>
+  );
+
+  const assessStep = (
+    <Panel title="学习效果评估" kicker="画像回写">
+      {evaluation ? (
+        <div className="space-y-4">
+          <Metric label="综合得分" value={`${Math.round(evaluation.score * 100)}%`} />
+          <p className="feedback" data-testid="evaluator-feedback">{evaluation.feedback}</p>
+          {autoProfileUpdate ? <p className="profile-update-note" data-testid="auto-profile-update">{autoProfileUpdate}</p> : null}
+          <div className="update-list">
+            {evaluation.mastery_updates.map((update, index) => (
+              <article key={index} className="update-card">
+                <strong>概念 {String(update.concept_id ?? "未知")}</strong>
+                <span>掌握度：{String(update.mastery_score ?? "暂无")}</span>
+                <p>{String(update.evidence ?? "暂无证据说明")}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <EmptyState text="提交作答后，这里会展示得分、反馈、掌握度变化和画像更新原因。" />
+      )}
+    </Panel>
+  );
+
+  const stepContent: Record<StepKey, ReactNode> = {
+    profile: profileStep,
+    kb: knowledgeStep,
+    path: pathStep,
+    resource: resourceStep,
+    tutor: tutorStep,
+    quiz: quizStep,
+    assess: assessStep
+  };
+
+  return (
+    <main className="app-shell">
+      <header className="top-bar">
+        <div>
+          <p className="eyebrow">第十五届中国软件杯 A 组赛题演示</p>
+          <h1>个性化学习资源生成与教师协同工作台</h1>
+        </div>
+        <div className="top-actions">
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="打开设置与调试"
+            title="设置与调试"
+            onClick={() => setDebugOpen(true)}
+          >
+            ⚙
+          </button>
+        </div>
+      </header>
+
+      <section className="app-main">
+        <StepFlow activeStep={activeStep} onSelect={setActiveStep} />
+        <MultiAgentOverview activeStep={activeStep} />
+
+        <div className="toolbar">
+          <div>
+            <p className="eyebrow">当前步骤</p>
+            <h2>{stepInfo.label}</h2>
+            <span>{stepInfo.desc}</span>
+          </div>
+          <button className="ghost-button" onClick={() => setTraceOpen(true)}>
+            打开执行追踪浮层
+          </button>
+        </div>
+
+        <div className="step-body">{stepContent[activeStep]}</div>
       </section>
 
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[340px_1fr] lg:px-8">
-        <aside className="space-y-5">
-          <Panel title="Session setup" kicker="Demo contract">
-            <button
-              className="action-button w-full"
-              data-testid="load-demo-button"
-              disabled={busy !== null}
-              onClick={() =>
-                void runTask("load-demo", async () => {
-                  await api.loadDemoData();
-                  await refreshBaseData();
-                })
-              }
-            >
-              {busy === "load-demo" ? "Loading demo data" : "Load or refresh demo data"}
-            </button>
-            <button
-              className="danger-button mt-3 w-full"
-              data-testid="reset-demo-button"
-              disabled={busy !== null}
-              onClick={() =>
-                void runTask("reset-demo", async () => {
-                  await api.resetDemoUserData();
-                  await refreshBaseData();
-                  resetLoopOutputs();
-                  setFlow(null);
-                  setSelectedPathItemId(null);
-                  setRuns([]);
-                })
-              }
-            >
-              {busy === "reset-demo" ? "Resetting demo" : "Reset user demo data"}
-            </button>
-            <StatusLine busy={booting} error={error} />
-          </Panel>
-
-          <Panel title="Knowledge setup" kicker="RAG import">
-            <div className="space-y-3">
-              <input
-                className="field"
-                data-testid="knowledge-title"
-                value={knowledgeTitle}
-                onChange={(event) => setKnowledgeTitle(event.target.value)}
-                aria-label="Knowledge document title"
-              />
-              <select
-                className="field"
-                data-testid="knowledge-source-type"
-                value={knowledgeSourceType}
-                onChange={(event) => setKnowledgeSourceType(event.target.value as "text" | "markdown")}
-                aria-label="Knowledge source type"
-              >
-                <option value="markdown">markdown</option>
-                <option value="text">text</option>
-              </select>
-              <textarea
-                className="field min-h-36 resize-none"
-                data-testid="knowledge-content"
-                value={knowledgeContent}
-                onChange={(event) => setKnowledgeContent(event.target.value)}
-                aria-label="Knowledge content"
-              />
-              <div className="file-upload-box">
-                <input
-                  className="field"
-                  data-testid="knowledge-file"
-                  type="file"
-                  accept=".txt,.md,.markdown,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] ?? null;
-                    setKnowledgeFile(file);
-                    if (file) setKnowledgeTitle(file.name);
-                  }}
-                  aria-label="Knowledge file upload"
-                />
-                <button
-                  className="action-button w-full"
-                  data-testid="upload-knowledge-button"
-                  disabled={!status?.course_id || !knowledgeFile || busy !== null}
-                  onClick={() =>
-                    void runTask("upload-knowledge", async () => {
-                      await uploadKnowledgeFile();
-                    })
-                  }
-                >
-                  {busy === "upload-knowledge" ? "Uploading file" : "Upload selected file"}
-                </button>
-              </div>
-              <button
-                className="action-button w-full"
-                data-testid="import-knowledge-button"
-                disabled={!status?.course_id || !knowledgeTitle.trim() || !knowledgeContent.trim() || busy !== null}
-                onClick={() =>
-                  void runTask("import-knowledge", async () => {
-                    await importKnowledge();
-                  })
-                }
-              >
-                {busy === "import-knowledge" ? "Importing knowledge" : "Import knowledge"}
-              </button>
-              {knowledgeImportResult ? (
-                <div className="knowledge-result" data-testid="knowledge-import-result">
-                  <p>{documentDisplayName(knowledgeImportResult.document)}</p>
-                  <p>
-                    Imported / {knowledgeImportResult.chunk_count} chunks / {knowledgeImportResult.document.source_type} /{" "}
-                    {knowledgeImportResult.document.parser_name ?? "parser n/a"}
-                  </p>
-                </div>
-              ) : null}
-              {knowledgeReindexResult ? (
-                <div className="knowledge-result" data-testid="knowledge-reindex-result">
-                  <p>
-                    Reindex complete: indexed {knowledgeReindexResult.indexed}, skipped {knowledgeReindexResult.skipped}, failed{" "}
-                    {knowledgeReindexResult.failed}
-                  </p>
-                  <span>{knowledgeReindexResult.message}</span>
-                </div>
-              ) : null}
-              <div className="document-management" data-testid="document-management">
-                <div className="document-management-header">
-                  <strong>Documents</strong>
-                  <button
-                    className="small-button"
-                    data-testid="refresh-documents-button"
-                    disabled={!status?.course_id || busy !== null}
-                    onClick={() =>
-                      void runTask("refresh-documents", async () => {
-                        await refreshKnowledgeDocuments();
-                      })
-                    }
-                  >
-                    {busy === "refresh-documents" ? "Refreshing" : "Refresh"}
-                  </button>
-                </div>
-                {knowledgeDocuments.length > 0 ? (
-                  <div className="document-list" data-testid="document-list">
-                    {knowledgeDocuments.map((document) => (
-                      <div className="document-row" data-testid="document-row" key={document.id}>
-                        <div>
-                          <p>{documentDisplayName(document)}</p>
-                          <span>
-                            {document.source_type} / {document.chunk_count} chunks / {document.status}
-                            {document.visibility ? ` / ${document.visibility}` : ""}
-                          </span>
-                          <span className="hidden">
-                            #{document.id} / {document.source_type} / {document.chunk_count} chunks / {document.status}
-                          </span>
-                        </div>
-                        <div className="document-actions">
-                          <button
-                            className="document-reindex-button"
-                            data-testid="reindex-document-button"
-                            disabled={busy !== null || document.status === "deleted"}
-                            onClick={() =>
-                              void runTask("reindex-document", async () => {
-                                await reindexKnowledgeDocument(document.id);
-                              })
-                            }
-                          >
-                            {busy === "reindex-document" ? "Indexing" : "Reindex"}
-                          </button>
-                          <button
-                            className="document-delete-button"
-                            data-testid="delete-document-button"
-                            disabled={busy !== null || document.status === "deleted" || document.source_type === "seed"}
-                            onClick={() =>
-                              void runTask("delete-document", async () => {
-                                await deleteKnowledgeDocument(document.id);
-                              })
-                            }
-                          >
-                            {busy === "delete-document" ? "Deleting" : "Delete"}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="document-empty" data-testid="document-empty">No documents loaded for this course.</p>
-                )}
-              </div>
-              <div className="knowledge-search-box">
-                <input
-                  className="field"
-                  data-testid="knowledge-query"
-                  value={knowledgeQuery}
-                  onChange={(event) => setKnowledgeQuery(event.target.value)}
-                  aria-label="Knowledge search query"
-                />
-                <button
-                  className="primary-button w-full"
-                  data-testid="search-knowledge-button"
-                  disabled={!status?.course_id || !knowledgeQuery.trim() || busy !== null}
-                onClick={() =>
-                    void runTask("search-knowledge", async () => {
-                      await searchKnowledge();
-                    })
-                  }
-                >
-                  {busy === "search-knowledge" ? "Searching" : "Search imported chunks"}
-                </button>
-                {knowledgeSearchResults.length > 0 ? (
-                  <div className="knowledge-search-results" data-testid="knowledge-search-results">
-                    {knowledgeSearchResults.map((result) => (
-                      <div key={result.chunk_id ?? result.source_ref} className="knowledge-search-result">
-                        <p>{resultDisplayName(result)}</p>
-                        <span>
-                          score {formatScore(result.score)} · mode {String(result.metadata?.retrieval_mode ?? "n/a")} ·
-                          vector {formatScore(result.metadata?.vector_score)} · rerank {formatScore(result.metadata?.rerank_score)} · matched{" "}
-                          {formatMetadataList(result.metadata?.matched_terms)} · anchors{" "}
-                          {formatMetadataList(result.metadata?.anchor_matches)}
-                        </span>
-                        <p className="knowledge-search-excerpt">{String(result.metadata?.excerpt ?? excerpt(result.content))}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              {knowledgeError ? <p className="error-note">{knowledgeError}</p> : null}
-            </div>
-          </Panel>
-
-          <Panel title="Student profile" kicker="Persona">
-            <div className="space-y-3">
-              <textarea
-                className="field min-h-28 resize-none"
-                data-testid="profile-dialogue"
-                value={profileDialogue}
-                onChange={(event) => setProfileDialogue(event.target.value)}
-                aria-label="Profile dialogue"
-              />
-              <button
-                className="action-button w-full"
-                data-testid="build-profile-button"
-                disabled={!profileDialogue.trim() || busy !== null}
-                onClick={() =>
-                  void runTask("build-profile", async () => {
-                    const nextProfile = await api.createProfileFromDialogue({ dialogue: profileDialogue });
-                    replaceOrAppendProfile(nextProfile);
-                  })
-                }
-              >
-                {busy === "build-profile" ? "Building profile" : "Build profile from dialogue"}
-              </button>
-              {profiles.map((profile) => {
-                const isDemoProfile = profile.preferences.profile_origin === "demo";
-                return (
-                  <div
-                    key={profile.id}
-                    className={`profile-option ${profile.id === selectedProfileId ? "profile-option-active" : ""}`}
-                    data-testid="profile-option"
-                  >
-                    <button
-                      className="profile-select-button"
-                      onClick={() => {
-                        setSelectedProfileId(profile.id);
-                        resetLoopOutputs();
-                      }}
-                    >
-                      <span className="block text-sm font-semibold">{labelProfile(profile.profile_type)}</span>
-                      <span className="mt-1 block text-xs text-slate-500">
-                        {profile.level} / {profile.time_budget}
-                      </span>
-                      <span className="mt-1 block text-xs font-semibold text-moss">
-                        {profileDimensions.filter(([key]) => profile.preferences[key] !== undefined).length} profile dimensions
-                      </span>
-                      <span className="mt-2 line-clamp-3 block text-xs leading-5 text-slate-600">{profile.goal}</span>
-                    </button>
-                    {!isDemoProfile ? (
-                      <button
-                        className="profile-delete-button"
-                        data-testid="delete-profile-button"
-                        disabled={busy !== null}
-                        onClick={() => void runTask("delete-profile", () => deleteProfile(profile.id))}
-                      >
-                        Delete
-                      </button>
-                    ) : null}
-                  </div>
-                );
-              })}
-              {profiles.length === 0 ? <EmptyState text="Load demo data to fetch profiles from the backend." /> : null}
-              {selectedProfile ? <ProfileDimensionList profile={selectedProfile} /> : null}
-              <button
-                className="action-button w-full"
-                data-testid="update-profile-button"
-                disabled={!selectedProfileId || runs.length === 0 || busy !== null}
-                onClick={() =>
-                  void runTask("update-profile", async () => {
-                    const nextProfile = await api.updateProfileFromTrace(selectedProfileId as number);
-                    refreshSelectedProfile(nextProfile);
-                  })
-                }
-              >
-                {busy === "update-profile" ? "Updating profile" : "Update profile from learning trace"}
-              </button>
-            </div>
-          </Panel>
-
-          <Panel title="Course graph" kicker="Concepts">
-            <div className="space-y-2">
-              {(graph?.concepts ?? []).map((concept) => (
-                <div
-                  key={concept.id}
-                  className={`rounded-md border px-3 py-2 text-sm ${
-                    concept.id === selectedConcept?.id ? "border-signal bg-signal/10" : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <p className="font-semibold text-slate-900">{concept.name}</p>
-                  <p className="text-xs text-slate-500">{concept.difficulty}</p>
-                </div>
-              ))}
-              {!graph ? <EmptyState text="Course graph is loaded from /api/v1 after demo data is available." /> : null}
-            </div>
-          </Panel>
-        </aside>
-
-        <section className="space-y-5">
-          <Panel title="Learning path" kicker="Planner">
-            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-              <input
-                className="field"
-                value={goal}
-                onChange={(event) => setGoal(event.target.value)}
-                aria-label="Learning goal"
-              />
-              <button
-                className="primary-button"
-                data-testid="create-path-button"
-                disabled={!canCreatePath || busy !== null}
-                onClick={() =>
-                  void runTask("create-path", async () => {
-                    const nextFlow = await api.createLearningPath(selectedProfileId as number, status?.course_id as number, goal);
-                    setFlow(nextFlow);
-                    setSelectedPathItemId(nextFlow.learning_path.items[0]?.id ?? null);
-                    resetLoopOutputs();
-                    await appendRun(nextFlow.agent_run.id);
-                  })
-                }
-              >
-                {busy === "create-path" ? "Creating path" : "Create path"}
-              </button>
-              {busy === "create-path" ? (
-                <AgentLoading
-                  testId="planner-loading"
-                  title="Planner Agent is creating a learning path..."
-                  detail="It is matching the selected profile, course graph, and goal into ordered path items."
-                />
-              ) : null}
-            </div>
-            <div className="mt-4 grid gap-3 xl:grid-cols-2">
-              {pathItems.map((item) => (
-                <PathItemCard
-                  key={item.id}
-                  item={item}
-                  concept={graph?.concepts.find((concept) => concept.id === item.concept_id) ?? null}
-                  selected={item.id === selectedItem?.id}
-                  onSelect={() => {
-                    setSelectedPathItemId(item.id);
-                    resetLoopOutputs();
-                  }}
-                />
-              ))}
-              {pathItems.length === 0 ? (
-                <EmptyState text="Create a learning path to receive ordered path items from the backend." />
-              ) : null}
-            </div>
-          </Panel>
-
-          <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-            <Panel title="Resource" kicker="Resource Agent">
-              <NodeSummary item={selectedItem} concept={selectedConcept} />
-              <div className="mt-4 grid grid-cols-5 gap-2" data-testid="resource-type-options">
-                {resourceOptions.map((option) => (
-                  <button
-                    key={option.type}
-                    className={`resource-tab ${resourceType === option.type ? "resource-tab-active" : ""}`}
-                    data-testid={`resource-type-${option.type}`}
-                    onClick={() => {
-                      setResourceType(option.type);
-                      setResource(null);
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <button
-                className="action-button mt-4"
-                data-testid="generate-resource-button"
-                disabled={!selectedItem || busy !== null}
-                onClick={() =>
-                  void runTask("generate-resource", async () => {
-                    const nextResource = await api.generateResource(selectedItem!.id, resourceType);
-                    setResource(nextResource);
-                    await appendRun(nextResource.agent_run_id);
-                  })
-                }
-              >
-                {busy === "generate-resource" ? "Generating resource" : "Generate selected resource"}
-              </button>
-              {busy === "generate-resource" ? (
-                <AgentLoading
-                  testId="resource-loading"
-                  title="Resource Agent is generating a grounded asset..."
-                  detail="It is retrieving course chunks and formatting the selected resource type."
-                />
-              ) : null}
-              {resource ? (
-                <ResourceOutputBlock resource={resource} />
-              ) : (
-                <EmptyState text="The generated resource will appear here after the backend Resource Agent responds." />
-              )}
-            </Panel>
-
-            <Panel title="Tutor" kicker="Grounded Q&A">
-              <textarea
-                className="field min-h-28 resize-none"
-                data-testid="tutor-question"
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                aria-label="Tutor question"
-              />
-              <button
-                className="action-button mt-3"
-                data-testid="ask-tutor-button"
-                disabled={!canUseLoop || busy !== null}
-                onClick={() =>
-                  void runTask("ask-tutor", async () => {
-                    const nextAnswer = await api.askTutor(selectedProfileId as number, status?.course_id as number, question);
-                    setAnswer(nextAnswer);
-                    await appendRun(nextAnswer.agent_run_id);
-                  })
-                }
-              >
-                {busy === "ask-tutor" ? "Asking tutor" : "Ask tutor"}
-              </button>
-              {busy === "ask-tutor" ? (
-                <AgentLoading
-                  testId="tutor-loading"
-                  title="Retrieving grounded context and waiting for Tutor response..."
-                  detail="Slow LLM calls will fall back to a rule-based answer with the same source refs."
-                />
-              ) : null}
-              {answer ? (
-                <OutputBlock title="Tutor answer" text={answer.answer} sourceRefs={answer.source_refs} />
-              ) : (
-                <EmptyState text="Tutor answers are grounded by backend document chunks and include returned source refs." />
-              )}
-            </Panel>
-          </div>
-
-          <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-            <Panel title="Quiz attempt" kicker="Quiz Agent">
-              <button
-                className="action-button"
-                data-testid="generate-quiz-button"
-                disabled={!canUseLoop || busy !== null}
-                onClick={() =>
-                  void runTask("generate-quiz", async () => {
-                    const nextQuiz = await api.generateQuiz(selectedProfileId as number, selectedConcept!.id, "medium");
-                    setQuiz(nextQuiz);
-                    setAttemptText("");
-                    setEvaluation(null);
-                    await appendRun(nextQuiz.agent_run_id);
-                  })
-                }
-              >
-                {busy === "generate-quiz" ? "Generating quiz" : "Generate quiz for selected concept"}
-              </button>
-              {busy === "generate-quiz" ? (
-                <AgentLoading
-                  testId="quiz-loading"
-                  title="Quiz Agent is preparing an assessment item..."
-                  detail="It is grounding the question in the selected concept and course chunks."
-                />
-              ) : null}
-
-              {quiz?.items[0] ? (
-                <div className="mt-4 space-y-3">
-                  <div className="rounded-md border border-slate-200 bg-white p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Question</p>
-                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-900" data-testid="quiz-question">
-                      {quiz.items[0].question}
-                    </p>
-                    <p className="mt-3 text-xs text-slate-500">{quiz.items[0].concept_tags.join(" / ")}</p>
-                  </div>
-                  <textarea
-                    className="field min-h-28 resize-none"
-                    data-testid="quiz-answer"
-                    value={attemptText}
-                    onChange={(event) => setAttemptText(event.target.value)}
-                    aria-label="Quiz answer"
-                    placeholder="Type your answer and submit it to the evaluator."
-                  />
-                  <label className="setting-toggle" data-testid="auto-profile-update-control">
-                    <input
-                      type="checkbox"
-                      data-testid="auto-profile-update-toggle"
-                      checked={autoProfileUpdateEnabled}
-                      disabled={busy !== null}
-                      onChange={(event) => setAutoProfileUpdateEnabled(event.target.checked)}
-                    />
-                    <span>
-                      <strong>Auto-update profile after evaluation</strong>
-                      <small>ProfileUpdater syncs the student profile from the latest agent trace when enabled.</small>
-                    </span>
-                  </label>
-                  <button
-                    className="primary-button"
-                    data-testid="submit-answer-button"
-                    disabled={!attemptText.trim() || busy !== null}
-                    onClick={() => void submitQuizAttempt()}
-                  >
-                    {busy === "submit-attempt" ? "Submitting answer" : busy === "sync-profile" ? "Updating profile" : "Submit answer"}
-                  </button>
-                  {busy === "submit-attempt" ? (
-                    <AgentLoading
-                      testId="evaluator-loading"
-                      title="Evaluator Agent is scoring the attempt..."
-                      detail="It is comparing the answer with the quiz rubric and returning feedback."
-                    />
-                  ) : null}
-                  {busy === "sync-profile" ? (
-                    <AgentLoading
-                      testId="profile-update-loading"
-                      title="ProfileUpdater is updating the student profile..."
-                      detail="It is analyzing the latest learning trace after evaluation."
-                    />
-                  ) : null}
-                </div>
-              ) : (
-                <EmptyState text="Generate a quiz after selecting a path node or concept." />
-              )}
-            </Panel>
-
-            <Panel title="Evaluator feedback" kicker="Mastery">
-              {evaluation ? (
-                <div className="space-y-4">
-                  <Metric label="Score" value={`${Math.round(evaluation.score * 100)}%`} />
-                  <p className="rounded-md bg-white p-4 text-sm leading-6 text-slate-700" data-testid="evaluator-feedback">
-                    {evaluation.feedback}
-                  </p>
-                  {autoProfileUpdate ? (
-                    <p className="rounded-md bg-moss/10 p-3 text-xs font-semibold leading-5 text-slate-700" data-testid="auto-profile-update">
-                      {autoProfileUpdate}
-                    </p>
-                  ) : null}
-                  <div className="space-y-2">
-                    {evaluation.mastery_updates.map((update, index) => (
-                      <div key={index} className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
-                        <p className="font-semibold">Concept {String(update.concept_id ?? "unknown")}</p>
-                        <p className="mt-1">Mastery: {String(update.mastery_score ?? "n/a")}</p>
-                        <p className="mt-1 text-xs text-slate-500">{String(update.evidence ?? "No evidence returned")}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <EmptyState text="Submit an answer to display score, feedback, and mastery update suggestions." />
-              )}
-            </Panel>
-          </div>
-
-          <Panel title="Agent run trace" kicker="Explainability">
-            <div className="grid gap-3 lg:grid-cols-2">
-              {runs.map((run) => (
-                <RunCard key={run.id} run={run} />
-              ))}
-              {runs.length === 0 ? (
-                <EmptyState text="Planner, Resource, Tutor, Quiz, and Evaluator runs will be listed here after actions complete." />
-              ) : null}
-            </div>
-          </Panel>
-        </section>
-      </div>
+      <button className="floating-trace-button" onClick={() => setTraceOpen(true)}>执行追踪</button>
+      <TraceOverlay open={traceOpen} onClose={() => setTraceOpen(false)} runs={runs} />
+      <footer className="app-footer-badge">Powered by 科大讯飞星火大模型</footer>
+      <DebugModal
+        open={debugOpen}
+        busy={busy}
+        booting={booting}
+        error={error}
+        onClose={() => setDebugOpen(false)}
+        onLoadDemo={() =>
+          void runTask("load-demo", async () => {
+            await api.loadDemoData();
+            await refreshBaseData();
+          })
+        }
+        onResetDemo={() =>
+          void runTask("reset-demo", async () => {
+            await api.resetDemoUserData();
+            await refreshBaseData();
+            setFlow(null);
+            setSelectedPathItemId(null);
+            setRuns([]);
+            resetLoopOutputs();
+          })
+        }
+      />
     </main>
   );
 }
 
-function PathItemCard({
-  item,
-  concept,
-  selected,
-  onSelect
-}: {
-  item: LearningPathItem;
-  concept: Concept | null;
-  selected: boolean;
-  onSelect: () => void;
+function DebugModal(props: {
+  open: boolean;
+  busy: BusyAction | null;
+  booting: boolean;
+  error: string | null;
+  onClose: () => void;
+  onLoadDemo: () => void;
+  onResetDemo: () => void;
 }) {
+  if (!props.open) return null;
+
+  return (
+    <div className="modal-overlay">
+      <button className="modal-backdrop" aria-label="关闭设置与调试" onClick={props.onClose} />
+      <section className="modal-card" role="dialog" aria-modal="true" aria-label="设置与调试">
+        <div className="modal-header">
+          <div>
+            <p className="eyebrow">设置 / 调试</p>
+            <h2>演示数据控制</h2>
+          </div>
+          <button className="icon-button" type="button" aria-label="关闭设置与调试" onClick={props.onClose}>
+            ×
+          </button>
+        </div>
+        <div className="modal-body">
+          <button
+            className="action-button w-full"
+            data-testid="load-demo-button"
+            disabled={props.busy !== null}
+            onClick={props.onLoadDemo}
+          >
+            {props.busy === "load-demo" ? "正在加载演示数据" : "加载或刷新演示数据"}
+          </button>
+          <button
+            className="danger-button w-full"
+            data-testid="reset-demo-button"
+            disabled={props.busy !== null}
+            onClick={props.onResetDemo}
+          >
+            {props.busy === "reset-demo" ? "正在重置" : "重置用户演示数据"}
+          </button>
+          <StatusLine busy={props.booting} error={props.error} />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function KnowledgePanel(props: {
+  status: DemoDataStatus | null;
+  busy: BusyAction | null;
+  knowledgeTitle: string;
+  setKnowledgeTitle: (value: string) => void;
+  knowledgeSourceType: "text" | "markdown";
+  setKnowledgeSourceType: (value: "text" | "markdown") => void;
+  knowledgeContent: string;
+  setKnowledgeContent: (value: string) => void;
+  knowledgeFile: File | null;
+  setKnowledgeFile: (value: File | null) => void;
+  knowledgeImportResult: DocumentIngestionResponse | null;
+  knowledgeReindexResult: DocumentReindexResponse | null;
+  knowledgeDocuments: ManagedDocument[];
+  knowledgeError: string | null;
+  knowledgeQuery: string;
+  setKnowledgeQuery: (value: string) => void;
+  knowledgeSearchResults: KnowledgeSearchResult[];
+  onRunTask: (action: BusyAction, task: () => Promise<void>) => Promise<void>;
+  onImport: () => Promise<void>;
+  onUpload: () => Promise<void>;
+  onSearch: () => Promise<void>;
+  onRefresh: () => Promise<void>;
+  onDelete: (documentId: number) => Promise<void>;
+  onReindex: (documentId: number) => Promise<void>;
+}) {
+  const [createOpen, setCreateOpen] = useState(false);
+
+  return (
+    <section className="kb-workspace">
+      <aside className="kb-sidebar" data-testid="document-management">
+        <div className="kb-sidebar-header">
+          <div>
+            <p className="eyebrow">资料管理器</p>
+            <h2>课程资料</h2>
+          </div>
+          <button className="small-button" data-testid="refresh-documents-button" disabled={!props.status?.course_id || props.busy !== null} onClick={() => void props.onRunTask("refresh-documents", props.onRefresh)}>
+            刷新
+          </button>
+        </div>
+        <div className="kb-document-list" data-testid="document-list">
+          {props.knowledgeDocuments.map((document) => (
+            <article key={document.id} className="kb-document-row" data-testid="document-row">
+              <div>
+                <strong>{documentDisplayName(document)}</strong>
+                <span>{document.chunk_count} 个片段 / {document.status}</span>
+                <small>{document.parser_name ?? "默认解析器"}</small>
+              </div>
+              <div className="kb-document-actions">
+                <button className="document-reindex-button" data-testid="reindex-document-button" disabled={props.busy !== null} onClick={() => void props.onRunTask("reindex-document", () => props.onReindex(document.id))}>
+                  重建
+                </button>
+                <button className="document-delete-button" data-testid="delete-document-button" disabled={props.busy !== null} onClick={() => void props.onRunTask("delete-document", () => props.onDelete(document.id))}>
+                  删除
+                </button>
+              </div>
+            </article>
+          ))}
+          {props.knowledgeDocuments.length === 0 ? <p className="document-empty">暂无课程资料。</p> : null}
+        </div>
+      </aside>
+
+      <section className="kb-main">
+        <div className="kb-main-header">
+          <div>
+            <p className="eyebrow">资料管理员</p>
+            <h2>知识库检索</h2>
+          </div>
+          <button className="primary-button" type="button" onClick={() => setCreateOpen(true)}>
+            + 录入资料
+          </button>
+        </div>
+
+        <div className="kb-search-hero">
+          <input
+            className="field kb-search-input"
+            data-testid="knowledge-query"
+            value={props.knowledgeQuery}
+            onChange={(event) => props.setKnowledgeQuery(event.target.value)}
+            aria-label="知识检索问题"
+            placeholder="输入一个知识点、问题或学习目标，检索课程知识库"
+          />
+          <button
+            className="primary-button"
+            data-testid="search-knowledge-button"
+            disabled={!props.status?.course_id || !props.knowledgeQuery.trim() || props.busy !== null}
+            onClick={() => void props.onRunTask("search-knowledge", props.onSearch)}
+          >
+            {props.busy === "search-knowledge" ? "正在检索" : "检索知识库"}
+          </button>
+        </div>
+
+        <div className="knowledge-search-results" data-testid="knowledge-search-results">
+          {props.knowledgeSearchResults.map((result, index) => (
+            <article key={index} className="knowledge-search-result">
+              <strong>{resultDisplayName(result)}</strong>
+              <span>相似度 {formatScore(result.score)} / 来源 {String(result.source_ref ?? "暂无")}</span>
+              <p className="knowledge-search-excerpt">{result.content}</p>
+            </article>
+          ))}
+          {props.knowledgeSearchResults.length === 0 ? <EmptyState text="输入问题后检索课程知识库，结果会作为资源生成和答疑证据。" /> : null}
+        </div>
+      </section>
+
+      {createOpen ? (
+        <div className="modal-overlay">
+          <button className="modal-backdrop" aria-label="关闭资料录入" onClick={() => setCreateOpen(false)} />
+          <section className="modal-card kb-create-modal" role="dialog" aria-modal="true" aria-label="新建资料">
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">资料接入</p>
+                <h2>新建资料</h2>
+              </div>
+              <button className="icon-button" type="button" aria-label="关闭资料录入" onClick={() => setCreateOpen(false)}>
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <input className="field" data-testid="knowledge-title" value={props.knowledgeTitle} onChange={(event) => props.setKnowledgeTitle(event.target.value)} aria-label="资料标题" placeholder="资料标题" />
+              <select className="field" data-testid="knowledge-source-type" value={props.knowledgeSourceType} onChange={(event) => props.setKnowledgeSourceType(event.target.value as "text" | "markdown")} aria-label="资料类型">
+                <option value="markdown">标记文本</option>
+                <option value="text">纯文本</option>
+              </select>
+              <textarea className="field min-h-36 resize-none" data-testid="knowledge-content" value={props.knowledgeContent} onChange={(event) => props.setKnowledgeContent(event.target.value)} aria-label="资料内容" placeholder="粘贴课程讲义、知识点说明或案例材料" />
+              <input
+                className="field"
+                data-testid="knowledge-file"
+                type="file"
+                accept=".txt,.md,.markdown,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  props.setKnowledgeFile(file);
+                  if (file) props.setKnowledgeTitle(file.name);
+                }}
+                aria-label="上传资料文件"
+              />
+              <div className="modal-actions">
+                <button className="action-button w-full" data-testid="upload-knowledge-button" disabled={!props.status?.course_id || !props.knowledgeFile || props.busy !== null} onClick={() => void props.onRunTask("upload-knowledge", props.onUpload)}>
+                  {props.busy === "upload-knowledge" ? "正在上传资料" : "上传选中文件"}
+                </button>
+                <button className="primary-button w-full" data-testid="import-knowledge-button" disabled={!props.status?.course_id || !props.knowledgeTitle.trim() || !props.knowledgeContent.trim() || props.busy !== null} onClick={() => void props.onRunTask("import-knowledge", props.onImport)}>
+                  {props.busy === "import-knowledge" ? "正在导入资料" : "导入文本资料"}
+                </button>
+              </div>
+              {props.knowledgeImportResult ? (
+                <div className="knowledge-result" data-testid="knowledge-import-result">
+                  <p>{documentDisplayName(props.knowledgeImportResult.document)}</p>
+                  <p>已导入 / {props.knowledgeImportResult.chunk_count} 个片段 / {props.knowledgeImportResult.document.parser_name ?? "默认解析器"}</p>
+                </div>
+              ) : null}
+              {props.knowledgeReindexResult ? (
+                <div className="knowledge-result" data-testid="knowledge-reindex-result">
+                  <p>重建完成：已索引 {props.knowledgeReindexResult.indexed}，跳过 {props.knowledgeReindexResult.skipped}，失败 {props.knowledgeReindexResult.failed}</p>
+                  <span>{props.knowledgeReindexResult.message}</span>
+                </div>
+              ) : null}
+              {props.knowledgeError ? <p className="error-note">{props.knowledgeError}</p> : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function StepFlow({ activeStep, onSelect }: { activeStep: StepKey; onSelect: (key: StepKey) => void }) {
+  return (
+    <section className="step-flow" aria-label="学习闭环步骤">
+      <div className="step-flow-head">
+        <div>
+          <p className="eyebrow">学习闭环</p>
+          <strong>七步个性化学习流程</strong>
+        </div>
+        <span>当前视图：{stepFlow.find((step) => step.key === activeStep)?.label}</span>
+      </div>
+      <ol>
+        {stepFlow.map((step, index) => (
+          <li key={step.key}>
+            <button className={activeStep === step.key ? "step-active" : ""} onClick={() => onSelect(step.key)} aria-current={activeStep === step.key ? "step" : undefined}>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              {step.label}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function MultiAgentOverview({ activeStep }: { activeStep: StepKey }) {
+  const active = stepAgents[activeStep];
+  const activeIds = new Set([active.lead, ...active.support]);
+  return (
+    <section className="agent-overview">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">教学团队协作编排</p>
+          <h2>当前步骤由主导角色牵引，协作角色按需补充能力</h2>
+        </div>
+        <span className="orchestration-badge">
+          主导：{agentRoster.find((agent) => agent.id === active.lead)?.name} / 协作：{active.support.length} 个
+        </span>
+      </div>
+      <div className="agent-grid">
+        {agentRoster.map((agent) => {
+          const isLead = active.lead === agent.id;
+          const isActive = activeIds.has(agent.id);
+          return (
+            <article key={agent.id} className={`agent-card ${isLead ? "agent-lead" : isActive ? "agent-support" : ""}`}>
+              <span>{isLead ? "主导" : isActive ? "协作" : "待命"}</span>
+              <h3>{agent.name}</h3>
+              <p>{agent.role}</p>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PathItemCard({ item, concept, selected, onSelect }: { item: LearningPathItem; concept: Concept | null; selected: boolean; onSelect: () => void }) {
   return (
     <button className={`path-card ${selected ? "path-card-active" : ""}`} data-testid="path-item-card" onClick={onSelect}>
-      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Step {item.order_index}</span>
-      <span className="mt-2 block text-left text-base font-semibold text-slate-950">{item.title}</span>
-      <span className="mt-2 block text-left text-sm leading-6 text-slate-600">{item.objective}</span>
-      <span className="mt-3 block text-left text-xs text-slate-500">{concept?.name ?? `Concept ${item.concept_id}`}</span>
+      <span>第 {item.order_index} 步</span>
+      <strong>{item.title}</strong>
+      <p>{item.objective}</p>
+      <small>{concept?.name ?? `概念 ${item.concept_id}`}</small>
     </button>
   );
 }
 
 function NodeSummary({ item, concept }: { item: LearningPathItem | null; concept: Concept | null }) {
-  if (!item) return <EmptyState text="Select or create a path node before generating resources." />;
-
+  if (!item) return <EmptyState text="请选择或生成一个学习节点。" />;
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-4" data-testid="current-node">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Current node</p>
-      <p className="mt-2 text-sm font-semibold text-slate-950">{item.title}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{item.objective}</p>
-      <p className="mt-3 text-xs text-slate-500">{concept?.name ?? `Concept ${item.concept_id}`}</p>
+    <div className="node-summary" data-testid="current-node">
+      <p className="eyebrow">当前节点</p>
+      <strong>{item.title}</strong>
+      <span>{item.objective}</span>
+      <small>{concept?.name ?? `概念 ${item.concept_id}`}</small>
     </div>
   );
 }
 
 function ProfileDimensionList({ profile }: { profile: StudentProfile }) {
+  const dimensionIcons: Record<string, string> = {
+    learning_goal: "🎯",
+    foundation_level: "📊",
+    learning_preference: "🧠",
+    available_time: "⏱️",
+    weak_points: "🩹",
+    resource_preference: "📚"
+  };
+
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-4" data-testid="profile-dimensions">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">6-dimension profile</p>
-      <div className="mt-3 grid gap-2">
-        {profileDimensions.map(([key, label]) => (
-          <div key={key} className="rounded-md bg-slate-50 px-3 py-2">
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
-            <p className="mt-1 text-xs leading-5 text-slate-700">{formatPreference(profile, key)}</p>
-          </div>
-        ))}
+    <div className="modern-profile-card" data-testid="profile-dimensions">
+      <div className="modern-profile-header">
+        <span className="pulse-dot" aria-hidden="true" />
+        <h3>六维动态学生画像</h3>
+      </div>
+      <div className="modern-dimension-grid">
+        {profileDimensions.map(([key, label]) => {
+          const value = formatPreference(profile, key);
+          return (
+            <article key={key} className="modern-dimension-item">
+              <span className="dimension-label">
+                <span aria-hidden="true">{dimensionIcons[key] ?? "•"}</span>
+                {label}
+              </span>
+              {key === "foundation_level" ? (
+                <p className="dimension-value">
+                  <span className="status-badge">{value}</span>
+                </p>
+              ) : (
+                <p className="dimension-value">{value}</p>
+              )}
+            </article>
+          );
+        })}
       </div>
       {profile.preferences.last_profile_update_reason ? (
-        <p className="mt-3 rounded-md bg-signal/10 p-3 text-xs leading-5 text-slate-700" data-testid="profile-update-reason">
-          {String(profile.preferences.last_profile_update_reason)}
-        </p>
+        <footer className="modern-profile-footer" data-testid="profile-update-reason">
+          <span aria-hidden="true">✨</span>
+          <p>{String(profile.preferences.last_profile_update_reason)}</p>
+        </footer>
       ) : null}
+    </div>
+  );
+}
+
+function ProfileSkeleton() {
+  return (
+    <div className="modern-profile-card profile-skeleton-card" data-testid="profile-skeleton" aria-live="polite">
+      <div className="modern-profile-header">
+        <span className="pulse-dot" aria-hidden="true" />
+        <h3>画像顾问正在扫描六维特征</h3>
+      </div>
+      <div className="modern-dimension-grid">
+        {profileDimensions.map(([key, label]) => (
+          <article key={key} className="modern-dimension-item skeleton-dimension">
+            <span className="dimension-label">{label}</span>
+            <i />
+            <b />
+          </article>
+        ))}
+      </div>
+      <footer className="modern-profile-footer">
+        <span aria-hidden="true">✨</span>
+        <p>正在从对话中抽取学习目标、基础水平、偏好与短板。</p>
+      </footer>
     </div>
   );
 }
@@ -1013,36 +1187,51 @@ function formatPreference(profile: StudentProfile, key: string): string {
     if (key === "learning_goal") return profile.goal;
     if (key === "foundation_level") return profile.level;
     if (key === "available_time") return profile.time_budget;
-    return "待学习过程更新";
+    return "等待学习过程更新";
   }
   return String(value);
+}
+
+function TraceOverlay({ open, onClose, runs }: { open: boolean; onClose: () => void; runs: AgentRun[] }) {
+  if (!open) return null;
+  return (
+    <div className="trace-overlay">
+      <button className="trace-backdrop" aria-label="关闭执行追踪" onClick={onClose} />
+      <aside className="trace-drawer">
+        <div className="trace-header">
+          <div>
+            <p className="eyebrow">执行追踪</p>
+            <h2>教学团队协作记录</h2>
+          </div>
+          <button className="small-button" onClick={onClose}>关闭</button>
+        </div>
+        <div className="trace-list">
+          {runs.map((run) => <RunCard key={run.id} run={run} />)}
+          {runs.length === 0 ? <EmptyState text="执行学习路径、资源生成、辅导或测验后，这里会显示教学团队协作记录。" /> : null}
+        </div>
+      </aside>
+    </div>
+  );
 }
 
 function RunCard({ run }: { run: AgentRun }) {
   return (
     <article className="run-timeline-card" data-testid="run-card">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-950">{run.run_type}</h3>
-        <span className="rounded-full bg-moss/15 px-3 py-1 text-xs font-semibold text-moss">{run.status}</span>
+      <div className="run-card-header">
+        <h3>{runTypeLabels[run.run_type] ?? run.run_type}</h3>
+        <span>{statusLabels[run.status] ?? run.status}</span>
       </div>
-      <p className="mt-3 text-sm leading-6 text-slate-600">{run.final_summary ?? run.output_summary ?? run.input_summary}</p>
+      <p>{run.final_summary ?? run.output_summary ?? run.input_summary ?? "暂无摘要"}</p>
       <div className="timeline-steps">
         {run.steps.map((step) => (
           <div key={step.id} className="timeline-step">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-              {step.step_order}. {agentTone[step.agent_type] ?? step.agent_type}
-            </p>
-            <p className="mt-2 text-xs font-semibold text-slate-500">Input</p>
-            <p className="text-sm leading-5 text-slate-700">{step.input_summary}</p>
-            <p className="mt-2 text-xs font-semibold text-slate-500">Output</p>
-            <p className="text-sm leading-5 text-slate-700">{step.output_summary}</p>
-            <p className="mt-2 text-xs font-semibold text-slate-500">Decision</p>
-            <p className="text-xs leading-5 text-slate-500">{step.decision_basis}</p>
-            {step.decision_basis.toLowerCase().includes("fallback") ? (
-              <span className="mt-2 inline-flex rounded-full bg-signal/10 px-2 py-1 text-[0.68rem] font-semibold text-signal">
-                Fallback
-              </span>
-            ) : null}
+            <strong>{step.step_order}. {agentTypeLabels[step.agent_type] ?? step.agent_type}</strong>
+            <span>输入摘要</span>
+            <p>{step.input_summary}</p>
+            <span>输出摘要</span>
+            <p>{step.output_summary}</p>
+            <span>决策依据</span>
+            <p>{step.decision_basis}</p>
           </div>
         ))}
       </div>
@@ -1050,32 +1239,201 @@ function RunCard({ run }: { run: AgentRun }) {
   );
 }
 
-function Panel({ title, kicker, children }: { title: string; kicker: string; children: ReactNode }) {
+function ResourceOutputBlock({ resource }: { resource: GeneratedResource }) {
   return (
-    <section className="rounded-md border border-slate-200 bg-slate-100 p-5 shadow-panel">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-moss">{kicker}</p>
-      <h2 className="mt-1 font-display text-2xl text-slate-950">{title}</h2>
-      <div className="mt-4">{children}</div>
-    </section>
+    <article className="resource-card" data-testid="output-block">
+      <ResourceHeader title={resourceLabel(resource.resource_type)} />
+      {resource.resource_type === "teaching_video" ? <VideoPlayerCard title="个性化教学视频/动画讲解" /> : null}
+      {resource.resource_type === "mind_map" ? <MindMapDiagram text={resource.content} /> : null}
+      {resource.resource_type === "coding_case" ? <CodeCaseCard code={extractFencedCode(resource.content) || resource.content} /> : null}
+      {resource.resource_type !== "mind_map" && resource.resource_type !== "coding_case" && resource.resource_type !== "teaching_video" ? <TypewriterMarkdown text={resource.content} /> : null}
+      {resource.resource_type === "teaching_video" ? <VideoScriptBlock text={resource.content} /> : null}
+      <FullResourceText text={resource.content} />
+      <SourceEvidence sourceRefs={resource.source_refs} />
+    </article>
   );
 }
 
-function Metric({ label, value, dark = false }: { label: string; value: string; dark?: boolean }) {
+function VideoPlayerCard({ title }: { title: string }) {
   return (
-    <div className={`rounded-md border p-4 ${dark ? "border-white/15 bg-white/10" : "border-slate-200 bg-white"}`}>
-      <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${dark ? "text-emerald-200" : "text-moss"}`}>{label}</p>
-      <p className={`mt-2 text-2xl font-semibold ${dark ? "text-white" : "text-slate-950"}`}>{value}</p>
+    <article className="video-player-card" data-testid="video-player-card">
+      <div className="video-cover">
+        <button className="video-play-button" type="button" aria-label="播放多模态讲解">
+          ▶
+        </button>
+        <span className="video-duration">03:28</span>
+      </div>
+      <div className="video-meta">
+        <strong>{title}</strong>
+        <span>视频/动画占位 · 生成后可替换为 SeeDance 等多模态内容</span>
+      </div>
+    </article>
+  );
+}
+
+function VideoScriptBlock({ text }: { text: string }) {
+  return (
+    <div className="video-script-block">
+      <p className="eyebrow">视频脚本 / 动画分镜</p>
+      <TypewriterMarkdown text={text} />
     </div>
+  );
+}
+
+function CodeCaseCard({ code }: { code: string }) {
+  const [tab, setTab] = useState<"code" | "output">("code");
+  const [copied, setCopied] = useState(false);
+
+  async function copyCode() {
+    try {
+      await navigator.clipboard?.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <article className="code-case-card" data-testid="coding-case-card">
+      <div className="code-case-toolbar">
+        <div className="window-dots" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <div className="code-tabs">
+          <button className={tab === "code" ? "code-tab-active" : ""} type="button" onClick={() => setTab("code")}>代码</button>
+          <button className={tab === "output" ? "code-tab-active" : ""} type="button" onClick={() => setTab("output")}>运行输出</button>
+        </div>
+        <button className="copy-button" type="button" onClick={() => void copyCode()}>
+          {copied ? "已复制" : "复制"}
+        </button>
+      </div>
+      {tab === "code" ? (
+        <pre className="code-case-block">{code}</pre>
+      ) : (
+        <div className="run-output-placeholder">
+          <strong>运行输出预览</strong>
+          <p>接入在线沙箱后，这里会展示测试结果、复杂度分析与调试建议。</p>
+        </div>
+      )}
+    </article>
   );
 }
 
 function OutputBlock({ title, text, sourceRefs }: { title: string; text: string; sourceRefs: Array<Record<string, unknown>> }) {
   return (
-    <article className="mt-4 rounded-md border border-slate-200 bg-white p-4" data-testid="output-block">
-      <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
+    <article className="resource-card" data-testid="output-block">
+      <ResourceHeader title={title} />
       <MarkdownBlock text={text} />
-      <SourcePanel sourceRefs={sourceRefs} />
+      <SourceEvidence sourceRefs={sourceRefs} />
     </article>
+  );
+}
+
+function MarkdownBlock({ text }: { text: string }) {
+  return (
+    <div className="markdown-body" data-testid="markdown-body">
+      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{text}</ReactMarkdown>
+    </div>
+  );
+}
+
+function TypewriterMarkdown({ text }: { text: string }) {
+  const [visibleText, setVisibleText] = useState("");
+
+  useEffect(() => {
+    setVisibleText("");
+    if (!text) return;
+    let index = 0;
+    const timer = window.setInterval(() => {
+      index += Math.max(1, Math.ceil(text.length / 120));
+      setVisibleText(text.slice(0, index));
+      if (index >= text.length) window.clearInterval(timer);
+    }, 18);
+    return () => window.clearInterval(timer);
+  }, [text]);
+
+  return <MarkdownBlock text={visibleText || " "} />;
+}
+
+function MindMapDiagram({ text }: { text: string }) {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const center = lines[0]?.replace(/^#+\s*/, "") || "知识主题";
+  const nodes = lines.filter((line) => line.startsWith("-") || line.startsWith("分支")).slice(0, 8);
+  return (
+    <div className="mind-map-diagram" data-testid="mind-map-card">
+      <div className="mind-map-center">{center}</div>
+      <div className="mind-map-nodes">
+        {(nodes.length ? nodes : ["核心概念", "适用场景", "易错点", "练习建议"]).map((node, index) => (
+          <span key={index}>{node.replace(/^[-\s分支:：]+/, "")}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function extractFencedCode(content: string): string {
+  const match = content.match(/```(?:python|py|ts|js)?\s*([\s\S]*?)```/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+function FullResourceText({ text }: { text: string }) {
+  return (
+    <details className="full-resource-text">
+      <summary>完整资源正文</summary>
+      <pre>{text}</pre>
+    </details>
+  );
+}
+
+function ResourceHeader({ title }: { title: string }) {
+  return (
+    <div className="resource-header">
+      <h3>{title}</h3>
+    </div>
+  );
+}
+
+function SourceEvidence({ sourceRefs }: { sourceRefs: Array<Record<string, unknown>> }) {
+  return (
+    <details className="source-evidence" data-testid="source-panel">
+      <summary>
+        <span>查看溯源证据</span>
+        <small>{sourceRefs.length ? `${Math.min(sourceRefs.length, 5)} 条参考来源` : "暂无来源"}</small>
+      </summary>
+      <SourcePanel sourceRefs={sourceRefs} />
+    </details>
+  );
+}
+
+function SourcePanel({ sourceRefs }: { sourceRefs: Array<Record<string, unknown>> }) {
+  const visibleSources = sourceRefs.slice(0, 5);
+  return (
+    <div className="source-panel">
+      <p className="source-panel-title">可追溯来源</p>
+      {visibleSources.length === 0 ? (
+        <p className="source-panel-empty" data-testid="source-empty">暂无来源返回</p>
+      ) : (
+        <div className="source-panel-list">
+          {visibleSources.map((source, index) => (
+            <details className="source-detail" data-testid="source-detail" key={`${String(source.source_ref ?? source.chunk_id ?? "source")}-${index}`}>
+              <summary>
+                <span>{String(source.source_ref ?? source.chunk_id ?? "来源")}</span>
+                <small>
+                  分数 {formatScore(source.rerank_score ?? source.score)}
+                  {source.retrieval_mode ? ` / 检索方式 ${String(source.retrieval_mode)}` : ""}
+                </small>
+              </summary>
+              {source.source_title ? <p className="source-title">{String(source.source_title)}</p> : null}
+              {source.excerpt ? <p className="source-excerpt">{String(source.excerpt)}</p> : null}
+              <p className="source-meta">命中词 {formatList(source.matched_terms)} / 锚点 {formatList(source.anchor_matches)}</p>
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1091,236 +1449,47 @@ function AgentLoading({ testId, title, detail }: { testId: string; title: string
   );
 }
 
-function MarkdownBlock({ text }: { text: string }) {
+function StatusTracker({ testId, steps, compact = false }: { testId: string; steps: TrackerStep[]; compact?: boolean }) {
   return (
-    <div className="markdown-body" data-testid="markdown-body">
-      <ReactMarkdown
-        remarkPlugins={[remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={{
-          h1: ({ children }) => <h3>{children}</h3>,
-          h2: ({ children }) => <h3>{children}</h3>,
-          h3: ({ children }) => <h4>{children}</h4>,
-          p: ({ children }) => <p>{children}</p>,
-          ul: ({ children }) => <ul>{children}</ul>,
-          ol: ({ children }) => <ol>{children}</ol>,
-          li: ({ children }) => <li>{children}</li>,
-          code: ({ children }) => <code>{children}</code>,
-          pre: ({ children }) => <pre>{children}</pre>,
-          strong: ({ children }) => <strong>{children}</strong>
-        }}
-      >
-        {text}
-      </ReactMarkdown>
+    <div className={`status-tracker ${compact ? "status-tracker-compact" : ""}`} data-testid={testId} aria-live="polite">
+      {steps.map((step) => (
+        <div key={step.label} className={`tracker-step tracker-${step.status}`}>
+          <span className="tracker-node">{step.status === "done" ? "✓" : step.status === "active" ? "⚙" : "✨"}</span>
+          <div>
+            <strong>{step.label}</strong>
+            <p>{step.detail}</p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
 
-function ResourceOutputBlock({ resource }: { resource: GeneratedResource }) {
-  const lines = resource.content
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const title = resource.resource_type;
-
-  if (resource.resource_type === "mind_map") {
-    const center = extractMindMapCenter(lines);
-    const nodes = extractMindMapNodes(lines);
-    return (
-      <article className="resource-card resource-card-map" data-testid="output-block">
-        <ResourceHeader title="Mind map" />
-        <MindMapDiagram center={center} nodes={nodes} />
-        <FullResourceText text={resource.content} />
-        <SourcePanel sourceRefs={resource.source_refs} />
-      </article>
-    );
-  }
-
-  if (resource.resource_type === "coding_case") {
-    const code = extractFencedCode(resource.content);
-    const tasks = extractNumberedItems(lines).slice(0, 5);
-    return (
-      <article className="resource-card resource-card-code" data-testid="output-block">
-        <ResourceHeader title="Coding case" />
-        {code ? (
-          <pre className="code-case-block" data-testid="coding-case-card">{code}</pre>
-        ) : (
-          <div className="missing-structured-block" data-testid="coding-case-card">模型未返回 Python 代码块，以下保留完整资源正文。</div>
-        )}
-        <div className="resource-chip-row">
-          {tasks.map((task, index) => (
-            <span key={index} className="resource-chip">{task}</span>
-          ))}
-        </div>
-        <FullResourceText text={resource.content} />
-        <SourcePanel sourceRefs={resource.source_refs} />
-      </article>
-    );
-  }
-
-  if (resource.resource_type === "practice_questions") {
-    const questions = extractPracticeQuestions(lines);
-    return (
-      <article className="resource-card resource-card-practice" data-testid="output-block">
-        <ResourceHeader title="Practice questions" />
-        <ol className="practice-list" data-testid="practice-card">
-          {(questions.length ? questions : extractQuestionLikeLines(lines)).map((line, index) => (
-            <li key={index}>{line.replace(/^题目\s*\d+[:：]\s*/, "")}</li>
-          ))}
-        </ol>
-        <FullResourceText text={resource.content} />
-        <SourcePanel sourceRefs={resource.source_refs} />
-      </article>
-    );
-  }
-
-  if (resource.resource_type === "extended_reading") {
-    return (
-      <article className="resource-card resource-card-reading" data-testid="output-block">
-        <ResourceHeader title="Extended reading" />
-        <div data-testid="reading-card">
-          <MarkdownBlock text={resource.content} />
-        </div>
-        <SourcePanel sourceRefs={resource.source_refs} />
-      </article>
-    );
-  }
-
+function Panel({ title, kicker, children }: { title: string; kicker: string; children: ReactNode }) {
   return (
-    <article className="resource-card resource-card-note" data-testid="output-block">
-      <ResourceHeader title={title} />
-      <MarkdownBlock text={resource.content} />
-      <SourcePanel sourceRefs={resource.source_refs} />
-    </article>
+    <section className="panel">
+      <p className="eyebrow">{kicker}</p>
+      <h2>{title}</h2>
+      <div className="panel-body">{children}</div>
+    </section>
   );
 }
 
-function extractMindMapCenter(lines: string[]): string {
-  const center = lines.find((line) => line.startsWith("中心主题"));
-  return center?.replace(/^中心主题[:：]\s*/, "") || lines.find((line) => !line.startsWith("#")) || "Mind map";
-}
-
-function extractMindMapNodes(lines: string[]): string[] {
-  const branchNodes = lines
-    .filter((line) => line.startsWith("分支"))
-    .map((line) => line.replace(/^分支[:：]\s*/, ""));
-  if (branchNodes.length) return branchNodes.slice(0, 8);
-  return lines
-    .filter((line) => line.startsWith("-") || line.startsWith("  -"))
-    .map((line) => line.replace(/^-+\s*/, "").replace(/^-\s*/, ""))
-    .slice(0, 8);
-}
-
-function extractFencedCode(content: string): string {
-  const match = content.match(/```(?:python|py)?\s*([\s\S]*?)```/i);
-  return match?.[1]?.trim() ?? "";
-}
-
-function extractNumberedItems(lines: string[]): string[] {
-  return lines.filter((line) => /^\d+[.、]/.test(line)).map((line) => line.replace(/^\d+[.、]\s*/, ""));
-}
-
-function extractPracticeQuestions(lines: string[]): string[] {
-  const questions = lines
-    .filter((line) => /^题目\s*\d+[:：]/.test(line))
-    .map((line) => line.replace(/^题目\s*\d+[:：]\s*/, ""));
-  if (questions.length) return questions.slice(0, 8);
-  return extractNumberedItems(lines);
-}
-
-function extractQuestionLikeLines(lines: string[]): string[] {
-  const useful = lines.filter((line) => /题|答案|解析|选择|填空|简答|应用/.test(line));
-  return useful.length ? useful : lines;
-}
-
-function MindMapDiagram({ center, nodes }: { center: string; nodes: string[] }) {
-  const safeNodes = nodes.length ? nodes : ["定义", "表示方法", "复杂度", "易错点"];
-  const height = Math.max(220, 84 + safeNodes.length * 54);
-  const centerY = height / 2;
+function Metric({ label, value, dark = false }: { label: string; value: string; dark?: boolean }) {
   return (
-    <div className="mind-map-diagram" data-testid="mind-map-card">
-      <svg viewBox={`0 0 720 ${height}`} role="img" aria-label="Mind map diagram">
-        <rect x="28" y={centerY - 34} width="220" height="68" rx="8" className="mind-map-svg-center" />
-        <text x="138" y={centerY - 4} textAnchor="middle" className="mind-map-svg-title">
-          {truncateSvgText(center, 14)}
-        </text>
-        <text x="138" y={centerY + 18} textAnchor="middle" className="mind-map-svg-subtitle">中心主题</text>
-        {safeNodes.map((node, index) => {
-          const y = 42 + index * 54;
-          return (
-            <g key={index}>
-              <path d={`M 248 ${centerY} C 330 ${centerY}, 315 ${y + 22}, 398 ${y + 22}`} className="mind-map-svg-link" />
-              <rect x="398" y={y} width="292" height="44" rx="8" className="mind-map-svg-node" />
-              <text x="414" y={y + 27} className="mind-map-svg-node-text">{truncateSvgText(node, 24)}</text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-function truncateSvgText(text: string, maxLength: number): string {
-  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
-}
-
-function FullResourceText({ text }: { text: string }) {
-  return (
-    <details className="full-resource-text">
-      <summary>完整资源正文</summary>
-      <pre>{text}</pre>
-    </details>
-  );
-}
-
-function ResourceHeader({ title }: { title: string }) {
-  return (
-    <div className="resource-header">
-      <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
-    </div>
-  );
-}
-
-function SourcePanel({ sourceRefs }: { sourceRefs: Array<Record<string, unknown>> }) {
-  const visibleSources = sourceRefs.slice(0, 5);
-  return (
-    <div className="source-panel" data-testid="source-panel">
-      <p className="source-panel-title">Grounded sources</p>
-      {visibleSources.length === 0 ? (
-        <p className="source-panel-empty" data-testid="source-empty">No source returned</p>
-      ) : (
-        <div className="source-panel-list">
-          {visibleSources.map((source, index) => (
-            <details className="source-detail" data-testid="source-detail" key={`${String(source.source_ref ?? source.chunk_id ?? "source")}-${index}`}>
-              <summary>
-                <span>{String(source.source_ref ?? source.chunk_id ?? "source")}</span>
-                <small>
-                  score {formatScore(source.rerank_score ?? source.score)}
-                  {source.retrieval_mode ? ` · ${String(source.retrieval_mode)}` : ""}
-                </small>
-              </summary>
-              {source.source_title ? <p className="source-title">{String(source.source_title)}</p> : null}
-              {source.excerpt ? <p className="source-excerpt">{String(source.excerpt)}</p> : null}
-              <p className="source-meta">
-                matched {formatMetadataList(source.matched_terms)} · anchors {formatMetadataList(source.anchor_matches)}
-                {Array.isArray(source.rerank_reasons) && source.rerank_reasons.length
-                  ? ` · rerank ${formatMetadataList(source.rerank_reasons)}`
-                  : ""}
-              </p>
-            </details>
-          ))}
-        </div>
-      )}
+    <div className={`metric ${dark ? "metric-dark" : ""}`}>
+      <p>{label}</p>
+      <strong>{value}</strong>
     </div>
   );
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm leading-6 text-slate-500">{text}</p>;
+  return <p className="empty-state">{text}</p>;
 }
 
 function StatusLine({ busy, error }: { busy: boolean; error: string | null }) {
-  if (busy) return <p className="mt-3 rounded-md bg-white p-3 text-sm text-slate-600">Loading initial data...</p>;
-  if (error) return <p className="mt-3 rounded-md bg-signal/10 p-3 text-sm text-signal">{error}</p>;
+  if (busy) return <p className="status-line">正在加载初始数据...</p>;
+  if (error) return <p className="error-note">{error}</p>;
   return null;
 }
