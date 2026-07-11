@@ -41,7 +41,19 @@ type BusyAction =
   | "submit-attempt"
   | "sync-profile";
 
-type StepKey = "profile" | "kb" | "path" | "resource" | "tutor" | "quiz" | "assess";
+type TraceAction = "profile" | "path" | "resource" | "tutor" | "quiz" | "assessment";
+
+const busyTraceActions: Partial<Record<BusyAction, TraceAction>> = {
+  "build-profile": "profile",
+  "create-path": "path",
+  "generate-resource": "resource",
+  "ask-tutor": "tutor",
+  "generate-quiz": "quiz",
+  "submit-attempt": "assessment",
+  "sync-profile": "assessment"
+};
+
+type StepKey = "home" | "profile" | "kb" | "path" | "resource" | "tutor" | "quiz" | "assess";
 
 type TutorMessage = {
   id: string;
@@ -81,6 +93,7 @@ const resourceOptions = [
 ] as const;
 
 const stepFlow: Array<{ key: StepKey; label: string; desc: string }> = [
+  { key: "home", label: "工作台首页", desc: "总览学习状态、资料接入和下一步学习动作" },
   { key: "profile", label: "学生画像", desc: "通过自然语言对话抽取特征，形成六维动态画像" },
   { key: "kb", label: "知识库", desc: "导入课程资料，检索可追溯证据片段" },
   { key: "path", label: "学习路径", desc: "根据画像、课程图谱和目标规划学习顺序" },
@@ -100,6 +113,7 @@ const agentRoster = [
 ];
 
 const stepAgents: Record<StepKey, { lead: string; support: string[] }> = {
+  home: { lead: "planner", support: ["profile", "retriever"] },
   profile: { lead: "profile", support: [] },
   kb: { lead: "retriever", support: ["profile"] },
   path: { lead: "planner", support: ["profile", "evaluator"] },
@@ -164,6 +178,18 @@ function documentDisplayName(document: { title: string; file_name?: string | nul
   return document.file_name || document.title || "未命名资料";
 }
 
+function inferPastedSourceType(content: string): "text" | "markdown" {
+  const markdownPatterns = [
+    /^#{1,6}\s+/m,
+    /^[-*+]\s+/m,
+    /^\d+\.\s+/m,
+    /```[\s\S]*?```/,
+    /^\|.+\|$/m,
+    /\[[^\]]+\]\([^)]+\)/,
+  ];
+  return markdownPatterns.some((pattern) => pattern.test(content)) ? "markdown" : "text";
+}
+
 function resultDisplayName(result: KnowledgeSearchResult): string {
   return String(result.metadata?.filename ?? result.metadata?.source_title ?? result.source_ref ?? "知识来源");
 }
@@ -179,7 +205,6 @@ export function App() {
   );
   const [goal, setGoal] = useState("巩固二叉树遍历和图搜索，为课程小测做准备");
   const [knowledgeTitle, setKnowledgeTitle] = useState("数据结构学习笔记.md");
-  const [knowledgeSourceType, setKnowledgeSourceType] = useState<"text" | "markdown">("markdown");
   const [knowledgeContent, setKnowledgeContent] = useState(
     "# 广度优先搜索与深度优先搜索\n广度优先搜索通常使用队列逐层扩展节点，适合求无权图最短路径；深度优先搜索通常使用递归或栈深入遍历，适合连通性判断、回溯和拓扑类问题。"
   );
@@ -201,12 +226,13 @@ export function App() {
   const [autoProfileUpdate, setAutoProfileUpdate] = useState<string | null>(null);
   const [autoProfileUpdateEnabled, setAutoProfileUpdateEnabled] = useState(true);
   const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [retainedTraces, setRetainedTraces] = useState<TraceAction[]>([]);
   const [busy, setBusy] = useState<BusyAction | null>(null);
   const [booting, setBooting] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [traceOpen, setTraceOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
-  const [activeStep, setActiveStep] = useState<StepKey>("profile");
+  const [activeStep, setActiveStep] = useState<StepKey>("home");
   const [profileDraft, setProfileDraft] = useState("");
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -229,6 +255,10 @@ export function App() {
   ];
 
   async function runTask(action: BusyAction, task: () => Promise<void>) {
+    const traceAction = busyTraceActions[action];
+    if (traceAction) {
+      setRetainedTraces((current) => (current.includes(traceAction) ? current : [...current, traceAction]));
+    }
     setBusy(action);
     setError(null);
     try {
@@ -391,6 +421,7 @@ export function App() {
               {busy === "build-profile" ? "分析中" : "生成画像"}
             </button>
           </div>
+          <InlineAgentTrace action="profile" busy={busy === "build-profile"} runs={runs} visible={retainedTraces.includes("profile")} />
         </div>
         <div className="profile-summary-stack">
           {latestProfile ? (
@@ -434,8 +465,6 @@ export function App() {
         busy={busy}
         knowledgeTitle={knowledgeTitle}
         setKnowledgeTitle={setKnowledgeTitle}
-        knowledgeSourceType={knowledgeSourceType}
-        setKnowledgeSourceType={setKnowledgeSourceType}
         knowledgeContent={knowledgeContent}
         setKnowledgeContent={setKnowledgeContent}
         knowledgeFile={knowledgeFile}
@@ -454,7 +483,7 @@ export function App() {
           setKnowledgeReindexResult(null);
           const result = await api.ingestCourseDocument(status.course_id, {
             title: knowledgeTitle,
-            source_type: knowledgeSourceType,
+            source_type: inferPastedSourceType(knowledgeContent),
             content: knowledgeContent
           });
           setKnowledgeImportResult(result);
@@ -514,6 +543,7 @@ export function App() {
         {busy === "create-path" ? "正在规划学习路径" : "生成个性化学习路径"}
       </button>
       {busy === "create-path" ? <AgentLoading testId="planner-loading" title="学习规划师正在编排路径" detail="系统正在结合画像、课程图谱和学习目标排序。" /> : null}
+      <InlineAgentTrace action="path" busy={busy === "create-path"} runs={runs} visible={retainedTraces.includes("path")} />
       <div className="path-grid">
         {pathItems.map((item) => (
           <PathItemCard
@@ -561,6 +591,7 @@ export function App() {
         >
           {busy === "generate-resource" ? "正在生成学习资源" : "生成选中类型资源"}
         </button>
+        <InlineAgentTrace action="resource" busy={busy === "generate-resource"} runs={runs} visible={retainedTraces.includes("resource")} />
         {busy === "generate-resource" ? (
           <StatusTracker
             testId="resource-loading"
@@ -655,6 +686,7 @@ export function App() {
             {busy === "ask-tutor" ? "生成中" : "发送"}
           </button>
         </div>
+        <InlineAgentTrace action="tutor" busy={busy === "ask-tutor"} runs={runs} visible={retainedTraces.includes("tutor")} />
         <p className="ai-disclaimer">* 教师团队生成内容仅供参考，请注意甄别事实（已开启内容安全与防幻觉过滤机制）*</p>
       </div>
     </section>
@@ -678,6 +710,7 @@ export function App() {
         {busy === "generate-quiz" ? "正在生成测验" : "生成当前节点测验"}
       </button>
       {busy === "generate-quiz" ? <AgentLoading testId="quiz-loading" title="出题老师正在生成测验" detail="题目会结合当前概念和学生画像。" /> : null}
+      <InlineAgentTrace action="quiz" busy={busy === "generate-quiz"} runs={runs} visible={retainedTraces.includes("quiz")} />
       {quiz ? (
         <div className="quiz-box">
           {quiz.items.map((item, index) => (
@@ -742,7 +775,73 @@ export function App() {
     </Panel>
   );
 
+  const homeStep = (
+    <section className="home-dashboard">
+      <div className="home-hero">
+        <div>
+          <p className="eyebrow">工作台概览</p>
+          <h2>多智能体协同工作台</h2>
+          <span>
+            {flow
+              ? `已生成学习路径，可从「${selectedItem?.title ?? "当前节点"}」继续推进。`
+              : "先完成学生画像，再接入课程资料，系统会据此生成个性化学习路径。"}
+          </span>
+        </div>
+        <button className="primary-button" type="button" onClick={() => setActiveStep(flow ? "path" : "profile")}>
+          {flow ? "继续学习" : "开始画像"}
+        </button>
+      </div>
+
+      <div className="home-grid">
+        <Panel title="快速入口" kicker="Quick Actions">
+          <div className="quick-actions">
+            <button className="quick-action-card" type="button" onClick={() => setActiveStep("profile")}>
+              <span>画像</span>
+              <strong>更新学生画像</strong>
+              <p>通过对话补充目标、短板与偏好。</p>
+            </button>
+            <button className="quick-action-card" type="button" onClick={() => setActiveStep("kb")}>
+              <span>资料</span>
+              <strong>录入课程资料</strong>
+              <p>导入文档、课件、表格、代码与字幕。</p>
+            </button>
+            <button
+              className="quick-action-card"
+              type="button"
+              disabled={!canCreatePath && !flow}
+              onClick={() => setActiveStep(flow ? "resource" : "path")}
+            >
+              <span>{flow ? "资源" : "路径"}</span>
+              <strong>{flow ? "生成学习资源" : "规划学习路径"}</strong>
+              <p>{flow ? "围绕当前节点生成个性化材料。" : "基于画像与知识库生成学习顺序。"}</p>
+            </button>
+          </div>
+        </Panel>
+
+        <article className="next-focus-card">
+          <span>下一步建议</span>
+          <strong>{flow ? selectedItem?.title ?? "继续当前学习节点" : latestProfile ? "生成个性化学习路径" : "完成对话式学生画像"}</strong>
+          <p>
+            {flow
+              ? selectedItem?.objective ?? "根据当前节点继续生成资料、测验并完成学习评估。"
+              : latestProfile
+                ? "画像已经可用，建议进入学习路径模块生成闭环计划。"
+                : "先用自然语言描述课程、目标、基础水平和学习偏好。"}
+          </p>
+          <button className="ghost-button" type="button" onClick={() => setActiveStep(flow ? "path" : latestProfile ? "path" : "profile")}>
+            查看详情
+          </button>
+        </article>
+      </div>
+
+      <div className="agent-system-overview">
+        <MultiAgentOverview activeStep="home" />
+      </div>
+    </section>
+  );
+
   const stepContent: Record<StepKey, ReactNode> = {
+    home: homeStep,
     profile: profileStep,
     kb: knowledgeStep,
     path: pathStep,
@@ -754,6 +853,8 @@ export function App() {
 
   return (
     <main className="app-shell">
+      <DashboardSidebar activeStep={activeStep} onSelect={setActiveStep} />
+      <div className="dashboard-workspace">
       <header className="top-bar">
         <div>
           <p className="eyebrow">第十五届中国软件杯 A 组赛题演示</p>
@@ -773,26 +874,19 @@ export function App() {
       </header>
 
       <section className="app-main">
-        <StepFlow activeStep={activeStep} onSelect={setActiveStep} />
-        <MultiAgentOverview activeStep={activeStep} />
-
         <div className="toolbar">
           <div>
             <p className="eyebrow">当前步骤</p>
             <h2>{stepInfo.label}</h2>
             <span>{stepInfo.desc}</span>
           </div>
-          <button className="ghost-button" onClick={() => setTraceOpen(true)}>
-            打开执行追踪浮层
-          </button>
         </div>
 
         <div className="step-body">{stepContent[activeStep]}</div>
       </section>
 
-      <button className="floating-trace-button" onClick={() => setTraceOpen(true)}>执行追踪</button>
-      <TraceOverlay open={traceOpen} onClose={() => setTraceOpen(false)} runs={runs} />
       <footer className="app-footer-badge">Powered by 科大讯飞星火大模型</footer>
+      </div>
       <DebugModal
         open={debugOpen}
         busy={busy}
@@ -873,8 +967,6 @@ function KnowledgePanel(props: {
   busy: BusyAction | null;
   knowledgeTitle: string;
   setKnowledgeTitle: (value: string) => void;
-  knowledgeSourceType: "text" | "markdown";
-  setKnowledgeSourceType: (value: "text" | "markdown") => void;
   knowledgeContent: string;
   setKnowledgeContent: (value: string) => void;
   knowledgeFile: File | null;
@@ -986,17 +1078,11 @@ function KnowledgePanel(props: {
               </button>
             </div>
             <div className="modal-body">
-              <input className="field" data-testid="knowledge-title" value={props.knowledgeTitle} onChange={(event) => props.setKnowledgeTitle(event.target.value)} aria-label="资料标题" placeholder="资料标题" />
-              <select className="field" data-testid="knowledge-source-type" value={props.knowledgeSourceType} onChange={(event) => props.setKnowledgeSourceType(event.target.value as "text" | "markdown")} aria-label="资料类型">
-                <option value="markdown">标记文本</option>
-                <option value="text">纯文本</option>
-              </select>
-              <textarea className="field min-h-36 resize-none" data-testid="knowledge-content" value={props.knowledgeContent} onChange={(event) => props.setKnowledgeContent(event.target.value)} aria-label="资料内容" placeholder="粘贴课程讲义、知识点说明或案例材料" />
               <input
                 className="field"
                 data-testid="knowledge-file"
                 type="file"
-                accept=".txt,.md,.markdown,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                accept=".txt,.md,.markdown,.pdf,.docx,.pptx,.xlsx,.csv,.json,.jsonl,.ipynb,.py,.java,.js,.ts,.tsx,.jsx,.cpp,.c,.h,.hpp,.cs,.go,.rs,.sql,.html,.css,.xml,.yaml,.yml,.srt,.vtt,text/plain,text/markdown,text/csv,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={(event) => {
                   const file = event.target.files?.[0] ?? null;
                   props.setKnowledgeFile(file);
@@ -1007,9 +1093,6 @@ function KnowledgePanel(props: {
               <div className="modal-actions">
                 <button className="action-button w-full" data-testid="upload-knowledge-button" disabled={!props.status?.course_id || !props.knowledgeFile || props.busy !== null} onClick={() => void props.onRunTask("upload-knowledge", props.onUpload)}>
                   {props.busy === "upload-knowledge" ? "正在上传资料" : "上传选中文件"}
-                </button>
-                <button className="primary-button w-full" data-testid="import-knowledge-button" disabled={!props.status?.course_id || !props.knowledgeTitle.trim() || !props.knowledgeContent.trim() || props.busy !== null} onClick={() => void props.onRunTask("import-knowledge", props.onImport)}>
-                  {props.busy === "import-knowledge" ? "正在导入资料" : "导入文本资料"}
                 </button>
               </div>
               {props.knowledgeImportResult ? (
@@ -1030,6 +1113,68 @@ function KnowledgePanel(props: {
         </div>
       ) : null}
     </section>
+  );
+}
+
+function SidebarStepIcon({ type }: { type: StepKey }) {
+  const common = {
+    width: 20,
+    height: 20,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.7,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const
+  };
+
+  if (type === "home") return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>;
+  if (type === "profile") return <svg {...common}><circle cx="12" cy="8" r="4" /><path d="M5 21a7 7 0 0 1 14 0" /></svg>;
+  if (type === "kb") return <svg {...common}><path d="M4 6c0-1.1 3.6-2 8-2s8 .9 8 2-3.6 2-8 2-8-.9-8-2Z" /><path d="M4 6v6c0 1.1 3.6 2 8 2s8-.9 8-2V6" /><path d="M4 12v6c0 1.1 3.6 2 8 2s8-.9 8-2v-6" /></svg>;
+  if (type === "path") return <svg {...common}><circle cx="6" cy="18" r="2" /><circle cx="18" cy="6" r="2" /><path d="M8 18h3.5a3.5 3.5 0 0 0 0-7H11a3.5 3.5 0 0 1 0-7h5" /></svg>;
+  if (type === "resource") return <svg {...common}><path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z" /><path d="m4 12 8 4.5 8-4.5" /><path d="m4 16.5 8 4.5 8-4.5" /></svg>;
+  if (type === "tutor") return <svg {...common}><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.5-4.5A8 8 0 1 1 21 12Z" /><path d="M8 11h8" /><path d="M8 15h5" /></svg>;
+  if (type === "quiz") return <svg {...common}><rect x="5" y="3" width="14" height="18" rx="2" /><path d="m9 9 1.5 1.5L14 7" /><path d="M9 15h6" /></svg>;
+  return <svg {...common}><path d="M4 19V5" /><path d="M4 19h16" /><path d="M8 16v-5" /><path d="M12 16V8" /><path d="M16 16v-3" /></svg>;
+}
+
+function DashboardSidebar({ activeStep, onSelect }: { activeStep: StepKey; onSelect: (key: StepKey) => void }) {
+  return (
+    <aside className="dashboard-sidebar" aria-label="学习流程侧边栏">
+      <div className="sidebar-brand">
+        <span className="brand-mark">AI</span>
+        <div>
+          <strong>多智能体协同工作台</strong>
+          <p>个性化学习流程</p>
+        </div>
+      </div>
+
+      <nav className="sidebar-nav" aria-label="学习步骤导航">
+        <p className="sidebar-section-label">学习流程</p>
+        {stepFlow.map((step) => {
+          const selected = activeStep === step.key;
+          return (
+            <button
+              key={step.key}
+              className={`sidebar-nav-item ${selected ? "sidebar-nav-active" : ""}`}
+              type="button"
+              onClick={() => onSelect(step.key)}
+              aria-current={selected ? "page" : undefined}
+            >
+              <span className="sidebar-nav-icon" aria-hidden="true"><SidebarStepIcon type={step.key} /></span>
+              <span className="sidebar-nav-copy">
+                <strong>{step.label}</strong>
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="sidebar-footer-note">
+        <span>当前视图</span>
+        <strong>{stepFlow.find((step) => step.key === activeStep)?.label}</strong>
+      </div>
+    </aside>
   );
 }
 
@@ -1248,7 +1393,6 @@ function ResourceOutputBlock({ resource }: { resource: GeneratedResource }) {
       {resource.resource_type === "coding_case" ? <CodeCaseCard code={extractFencedCode(resource.content) || resource.content} /> : null}
       {resource.resource_type !== "mind_map" && resource.resource_type !== "coding_case" && resource.resource_type !== "teaching_video" ? <TypewriterMarkdown text={resource.content} /> : null}
       {resource.resource_type === "teaching_video" ? <VideoScriptBlock text={resource.content} /> : null}
-      <FullResourceText text={resource.content} />
       <SourceEvidence sourceRefs={resource.source_refs} />
     </article>
   );
@@ -1379,15 +1523,6 @@ function extractFencedCode(content: string): string {
   return match?.[1]?.trim() ?? "";
 }
 
-function FullResourceText({ text }: { text: string }) {
-  return (
-    <details className="full-resource-text">
-      <summary>完整资源正文</summary>
-      <pre>{text}</pre>
-    </details>
-  );
-}
-
 function ResourceHeader({ title }: { title: string }) {
   return (
     <div className="resource-header">
@@ -1434,6 +1569,74 @@ function SourcePanel({ sourceRefs }: { sourceRefs: Array<Record<string, unknown>
         </div>
       )}
     </div>
+  );
+}
+
+const traceRunTypes: Record<TraceAction, string[]> = {
+  profile: ["profile_updater", "profile"],
+  path: ["planner", "learning_path", "path"],
+  resource: ["resource", "generator"],
+  tutor: ["tutor"],
+  quiz: ["quiz", "evaluator"],
+  assessment: ["evaluator", "profile_updater"]
+};
+
+const tracePresets: Record<TraceAction, Array<{ agent_type: string; output_summary: string; decision_basis: string }>> = {
+  profile: [
+    { agent_type: "profile_updater", output_summary: "读取对话内容，抽取学习目标、基础水平和偏好线索。", decision_basis: "仅更新学生画像，不生成学习资源。" },
+    { agent_type: "router", output_summary: "判断当前任务属于画像构建流程。", decision_basis: "输入包含课程困难、时间预算或资源偏好。" }
+  ],
+  path: [
+    { agent_type: "planner", output_summary: "读取画像和课程图谱，准备生成学习顺序。", decision_basis: "优先处理短板概念和前置依赖。" },
+    { agent_type: "evaluator", output_summary: "校验路径难度是否符合当前基础水平。", decision_basis: "避免直接跳到高难概念。" }
+  ],
+  resource: [
+    { agent_type: "retriever", output_summary: "检索课程资料，筛选可溯源证据片段。", decision_basis: "资源生成必须绑定知识库来源。" },
+    { agent_type: "resource", output_summary: "根据资源类型组织结构并准备输出。", decision_basis: "结合画像偏好和当前学习节点。" }
+  ],
+  tutor: [
+    { agent_type: "tutor", output_summary: "理解追问意图，拆解需要解释的概念或代码问题。", decision_basis: "只围绕当前课程和学生画像作答。" },
+    { agent_type: "retriever", output_summary: "检索相关资料片段，为答疑提供证据。", decision_basis: "答案需要可追溯来源。" }
+  ],
+  quiz: [
+    { agent_type: "quiz", output_summary: "围绕当前节点生成练习题。", decision_basis: "题目难度匹配学生画像。" },
+    { agent_type: "evaluator", output_summary: "检查题目覆盖面和答案解释完整性。", decision_basis: "避免题目偏离当前概念。" }
+  ],
+  assessment: [
+    { agent_type: "evaluator", output_summary: "对照参考答案和评分规则分析作答。", decision_basis: "输出分数、反馈和掌握度变化。" },
+    { agent_type: "profile_updater", output_summary: "将学习轨迹写回学生画像。", decision_basis: "画像需要随学随新。" }
+  ]
+};
+
+function InlineAgentTrace({ action, busy, runs, visible = false }: { action: TraceAction; busy: boolean; runs: AgentRun[]; visible?: boolean }) {
+  const run = runs.find((item) => traceRunTypes[action].includes(item.run_type));
+  if (!busy && !run && !visible) return null;
+
+  const lines = run?.steps.length
+    ? run.steps.map((step) => ({
+        agent_type: step.agent_type,
+        output_summary: step.output_summary,
+        decision_basis: step.decision_basis
+      }))
+    : tracePresets[action];
+
+  return (
+    <section className="inline-agent-terminal" aria-live="polite">
+      <div className="terminal-header">
+        <span className={`terminal-status-dot ${busy ? "terminal-status-active" : ""}`} />
+        <strong>{busy ? "智能体协同执行中" : "最近一次协同记录"}</strong>
+        <code>{run ? `run#${run.id}` : busy ? "live" : "kept"}</code>
+      </div>
+      <div className="terminal-log-list">
+        {lines.map((line, index) => (
+          <p key={`${line.agent_type}-${index}`} className="terminal-log-line" style={{ animationDelay: `${index * 90}ms` }}>
+            <span className="terminal-time">{String(index + 1).padStart(2, "0")}</span>
+            <span className="terminal-agent">{agentTypeLabels[line.agent_type] ?? line.agent_type}</span>
+            <span>{line.output_summary || line.decision_basis || "等待智能体返回执行摘要..."}</span>
+          </p>
+        ))}
+      </div>
+    </section>
   );
 }
 

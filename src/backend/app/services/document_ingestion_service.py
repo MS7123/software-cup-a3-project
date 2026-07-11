@@ -28,7 +28,7 @@ class DocumentIngestionService:
     def ingest(self, course_id: int, payload: DocumentIngestionRequest) -> DocumentIngestionResponse:
         normalized_source_type = self._normalized_source_type(payload.source_type)
         if normalized_source_type not in {"text", "markdown"}:
-            raise ValueError("JSON paste ingestion only supports text or markdown. Use file upload for PDF or Word.")
+            raise ValueError("JSON paste ingestion only supports text or markdown. Use file upload for PDF, Word, PPTX, spreadsheets, code files or subtitles.")
         encoded_size = len(payload.content.encode("utf-8"))
         if encoded_size > self.MAX_TEXT_BYTES:
             raise ValueError("Text or markdown document is too large. The current limit is 1 MB.")
@@ -272,6 +272,18 @@ class DocumentIngestionService:
             return "pdf"
         if normalized in {"application/vnd.openxmlformats-officedocument.wordprocessingml.document", "word"}:
             return "docx"
+        if normalized in {"application/vnd.openxmlformats-officedocument.presentationml.presentation", "powerpoint"}:
+            return "pptx"
+        if normalized in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "spreadsheet"}:
+            return "xlsx"
+        if normalized in {"text/csv"}:
+            return "csv"
+        if normalized in {"application/x-ipynb+json", "notebook"}:
+            return "ipynb"
+        if normalized in {"text/vtt", "subtitle"}:
+            return "vtt"
+        if normalized.startswith("text/x-"):
+            return "code"
         return normalized
 
     def _ensure_schema(self) -> None:

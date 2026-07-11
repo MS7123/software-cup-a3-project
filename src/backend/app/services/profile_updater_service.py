@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import select
 
@@ -70,6 +71,32 @@ class ProfileUpdaterService:
 
             next_preferences["last_profile_update_reason"] = self._build_reason(evidence, len(steps))
             next_preferences["last_profile_update_sources"] = evidence.sources
+            profile.preferences = next_preferences
+
+            run = AgentRun(
+                run_type="profile_update",
+                student_profile_id=profile_id,
+                course_id=None,
+                status="completed",
+                input_summary=f"Analyze recent {len(steps)} AgentRunStep records for profile adaptation.",
+                output_summary="ProfileUpdater Agent refreshed dynamic student profile dimensions.",
+                final_summary="ProfileUpdater Agent completed profile update from multi-agent trace.",
+                completed_at=datetime.utcnow(),
+            )
+            session.add(run)
+            session.flush()
+            session.add(
+                AgentRunStep(
+                    agent_run_id=run.id,
+                    agent_type="profile_updater",
+                    step_order=1,
+                    status="completed",
+                    input_summary=f"steps={len(steps)}; sources={len(evidence.sources)}; method={evidence.analysis_method}",
+                    output_summary=self._profile_update_summary(evidence),
+                    decision_basis=next_preferences["last_profile_update_reason"],
+                )
+            )
+            next_preferences["last_profile_update_agent_run_id"] = run.id
             profile.preferences = next_preferences
 
             normalized = normalize_profile_dimensions(
@@ -237,6 +264,20 @@ class ProfileUpdaterService:
         if evidence.fallback_reason:
             parts.append(f"LLM 分析不可用，已回退到 rule-based：{evidence.fallback_reason}")
         return "；".join(parts)
+
+    def _profile_update_summary(self, evidence: TraceEvidence) -> str:
+        changes = []
+        if evidence.weak_points:
+            changes.append(f"weak_points={','.join(evidence.weak_points)}")
+        if evidence.resource_preference:
+            changes.append(f"resource_preference={evidence.resource_preference}")
+        if evidence.learning_preference:
+            changes.append(f"learning_preference={evidence.learning_preference}")
+        if evidence.foundation_level:
+            changes.append(f"foundation_level={evidence.foundation_level}")
+        if not changes:
+            changes.append("no dimension change; profile context preserved")
+        return f"ProfileUpdater Agent method={evidence.analysis_method}; " + "; ".join(changes)
 
     def _fallback_reason(self, exc: Exception) -> str:
         if str(exc):

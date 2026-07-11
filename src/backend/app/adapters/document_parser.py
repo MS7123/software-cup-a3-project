@@ -1,5 +1,8 @@
+import csv
+import json
 from io import BytesIO
 import re
+from zipfile import ZipFile
 
 from docx import Document as DocxDocument
 from pypdf import PdfReader
@@ -92,6 +95,165 @@ class WordDocumentParser(PlainTextDocumentParser):
         return sections
 
 
+class PowerPointDocumentParser(PlainTextDocumentParser):
+    parser_name = "pptx"
+
+    def parse_bytes(self, content: bytes, filename: str | None = None) -> list[str]:
+        sections: list[str] = []
+        with ZipFile(BytesIO(content)) as archive:
+            slide_names = sorted(name for name in archive.namelist() if name.startswith("ppt/slides/slide") and name.endswith(".xml"))
+            for index, name in enumerate(slide_names, start=1):
+                texts = _office_xml_texts(archive.read(name))
+                if texts:
+                    sections.append(f"[Slide {index}]\n" + "\n".join(texts))
+        if not sections:
+            raise ValueError("No extractable text found in the PowerPoint document.")
+        return sections
+
+
+class SpreadsheetDocumentParser(PlainTextDocumentParser):
+    parser_name = "spreadsheet"
+
+    def parse_bytes(self, content: bytes, filename: str | None = None) -> list[str]:
+        suffix = (filename or "").rsplit(".", 1)[-1].lower() if filename and "." in filename else ""
+        if suffix == "csv":
+            return self._parse_csv(content)
+        return self._parse_xlsx(content)
+
+    def _parse_csv(self, content: bytes) -> list[str]:
+        try:
+            text = content.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ValueError("CSV file must be UTF-8 encoded.") from exc
+        rows = [" | ".join(cell.strip() for cell in row if cell.strip()) for row in csv.reader(text.splitlines())]
+        rows = [row for row in rows if row]
+        if not rows:
+            raise ValueError("No extractable rows found in the CSV file.")
+        return ["\n".join(rows)]
+
+    def _parse_xlsx(self, content: bytes) -> list[str]:
+        sections: list[str] = []
+        with ZipFile(BytesIO(content)) as archive:
+            shared_strings = self._shared_strings(archive)
+            sheet_names = sorted(name for name in archive.namelist() if name.startswith("xl/worksheets/sheet") and name.endswith(".xml"))
+            for index, name in enumerate(sheet_names, start=1):
+                rows = self._sheet_rows(archive.read(name), shared_strings)
+                if rows:
+                    sections.append(f"[Sheet {index}]\n" + "\n".join(rows))
+        if not sections:
+            raise ValueError("No extractable rows found in the spreadsheet.")
+        return sections
+
+    def _shared_strings(self, archive: ZipFile) -> list[str]:
+        if "xl/sharedStrings.xml" not in archive.namelist():
+            return []
+        root = _xml_root(archive.read("xl/sharedStrings.xml"))
+        values: list[str] = []
+        for item in root.iter():
+            if item.tag.endswith("}si") or item.tag == "si":
+                text = " ".join(child.text.strip() for child in item.iter() if child.tag.endswith("}t") and child.text and child.text.strip())
+                values.append(text)
+        return values
+
+    def _sheet_rows(self, payload: bytes, shared_strings: list[str]) -> list[str]:
+        root = _xml_root(payload)
+        rows: list[str] = []
+        for row in root.iter():
+            if not (row.tag.endswith("}row") or row.tag == "row"):
+                continue
+            cells: list[str] = []
+            for cell in row:
+                if not (cell.tag.endswith("}c") or cell.tag == "c"):
+                    continue
+                cell_type = cell.attrib.get("t")
+                value = self._cell_value(cell, cell_type, shared_strings)
+                if value:
+                    cells.append(value)
+            if cells:
+                rows.append(" | ".join(cells))
+        return rows
+
+    def _cell_value(self, cell, cell_type: str | None, shared_strings: list[str]) -> str:
+        if cell_type == "inlineStr":
+            return " ".join(item.text.strip() for item in cell.iter() if item.tag.endswith("}t") and item.text and item.text.strip())
+        value_node = next((item for item in cell if item.tag.endswith("}v") or item.tag == "v"), None)
+        if value_node is None or value_node.text is None:
+            return ""
+        raw = value_node.text.strip()
+        if cell_type == "s" and raw.isdigit():
+            index = int(raw)
+            return shared_strings[index] if 0 <= index < len(shared_strings) else raw
+        return raw
+
+
+class NotebookDocumentParser(PlainTextDocumentParser):
+    parser_name = "notebook"
+
+    def parse_bytes(self, content: bytes, filename: str | None = None) -> list[str]:
+        try:
+            notebook = json.loads(content.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Notebook file must be a valid UTF-8 .ipynb JSON document.") from exc
+        sections: list[str] = []
+        for index, cell in enumerate(notebook.get("cells", []), start=1):
+            source = cell.get("source", "")
+            text = "".join(source) if isinstance(source, list) else str(source)
+            text = text.strip()
+            if text:
+                cell_type = cell.get("cell_type", "cell")
+                sections.append(f"[{cell_type} cell {index}]\n{text}")
+        if not sections:
+            raise ValueError("No extractable cells found in the notebook.")
+        return sections
+
+
+class CodeDocumentParser(PlainTextDocumentParser):
+    parser_name = "code_text"
+
+    def parse_bytes(self, content: bytes, filename: str | None = None) -> list[str]:
+        sections = super().parse_bytes(content, filename)
+        if filename and sections:
+            return [f"[Code file: {filename}]\n{section}" for section in sections]
+        return sections
+
+
+class SubtitleDocumentParser(PlainTextDocumentParser):
+    parser_name = "subtitle"
+
+
+def _xml_root(payload: bytes):
+    from xml.etree import ElementTree
+
+    return ElementTree.fromstring(payload)
+
+
+def _office_xml_texts(payload: bytes) -> list[str]:
+    root = _xml_root(payload)
+    return [item.text.strip() for item in root.iter() if item.tag.endswith("}t") and item.text and item.text.strip()]
+
+
+CODE_SUFFIXES = {
+    "py",
+    "java",
+    "js",
+    "jsx",
+    "ts",
+    "tsx",
+    "html",
+    "css",
+    "json",
+    "yaml",
+    "yml",
+    "sql",
+    "c",
+    "cpp",
+    "h",
+    "hpp",
+    "go",
+    "rs",
+}
+
+
 def build_document_parser(source_type: str) -> PlainTextDocumentParser:
     normalized = source_type.strip().lower()
     if normalized in {"markdown", "md", "text/markdown"}:
@@ -106,6 +268,18 @@ def build_document_parser(source_type: str) -> PlainTextDocumentParser:
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     }:
         return WordDocumentParser()
+    if normalized in {"pptx", "powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"}:
+        return PowerPointDocumentParser()
+    if normalized in {"xlsx", "spreadsheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
+        return SpreadsheetDocumentParser()
+    if normalized in {"csv", "text/csv"}:
+        return SpreadsheetDocumentParser()
+    if normalized in {"ipynb", "notebook", "application/x-ipynb+json"}:
+        return NotebookDocumentParser()
+    if normalized in {"srt", "vtt", "text/vtt", "subtitle"}:
+        return SubtitleDocumentParser()
+    if normalized in CODE_SUFFIXES or normalized.startswith("text/x-"):
+        return CodeDocumentParser()
     raise UnsupportedDocumentTypeError(f"Unsupported document source_type: {source_type}")
 
 
@@ -116,6 +290,10 @@ def infer_source_type(filename: str, content_type: str | None = None) -> str:
         "text/markdown",
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/csv",
+        "text/vtt",
     }:
         return normalized_type
 
@@ -128,4 +306,16 @@ def infer_source_type(filename: str, content_type: str | None = None) -> str:
         return "pdf"
     if suffix == "docx":
         return "docx"
+    if suffix == "pptx":
+        return "pptx"
+    if suffix == "xlsx":
+        return "xlsx"
+    if suffix == "csv":
+        return "csv"
+    if suffix == "ipynb":
+        return "ipynb"
+    if suffix in {"srt", "vtt"}:
+        return suffix
+    if suffix in CODE_SUFFIXES:
+        return suffix
     raise UnsupportedDocumentTypeError(f"Unsupported document file type: {filename}")

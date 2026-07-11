@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from app.agents.router_agent import RuleBasedRouterAgent
+
 
 @dataclass(frozen=True)
 class LearningFlowResult:
@@ -11,6 +13,7 @@ class LearningFlowResult:
 class AgentOrchestrator:
     def __init__(self, database_url: str | None = None) -> None:
         self.database_url = database_url
+        self.router_agent = RuleBasedRouterAgent()
 
     def run_learning_flow(self, profile_id: int, course_id: int, goal: str) -> LearningFlowResult:
         from app.services.agent_run_service import AgentRunService
@@ -19,13 +22,22 @@ class AgentOrchestrator:
         run_service = AgentRunService(database_url=self.database_url)
         path_service = LearningPathService(database_url=self.database_url)
 
-        path = path_service.create_path(profile_id, course_id, goal)
+        route = self.router_agent.route_learning_path(goal, profile_id, course_id)
         run = run_service.start_run(
             "learning_path_planning",
             profile_id,
             course_id,
-            input_summary=f"profile_id={profile_id}; course_id={course_id}; goal={goal}",
+            input_summary=route.to_log_summary(),
         )
+        run_service.record_step(
+            run.id,
+            "router",
+            input_summary=f"profile_id={profile_id}; course_id={course_id}; goal={goal}",
+            output_summary=route.to_log_summary(),
+            decision_basis=f"Router Agent dispatches path planning with constraints: {route.constraints}",
+            status="completed",
+        )
+        path = path_service.create_path(profile_id, course_id, goal)
         run_service.record_step(
             run.id,
             "planner",
