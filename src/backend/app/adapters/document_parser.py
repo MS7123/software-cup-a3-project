@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 from io import BytesIO
 import re
 from zipfile import ZipFile
@@ -51,8 +52,44 @@ class PdfDocumentParser(PlainTextDocumentParser):
             text = (page.extract_text() or "").strip()
             if text:
                 sections.append(f"[Page {index}]\n{text}")
+        return sections or self._ocr_scanned_pdf(content)
+
+    def _ocr_scanned_pdf(self, content: bytes) -> list[str]:
+        try:
+            import pytesseract
+            import pypdfium2
+        except ImportError as exc:
+            raise ValueError(
+                "OCR dependencies are unavailable. Install pytesseract, pypdfium2 and Pillow before uploading scanned PDFs."
+            ) from exc
+
+        tesseract_cmd = os.getenv("TESSERACT_CMD", "").strip()
+        if tesseract_cmd:
+            pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
+        language = os.getenv("TESSERACT_LANG", "chi_sim+eng").strip() or "chi_sim+eng"
+        try:
+            pdf = pypdfium2.PdfDocument(content)
+            sections: list[str] = []
+            for index in range(len(pdf)):
+                page = pdf[index]
+                image = page.render(scale=300 / 72).to_pil()
+                text = pytesseract.image_to_string(image, lang=language).strip()
+                if text:
+                    sections.append(f"[Page {index + 1}]\n{text}")
+        except pytesseract.TesseractNotFoundError as exc:
+            raise ValueError(
+                "OCR requires Tesseract. Install Tesseract and configure TESSERACT_CMD if it is not on PATH."
+            ) from exc
+        except pytesseract.TesseractError as exc:
+            raise ValueError(
+                f"OCR failed. Verify the Tesseract language data for '{language}' is installed and TESSERACT_LANG is correct."
+            ) from exc
+        except Exception as exc:
+            raise ValueError("Unable to render the scanned PDF for OCR.") from exc
+
         if not sections:
-            raise ValueError("No extractable text found. OCR is not supported in the current demo mode.")
+            raise ValueError("OCR completed but no text was recognized in the scanned PDF.")
         return sections
 
 
@@ -101,7 +138,10 @@ class PowerPointDocumentParser(PlainTextDocumentParser):
     def parse_bytes(self, content: bytes, filename: str | None = None) -> list[str]:
         sections: list[str] = []
         with ZipFile(BytesIO(content)) as archive:
-            slide_names = sorted(name for name in archive.namelist() if name.startswith("ppt/slides/slide") and name.endswith(".xml"))
+            slide_names = sorted(
+                (name for name in archive.namelist() if name.startswith("ppt/slides/slide") and name.endswith(".xml")),
+                key=_powerpoint_slide_sort_key,
+            )
             for index, name in enumerate(slide_names, start=1):
                 texts = _office_xml_texts(archive.read(name))
                 if texts:
@@ -232,6 +272,11 @@ def _office_xml_texts(payload: bytes) -> list[str]:
     return [item.text.strip() for item in root.iter() if item.tag.endswith("}t") and item.text and item.text.strip()]
 
 
+def _powerpoint_slide_sort_key(name: str) -> int:
+    match = re.search(r"slide(\d+)\.xml$", name)
+    return int(match.group(1)) if match else 0
+
+
 CODE_SUFFIXES = {
     "py",
     "java",
@@ -298,6 +343,8 @@ def infer_source_type(filename: str, content_type: str | None = None) -> str:
         return normalized_type
 
     suffix = filename.rsplit(".", 1)[-1].strip().lower() if "." in filename else ""
+    if suffix == "ppt" or normalized_type == "application/vnd.ms-powerpoint":
+        raise UnsupportedDocumentTypeError("Legacy .ppt files are not supported. Convert the presentation to .pptx before uploading.")
     if suffix in {"txt", "text"}:
         return "text"
     if suffix in {"md", "markdown"}:

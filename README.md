@@ -99,7 +99,8 @@
   - 支持删除非 seed document，删除后新检索不再召回旧 chunks。
   - 支持对单个 document 触发 reindex；embedding 未启用时返回 disabled result，不影响 keyword retrieval。
   - 支持 course/demo 与 private document 的最小 scope filter。
-  - PDF 使用 `pypdf` 提取文本，Word 使用 `python-docx` 提取段落和表格文本。
+  - PDF 优先使用 `pypdf` 提取文本；整份无文本层的扫描 PDF 会在安装 Tesseract 后以 `pypdfium2 + pytesseract` 进行 OCR。默认语言为 `chi_sim+eng`，可通过 `TESSERACT_LANG` 覆盖，并可用 `TESSERACT_CMD` 指定可执行文件路径。
+  - Word 使用 `python-docx` 提取段落和表格文本；PowerPoint 支持 `.pptx`，提取幻灯片中的文本与表格文本，不识别图片内文字。旧版 `.ppt` 请先转换为 `.pptx`。
 
 ### 已完成的 LLM 接入范围
 

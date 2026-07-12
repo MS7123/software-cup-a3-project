@@ -1090,6 +1090,7 @@ function KnowledgePanel(props: {
                 }}
                 aria-label="上传资料文件"
               />
+              <p className="field-help">支持 `.pptx` 幻灯片文本解析；扫描版 PDF 会在已配置本机 Tesseract OCR 时识别文字。旧版 `.ppt` 请先另存为 `.pptx`。</p>
               <div className="modal-actions">
                 <button className="action-button w-full" data-testid="upload-knowledge-button" disabled={!props.status?.course_id || !props.knowledgeFile || props.busy !== null} onClick={() => void props.onRunTask("upload-knowledge", props.onUpload)}>
                   {props.busy === "upload-knowledge" ? "正在上传资料" : "上传选中文件"}
