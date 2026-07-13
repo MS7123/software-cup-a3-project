@@ -1,7 +1,8 @@
+import json
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.enums import (
     AgentRunStatus,
@@ -33,7 +34,7 @@ class StudentProfileCreate(StudentProfileBase):
 
 
 class StudentProfileDialogueCreate(BaseModel):
-    dialogue: str = Field(min_length=1)
+    dialogue: str = Field(min_length=1, max_length=8000)
     profile_type: ProfileType | None = None
     user_id: int | None = None
 
@@ -186,7 +187,7 @@ class KnowledgeSearchResponse(BaseModel):
 class LearningPathCreate(BaseModel):
     student_profile_id: int
     course_id: int
-    goal: str
+    goal: str = Field(min_length=1, max_length=1000)
 
 
 class LearningPathItemResponse(BaseModel):
@@ -239,18 +240,22 @@ class GeneratedResourceResponse(BaseModel):
     source_refs: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime | None = None
     agent_run_id: int | None = None
+    safety_status: Literal["passed", "blocked", "degraded"] = "passed"
+    safety_message: str | None = None
 
 
 class TutorAskRequest(BaseModel):
     student_profile_id: int
     course_id: int
-    question: str
+    question: str = Field(min_length=1, max_length=4000)
 
 
 class TutorAskResponse(BaseModel):
     answer: str
     source_refs: list[dict[str, Any]] = Field(default_factory=list)
     agent_run_id: int | None = None
+    safety_status: Literal["passed", "blocked", "degraded"] = "passed"
+    safety_message: str | None = None
 
 
 class QuizGenerateRequest(BaseModel):
@@ -290,11 +295,21 @@ class QuizResponse(BaseModel):
     fallback_used: bool = False
     fallback_reason: str | None = None
     quiz_duration_ms: int | None = None
+    safety_status: Literal["passed", "blocked", "degraded"] = "passed"
+    safety_message: str | None = None
 
 
 class AttemptSubmitRequest(BaseModel):
     student_profile_id: int
-    answers: dict[str, Any]
+    answers: dict[str, Any] = Field(min_length=1, max_length=20)
+
+    @field_validator("answers")
+    @classmethod
+    def validate_answer_payload_size(cls, value: dict[str, Any]) -> dict[str, Any]:
+        serialized = json.dumps(value, ensure_ascii=False, default=str)
+        if len(serialized) > 12000:
+            raise ValueError("answers payload exceeds the 12000-character safety limit")
+        return value
 
 
 class EvaluationResult(BaseModel):

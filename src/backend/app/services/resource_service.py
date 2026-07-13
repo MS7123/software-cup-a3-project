@@ -1,8 +1,11 @@
+from dataclasses import replace
+
 from sqlalchemy import select
 
 from app.agents.critic_agents import RuleBasedCriticAgent
 from app.agents.router_agent import RuleBasedRouterAgent
 from app.agents.resource_factory import build_resource_agent
+from app.agents.rule_based_agents import RuleBasedResourceAgent
 from app.db.session import session_scope
 from app.domain.exceptions import NotFoundError
 from app.models import Concept, GeneratedResource, LearningPath, LearningPathItem, StudentProfile
@@ -10,6 +13,7 @@ from app.schemas import GeneratedResourceResponse
 from app.services.agent_run_service import AgentRunService
 from app.services.agent_execution_metadata import build_execution_metadata
 from app.services.citation_service import source_ref_summary
+from app.services.content_safety_service import ContentSafetyService
 from app.services.demo_data_service import DemoDataService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.profile_updater_service import ProfileUpdaterService
@@ -72,24 +76,43 @@ class ResourceService:
         )
 
         resource_query = f"{concept_name} {concept_slug} {objective}"
-        chunks = KnowledgeBaseService(database_url=self.database_url).search(
+        retrieved_chunks = KnowledgeBaseService(database_url=self.database_url).search(
             course_id,
             resource_query,
             top_k=5,
             owner_user_id=owner_user_id,
         )
+        retrieval_safety = ContentSafetyService().filter_retrieved_chunks(retrieved_chunks)
+        chunks = retrieval_safety.safe_chunks
         run_service.record_step(
             run.id,
             "retriever",
             input_summary=f"query={resource_query}; top_k=5",
-            output_summary=f"Retriever Agent returned {len(chunks)} chunks for Resource Agent.",
+            output_summary=(
+                f"Retriever Agent returned {len(retrieved_chunks)} chunks; "
+                f"{len(chunks)} passed deterministic safety filtering for Resource Agent."
+            ),
             decision_basis="Only Retriever Agent can call KnowledgeBaseService.search and expose source_refs.",
             status="completed",
             execution_metadata=build_execution_metadata(
                 source_refs=[chunk.source_ref for chunk in chunks if chunk.source_ref]
             ),
         )
+        if retrieval_safety.blocked_source_refs:
+            run_service.record_step(
+                run.id,
+                "evaluator",
+                input_summary="Review retrieved chunks as untrusted content.",
+                output_summary=f"安全规则隔离了 {len(retrieval_safety.blocked_source_refs)} 个 RAG 污染片段。",
+                decision_basis=(
+                    "unsafe untrusted content detected in retrieved source refs: "
+                    + ",".join(retrieval_safety.blocked_source_refs)
+                ),
+                status="completed",
+                execution_metadata=build_execution_metadata(source_refs=retrieval_safety.blocked_source_refs),
+            )
         result = self.agent.generate(concept_name, objective, resource_type, chunks, profile_preferences)
+        available_source_refs = {str(chunk.source_ref) for chunk in chunks if chunk.source_ref}
         run_service.record_step(
             run.id,
             "resource",
@@ -99,7 +122,7 @@ class ResourceService:
             "completed",
             execution_metadata=build_execution_metadata(result),
         )
-        critic = self.critic_agent.review_resource(result, resource_type, profile_preferences)
+        critic = self.critic_agent.review_resource(result, resource_type, profile_preferences, available_source_refs)
         run_service.record_step(
             run.id,
             "evaluator",
@@ -120,7 +143,9 @@ class ResourceService:
                 "completed",
                 execution_metadata=build_execution_metadata(result),
             )
-            second_critic = self.critic_agent.review_resource(result, resource_type, profile_preferences)
+            second_critic = self.critic_agent.review_resource(
+                result, resource_type, profile_preferences, available_source_refs
+            )
             run_service.record_step(
                 run.id,
                 "evaluator",
@@ -129,6 +154,48 @@ class ResourceService:
                 decision_basis=second_critic.decision_basis,
                 status="completed" if second_critic.approved else "failed",
             )
+            if not second_critic.approved:
+                rejected_result = result
+                fallback_reason = f"Critic rejected regenerated resource: {second_critic.output_summary}"
+                result = replace(
+                    RuleBasedResourceAgent().generate(
+                        concept_name, objective, resource_type, chunks, profile_preferences
+                    ),
+                    execution_mode="rule_based_fallback",
+                    provider=rejected_result.provider,
+                    model=rejected_result.model,
+                    fallback_used=True,
+                    fallback_reason=fallback_reason,
+                    duration_ms=rejected_result.duration_ms,
+                    output_summary="Critic 连续拒绝生成资源，已使用 rule-based safety fallback。",
+                    decision_basis=(
+                        f"execution_mode=rule_based_fallback; provider={rejected_result.provider}; "
+                        f"model={rejected_result.model or 'none'}; fallback_used=true; "
+                        f"fallback_reason={fallback_reason}"
+                    ),
+                )
+                run_service.record_step(
+                    run.id,
+                    "resource",
+                    result.input_summary,
+                    result.output_summary,
+                    result.decision_basis,
+                    "completed",
+                    execution_metadata=build_execution_metadata(result),
+                )
+                final_critic = self.critic_agent.review_resource(
+                    result, resource_type, profile_preferences, available_source_refs
+                )
+                run_service.record_step(
+                    run.id,
+                    "evaluator",
+                    input_summary="review rule-based safety fallback resource",
+                    output_summary=final_critic.output_summary,
+                    decision_basis=final_critic.decision_basis,
+                    status="completed" if final_critic.approved else "failed",
+                )
+                if not final_critic.approved:
+                    raise ValueError(f"Resource safety fallback failed Critic review: {final_critic.output_summary}")
 
         with session_scope(self.database_url) as session:
             resource = GeneratedResource(
@@ -146,6 +213,12 @@ class ResourceService:
             profile_id, trigger_type="resource", event_key=f"resource:{run.id}"
         )
         response.agent_run_id = run.id
+        response.safety_status = "degraded" if result.fallback_used or not chunks else "passed"
+        response.safety_message = (
+            "课程资料不足，已停止事实性资源生成。"
+            if not chunks
+            else (f"已安全降级：{result.fallback_reason}" if result.fallback_used else "内容已通过引用与安全校验。")
+        )
         return response
 
     def list_resources_for_path_item(self, path_item_id: int) -> list[GeneratedResourceResponse]:

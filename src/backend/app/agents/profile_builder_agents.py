@@ -11,6 +11,7 @@ from app.adapters.protocols import LLMProvider
 from app.core.enums import ProfileType
 from app.schemas import StudentProfileCreate, StudentProfileDialogueCreate
 from app.services.profile_builder import build_profile_from_dialogue, normalize_profile_dimensions
+from app.services.content_safety_service import ContentSafetyService
 
 
 class ProfileDimensions(BaseModel):
@@ -83,6 +84,9 @@ class LLMProfileBuilderAgent:
     def build(self, payload: StudentProfileDialogueCreate) -> ProfileBuildResult:
         started = time.perf_counter()
         try:
+            safety = ContentSafetyService().review_input(payload.dialogue)
+            if not safety.allowed:
+                raise ValueError(f"Content safety blocked input: {safety.category}")
             result = self.provider.generate(
                 _build_profile_messages(payload),
                 response_schema=PROFILE_BUILD_SCHEMA,

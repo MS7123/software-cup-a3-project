@@ -5,14 +5,6 @@
 
 ## 当前批准执行
 
-### COMP-008: 建立防幻觉与内容安全验证闭环
-
-- 状态：Current
-- 依据：`docs/plans/competition/16-a3-requirements-gap-roadmap.md`
-- 前置依赖：`COMP-007` 已完成所有核心 Agent 的结构化运行证据、旧库兼容、前端折叠展示、密钥脱敏和真实星火 trace 验收。
-- 执行边界：固化资料不足不编造、引用白名单、Prompt injection、敏感内容和危险代码的确定性底线；模型审核不得替代硬规则，Router、schema、Critic 和引用校验继续保持 rule-based。
-- Done 条件：满足路线图 COMP-008 的全部无检索、假引用、越界输入、安全拒答、降级提示和自动化验收标准后，才能移入 Done。
-
 ### PLAN-002: 编写测试计划
 
 - 状态：Current

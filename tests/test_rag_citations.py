@@ -90,6 +90,33 @@ class RagCitationTests(unittest.TestCase):
         self.assertFalse(valid["fake_source_refs"])
         self.assertFalse(valid["missing_citation"])
 
+    def test_validate_citations_resolves_ordinal_and_rejects_fake_non_document_refs(self) -> None:
+        source_refs = [
+            {"source_ref": "demo.md#linked-list"},
+            {"source_ref": "demo://data-structures/graph-search#bfs-dfs"},
+        ]
+
+        ordinal = validate_citations("链表由节点组成。[1]", source_refs)
+        direct = validate_citations(
+            "BFS 按层搜索。[demo://data-structures/graph-search#bfs-dfs]",
+            source_refs,
+        )
+        fake = validate_citations("伪造内容。[demo.md#not-retrieved]", source_refs)
+        invalid_ordinal = validate_citations("越界编号。[9]", source_refs)
+        code_array = validate_citations(
+            "```python\nvalues = [9]\n```\n数组示例来自课程资料。[1]",
+            source_refs,
+        )
+
+        self.assertEqual(ordinal["cited_source_refs"], ["demo.md#linked-list"])
+        self.assertFalse(ordinal["missing_citation"])
+        self.assertEqual(direct["cited_source_refs"], ["demo://data-structures/graph-search#bfs-dfs"])
+        self.assertEqual(fake["fake_source_refs"], ["demo.md#not-retrieved"])
+        self.assertEqual(invalid_ordinal["fake_source_refs"], [])
+        self.assertTrue(invalid_ordinal["missing_citation"])
+        self.assertEqual(code_array["fake_source_refs"], [])
+        self.assertEqual(code_array["cited_source_refs"], ["demo.md#linked-list"])
+
     def _seed_document_chunk(self) -> tuple[int, str]:
         session = get_session_factory(self.database_url)()
         try:

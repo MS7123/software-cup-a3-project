@@ -2274,6 +2274,23 @@ button:disabled {
   background: rgba(74, 108, 247, 0.04);
 }
 
+.safety-status {
+  margin: 0.75rem 0;
+  border: 1px solid rgba(180, 83, 9, 0.28);
+  border-radius: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  background: rgba(255, 247, 237, 0.92);
+  color: #9a3412;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.safety-status-blocked {
+  border-color: rgba(185, 28, 28, 0.3);
+  background: rgba(254, 242, 242, 0.94);
+  color: #991b1b;
+}
+
 .execution-evidence summary {
   cursor: pointer;
   color: #3554c7;

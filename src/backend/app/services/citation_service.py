@@ -76,13 +76,36 @@ def source_ref_summary(source_refs: list[dict[str, Any]]) -> str:
 
 
 def validate_citations(answer: str, source_refs: list[dict[str, Any]]) -> dict[str, Any]:
-    allowed = {str(source.get("source_ref")) for source in source_refs if source.get("source_ref")}
-    cited = set(re.findall(r"document:\d+#chunk:\d+", answer))
-    fake = sorted(cited - allowed)
+    allowed_ordered = list(
+        dict.fromkeys(str(source.get("source_ref")) for source in source_refs if source.get("source_ref"))
+    )
+    allowed = set(allowed_ordered)
+    citation_text = re.sub(r"```.*?```", "", answer, flags=re.DOTALL)
+    explicit_document_refs = set(re.findall(r"document:\d+#chunk:\d+", citation_text))
+    cited = explicit_document_refs & allowed
+    fake = explicit_document_refs - allowed
+
+    for raw_token in re.findall(r"\[([^\[\]\n]{1,200})\]", citation_text):
+        token = raw_token.strip()
+        if token.isdigit():
+            index = int(token)
+            if 1 <= index <= len(allowed_ordered):
+                cited.add(allowed_ordered[index - 1])
+        elif token in allowed:
+            cited.add(token)
+        elif _looks_like_source_ref(token):
+            fake.add(token)
+
     missing = bool(allowed and not cited)
     return {
         "allowed_source_refs": sorted(allowed),
         "cited_source_refs": sorted(cited),
-        "fake_source_refs": fake,
+        "fake_source_refs": sorted(fake),
         "missing_citation": missing,
     }
+
+
+def _looks_like_source_ref(token: str) -> bool:
+    if token.startswith(("document:", "demo:", "http://", "https://")):
+        return True
+    return bool(re.search(r"\.(?:md|markdown|pdf|txt|docx?)#[-\w./:]+$", token, flags=re.I))

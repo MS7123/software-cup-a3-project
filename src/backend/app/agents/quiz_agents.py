@@ -11,6 +11,7 @@ from app.adapters.protocols import LLMProvider
 from app.agents.rule_based_agents import QuizAgentResult, RuleBasedQuizAgent
 from app.schemas import KnowledgeSearchResult
 from app.services.citation_service import source_ref_payload
+from app.services.content_safety_service import ContentSafetyService
 
 
 QuestionType = Literal["multiple_choice", "fill_blank", "short_answer", "application", "code_analysis"]
@@ -82,6 +83,18 @@ class LLMQuizAgent:
                 started,
             )
         try:
+            safety = ContentSafetyService().review_input(
+                " ".join(
+                    [
+                        concept_name,
+                        difficulty,
+                        json.dumps(context.profile_preferences, ensure_ascii=False, default=str),
+                        " ".join(context.recent_errors),
+                    ]
+                )
+            )
+            if not safety.allowed:
+                raise ValueError(f"Content safety blocked input: {safety.category}")
             result = self.provider.generate(
                 _build_quiz_messages(concept_name, difficulty, chunks, context),
                 response_schema=QUIZ_OUTPUT_SCHEMA,

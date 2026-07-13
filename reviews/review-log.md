@@ -1601,6 +1601,56 @@ Allowed to commit: Yes
 ## Final Recommendation
 
 建议提交本轮增量。Resource/Evaluator 的真实 LLM 路径保持在 Agent factory 和 `LLMProvider` 边界内，默认离线演示、fallback 和现有 API contract 均未被破坏。最重要的后端、前端构建和 Playwright 主流程均已由 Reviewer 复跑通过。通过范围不包括真实远端 provider 可用性、真实生图能力或生产级长期 mastery 建模。
+
+## 2026-07-13 Review & Test Agent Review: COMP-008 Anti-Hallucination and Content Safety
+
+## Review Conclusion
+
+Result: Pass
+
+Allowed to commit: Yes
+
+## Scope Reviewed
+
+- Deterministic input/output safety service and all LLM Agent input boundaries.
+- Tutor, Resource and Quiz RAG poison filtering, citation whitelist enforcement and safe fallback behavior.
+- API safety contract, frontend safety banner and empty-Quiz rendering.
+- Fake source, unsupported claim, Prompt injection, sensitive content, dangerous code, provider failure and invalid JSON coverage.
+
+## Findings
+
+### Blocking
+
+- None.
+
+### Fixed During Review
+
+- Empty citation whitelists previously risked being replaced by model-returned references because an empty set was treated as false; explicit `None` handling now preserves the empty whitelist.
+- Tutor trace initially recorded the Tutor step before the RAG safety step; ordering now reflects the real execution sequence.
+- LLM-facing request fields previously lacked explicit size caps; dialogue, goal, Tutor question and submitted answers now have bounded validation.
+- Citation parsing could mistake array indexing inside fenced code for a citation; fenced code is now excluded from citation token parsing.
+
+## Implementation Boundary Check
+
+| Check | Result | Evidence |
+|---|---|---|
+| Deterministic safety boundary | Pass | Prompt injection, dangerous output, sensitive content and citations are checked without asking an LLM |
+| RAG evidence boundary | Pass | Only safe chunks and current-request source identifiers reach generation and Critic validation |
+| Agent/service boundary | Pass | Agents handle generation/fallback; services filter evidence, persist runs and expose safety status |
+| API/frontend resilience | Pass | Additive safety fields render explicit blocked/degraded states without breaking existing contracts |
+| Secret handling | Pass | Tests and traces contain no API key, complete prompt or chain-of-thought |
+
+## Test Assessment
+
+- Targeted safety and citation tests: passed.
+- Full backend unittest discovery: 163 passed; 7 opt-in Spark tests skipped by default.
+- Clean frontend `npm ci`, TypeScript check and Vite production build: passed.
+- Real Playwright malicious-input check: explicit safety banner, zero source cards, visible trace decision and zero browser console errors.
+- Known non-blocking frontend dependency notice: npm reports one low-severity esbuild advisory and the existing Vite bundle-size warning.
+
+## Final Recommendation
+
+允许提交 COMP-008。确定性规则承担防幻觉、内容安全、schema 和引用底线，模型不会取代这些硬约束；远端失败继续以明确状态安全降级。按用户约束，提交后停止，不自动进入 COMP-009。
 ## 2026-07-13 Review & Test Agent Review: COMP-007 Unified LLM Execution Evidence
 
 ## Review Conclusion

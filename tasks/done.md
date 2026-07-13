@@ -29,6 +29,13 @@
 
 ## 已通过 Review 的实现任务
 
+- [x] `COMP-008`：建立防幻觉与内容安全验证闭环。
+  - 完成范围：新增统一确定性内容安全服务，为全部 LLM Agent 增加 Prompt injection 输入边界；Tutor、Resource 和 Quiz 增加 RAG 污染过滤、当前请求引用白名单、危险代码/敏感内容输出检查，以及明确的 `passed`、`blocked`、`degraded` 状态。
+  - 防幻觉证据：无安全检索证据时不生成 Quiz；Resource 明确说明资料不足；Tutor 和 Critic 仅允许实际检索来源，空白名单不会被模型返回的伪造来源覆盖。
+  - 验收证据：自动化覆盖 fake source、unsupported claim、Prompt injection、敏感内容、危险代码、非法 JSON 和 provider failure；独立前端构建与真实 Playwright 恶意输入验收通过，页面无白屏、无伪造来源、无 console error。
+  - 保留边界：规则层承担安全、格式、schema、引用与先修关系硬约束；LLM 继续只负责生成、排序与语义评价，失败时进入明确 fallback。
+  - 停止边界：按用户要求，本轮完成后不自动启动 `COMP-009`，该任务继续保留为 Backlog。
+
 - [x] `COMP-007`：统一 LLM 配置与运行证据。
   - 完成范围：新增 additive `agent_run_steps.execution_metadata`、旧 SQLite 自动补列、统一 metadata 白名单与 trace 文本脱敏；ProfileBuilder、Planner、Resource、Tutor、Quiz、Evaluator、ProfileUpdater 均落库实际执行模式、provider/model、fallback、来源和耗时，确定性 Agent 继续标记为 rule-based。
   - 前端证据：真实 Inline Agent Trace 使用当前后端 `run_type` 映射，并以折叠区展示运行模式、provider、model、耗时、fallback 和来源；业务结果保持默认可见。

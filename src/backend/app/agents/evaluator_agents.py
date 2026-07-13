@@ -6,6 +6,7 @@ from typing import Any, Protocol
 from app.adapters.llm_provider import LLMProviderError
 from app.adapters.protocols import LLMProvider
 from app.agents.rule_based_agents import EvaluatorAgentResult, RuleBasedEvaluatorAgent
+from app.services.content_safety_service import ContentSafetyService
 
 
 class EvaluatorAgent(Protocol):
@@ -31,6 +32,9 @@ class LLMBackedEvaluatorAgent:
     def evaluate(self, expected_answer: str, answers: dict[str, Any], concept_id: int) -> EvaluatorAgentResult:
         started = time.perf_counter()
         try:
+            safety = ContentSafetyService().review_input(json.dumps(answers, ensure_ascii=False, default=str))
+            if not safety.allowed:
+                raise ValueError(f"Content safety blocked input: {safety.category}")
             result = self.provider.generate(
                 _build_evaluator_messages(expected_answer, answers, concept_id),
                 response_schema=dict,

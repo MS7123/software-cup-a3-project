@@ -218,12 +218,16 @@ export interface GeneratedResource {
   content: string;
   source_refs: Array<Record<string, unknown>>;
   agent_run_id: number | null;
+  safety_status: "passed" | "blocked" | "degraded";
+  safety_message: string | null;
 }
 
 export interface TutorAnswer {
   answer: string;
   source_refs: Array<Record<string, unknown>>;
   agent_run_id: number | null;
+  safety_status: "passed" | "blocked" | "degraded";
+  safety_message: string | null;
 }
 
 export interface QuizItem {
@@ -252,6 +256,8 @@ export interface Quiz {
   fallback_used?: boolean;
   fallback_reason?: string | null;
   quiz_duration_ms?: number | null;
+  safety_status: "passed" | "blocked" | "degraded";
+  safety_message: string | null;
 }
 
 export interface EvaluationResult {

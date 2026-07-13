@@ -62,6 +62,8 @@ type TutorMessage = {
   role: "user" | "assistant";
   content: string;
   sourceRefs?: Array<Record<string, unknown>>;
+  safetyStatus?: "passed" | "blocked" | "degraded";
+  safetyMessage?: string | null;
 };
 
 type TrackerStep = {
@@ -658,6 +660,9 @@ export function App() {
             >
               <span>{message.role === "user" ? "学生提问" : "辅导答复"}</span>
               {message.role === "assistant" ? <TypewriterMarkdown text={message.content} /> : <p>{message.content}</p>}
+              {message.role === "assistant" ? (
+                <SafetyStatusBanner status={message.safetyStatus} message={message.safetyMessage} />
+              ) : null}
               {message.role === "assistant" ? <SourceEvidence sourceRefs={message.sourceRefs ?? []} /> : null}
             </article>
           ))}
@@ -706,7 +711,9 @@ export function App() {
                     id: `assistant-${messageStamp}`,
                     role: "assistant",
                     content: nextAnswer.answer,
-                    sourceRefs: nextAnswer.source_refs
+                    sourceRefs: nextAnswer.source_refs,
+                    safetyStatus: nextAnswer.safety_status,
+                    safetyMessage: nextAnswer.safety_message
                   }
                 ]);
                 await appendRun(nextAnswer.agent_run_id);
@@ -743,6 +750,7 @@ export function App() {
       <InlineAgentTrace action="quiz" busy={busy === "generate-quiz"} runs={runs} visible={retainedTraces.includes("quiz")} />
       {quiz ? (
         <div className="quiz-box">
+          <SafetyStatusBanner status={quiz.safety_status} message={quiz.safety_message} />
           {quiz.fallback_used ? <p className="muted-text">大模型出题暂不可用，已安全降级：{quiz.fallback_reason ?? "rule-based fallback"}</p> : null}
           {quiz.items.map((item, index) => (
             <article key={index} className="quiz-question" data-testid="quiz-question">
@@ -756,32 +764,36 @@ export function App() {
               <SourceEvidence sourceRefs={item.source_refs ?? []} />
             </article>
           ))}
-          <textarea
-            className="field min-h-28 resize-none"
-            data-testid="quiz-answer"
-            value={attemptText}
-            onChange={(event) => setAttemptText(event.target.value)}
-            aria-label="作答内容"
-            placeholder="在这里输入你的作答思路"
-          />
-          <label className="setting-toggle">
-            <input
-              data-testid="auto-profile-update-toggle"
-              type="checkbox"
-              checked={autoProfileUpdateEnabled}
-              disabled={busy !== null}
-              onChange={(event) => setAutoProfileUpdateEnabled(event.target.checked)}
-            />
-            <span>
-              <strong>评估后自动更新学生画像</strong>
-              <small>测评教师完成评分后，画像顾问会读取学习轨迹并回写画像。</small>
-            </span>
-          </label>
-          <button className="primary-button" data-testid="submit-answer-button" disabled={!attemptText.trim() || busy !== null} onClick={() => void submitQuizAttempt()}>
-            {busy === "submit-attempt" ? "正在提交作答" : busy === "sync-profile" ? "正在更新画像" : "提交作答并评估"}
-          </button>
-          {busy === "submit-attempt" ? <AgentLoading testId="evaluator-loading" title="测评教师正在评分" detail="系统正在比较评分规则和作答内容。" /> : null}
-          {busy === "sync-profile" ? <AgentLoading testId="profile-update-loading" title="画像顾问正在更新画像" detail="系统正在分析最新学习轨迹。" /> : null}
+          {quiz.items.length > 0 ? (
+            <>
+              <textarea
+                className="field min-h-28 resize-none"
+                data-testid="quiz-answer"
+                value={attemptText}
+                onChange={(event) => setAttemptText(event.target.value)}
+                aria-label="作答内容"
+                placeholder="在这里输入你的作答思路"
+              />
+              <label className="setting-toggle">
+                <input
+                  data-testid="auto-profile-update-toggle"
+                  type="checkbox"
+                  checked={autoProfileUpdateEnabled}
+                  disabled={busy !== null}
+                  onChange={(event) => setAutoProfileUpdateEnabled(event.target.checked)}
+                />
+                <span>
+                  <strong>评估后自动更新学生画像</strong>
+                  <small>测评教师完成评分后，画像顾问会读取学习轨迹并回写画像。</small>
+                </span>
+              </label>
+              <button className="primary-button" data-testid="submit-answer-button" disabled={!attemptText.trim() || busy !== null} onClick={() => void submitQuizAttempt()}>
+                {busy === "submit-attempt" ? "正在提交作答" : busy === "sync-profile" ? "正在更新画像" : "提交作答并评估"}
+              </button>
+              {busy === "submit-attempt" ? <AgentLoading testId="evaluator-loading" title="测评教师正在评分" detail="系统正在比较评分规则和作答内容。" /> : null}
+              {busy === "sync-profile" ? <AgentLoading testId="profile-update-loading" title="画像顾问正在更新画像" detail="系统正在分析最新学习轨迹。" /> : null}
+            </>
+          ) : null}
         </div>
       ) : (
         <EmptyState text="生成测验后，这里会展示当前节点的练习题。" />
@@ -1507,6 +1519,7 @@ function ResourceOutputBlock({ resource }: { resource: GeneratedResource }) {
   return (
     <article className="resource-card" data-testid="output-block">
       <ResourceHeader title={resourceLabel(resource.resource_type)} />
+      <SafetyStatusBanner status={resource.safety_status} message={resource.safety_message} />
       {resource.resource_type === "teaching_video" ? <VideoPlayerCard title="个性化教学视频/动画讲解" /> : null}
       {resource.resource_type === "mind_map" ? <MindMapDiagram text={resource.content} /> : null}
       {resource.resource_type === "coding_case" ? <CodeCaseCard code={extractFencedCode(resource.content) || resource.content} /> : null}
@@ -1514,6 +1527,24 @@ function ResourceOutputBlock({ resource }: { resource: GeneratedResource }) {
       {resource.resource_type === "teaching_video" ? <VideoScriptBlock text={resource.content} /> : null}
       <SourceEvidence sourceRefs={resource.source_refs} />
     </article>
+  );
+}
+
+function SafetyStatusBanner({
+  status,
+  message
+}: {
+  status?: "passed" | "blocked" | "degraded";
+  message?: string | null;
+}) {
+  if (!status || status === "passed") return null;
+  const fallback = status === "blocked"
+    ? "安全策略已拦截该请求，未调用检索或大模型。"
+    : "已安全降级；课程资料不足或生成内容未通过安全校验。";
+  return (
+    <p className={`safety-status safety-status-${status}`} data-testid="safety-status" role="status">
+      {message || fallback}
+    </p>
   );
 }
 

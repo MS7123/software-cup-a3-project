@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.adapters.llm_provider import LLMProviderError, LLMSettings, build_llm_provider
 from app.adapters.protocols import LLMProvider
+from app.services.content_safety_service import ContentSafetyService
 
 
 ResourceType = Literal["guided_note", "practice_questions", "mind_map", "extended_reading", "coding_case"]
@@ -137,6 +138,20 @@ class HybridPlannerAgent:
     ) -> PlannerResult:
         started = time.perf_counter()
         try:
+            safety_text = " ".join(
+                [
+                    context.goal,
+                    context.profile_type,
+                    context.foundation_level,
+                    context.learning_preference,
+                    context.available_time,
+                    *context.weak_points,
+                    context.resource_preference,
+                ]
+            )
+            safety = ContentSafetyService().review_input(safety_text)
+            if not safety.allowed:
+                raise ValueError(f"Content safety blocked input: {safety.category}")
             eligible = [concept for concept in concepts if concept.id not in context.completed_concept_ids]
             if not eligible:
                 return PlannerResult([], "llm", self.provider_name, self.model, False, None, _elapsed_ms(started))

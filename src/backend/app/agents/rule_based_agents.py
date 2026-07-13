@@ -90,6 +90,17 @@ class RuleBasedResourceAgent:
     ) -> ResourceAgentResult:
         normalized_type = resource_type if resource_type in self.SUPPORTED_RESOURCE_TYPES else "guided_note"
         source_refs = self._source_refs(chunks)
+        if not chunks:
+            return ResourceAgentResult(
+                content=(
+                    f"【资料不足】暂不生成“{concept_name}”的{self.SUPPORTED_RESOURCE_TYPES[normalized_type]}。\n"
+                    "当前请求没有通过安全校验的课程资料，继续生成可能造成无依据扩写。请先上传或补充课程资料后重试。"
+                ),
+                source_refs=[],
+                input_summary=f"为知识点 {concept_name} 生成 {self.SUPPORTED_RESOURCE_TYPES[normalized_type]} 资源。",
+                output_summary="课程资料不足，返回安全限制说明，未生成事实性学习内容。",
+                decision_basis="无可用 Retriever chunk 时不编造资源，也不生成伪造 source_ref。",
+            )
         evidence = chunks[0].content if chunks else "暂无可用资料片段。"
         preferences = profile_preferences or {}
         style = str(preferences.get("learning_preference") or preferences.get("style") or "step_by_step")

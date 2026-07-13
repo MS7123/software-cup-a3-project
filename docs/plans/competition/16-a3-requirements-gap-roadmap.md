@@ -281,11 +281,13 @@ LLM_ENABLE_FOR_QUIZ=true
 
 **验收标准：**
 
-- [ ] 无检索结果时不生成伪造来源。
-- [ ] 输出引用均来自当前请求实际检索结果。
-- [ ] 恶意或越界输入触发安全拒答或降级。
-- [ ] LLM 失败时页面不白屏，并显示明确状态。
-- [ ] 有可提交的防幻觉与安全测试记录。
+- [x] 无检索结果时不生成伪造来源。
+- [x] 输出引用均来自当前请求实际检索结果。
+- [x] 恶意或越界输入触发安全拒答或降级。
+- [x] LLM 失败时页面不白屏，并显示明确状态。
+- [x] 有可提交的防幻觉与安全测试记录。
+
+**完成记录（2026-07-13）：** 新增统一确定性输入/输出安全检查、RAG 污染片段过滤、当前请求引用白名单和明确的 `passed` / `blocked` / `degraded` 前端状态；Tutor、Resource、Quiz 及其 LLM Agent 边界均保留安全 fallback。自动化覆盖 fake source、unsupported claim、Prompt injection、敏感内容、危险代码、非法输出和 provider failure；真实 Playwright 验证确认拦截提示、零伪造来源、可见 Agent trace 且无浏览器 console error。规则层继续负责安全底线，LLM 不替代 Critic、schema 或引用真实性校验。
 
 ### COMP-009：完成比赛交付文档与合规材料
 

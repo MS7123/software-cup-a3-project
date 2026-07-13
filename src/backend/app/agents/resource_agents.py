@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Any, Protocol
 
@@ -5,6 +6,7 @@ from app.adapters.llm_provider import LLMProviderError
 from app.adapters.protocols import LLMProvider
 from app.agents.rule_based_agents import ResourceAgentResult, RuleBasedResourceAgent
 from app.schemas import KnowledgeSearchResult
+from app.services.content_safety_service import ContentSafetyService
 
 
 class ResourceAgent(Protocol):
@@ -45,6 +47,18 @@ class LLMBackedResourceAgent:
         started = time.perf_counter()
         source_refs = self.fallback_agent._source_refs(chunks)
         try:
+            safety = ContentSafetyService().review_input(
+                " ".join(
+                    [
+                        concept_name,
+                        objective,
+                        resource_type,
+                        json.dumps(profile_preferences or {}, ensure_ascii=False, default=str),
+                    ]
+                )
+            )
+            if not safety.allowed:
+                raise ValueError(f"Content safety blocked input: {safety.category}")
             if not chunks:
                 raise ValueError("No retrieved course chunks are available.")
             result = self.provider.generate(

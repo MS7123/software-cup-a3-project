@@ -7,6 +7,7 @@ from app.agents.rule_based_agents import RuleBasedTutorAgent, TutorAgentResult
 from app.agents.tutor_prompts import build_tutor_messages
 from app.schemas import KnowledgeSearchResult
 from app.services.citation_service import source_ref_payload, validate_citations
+from app.services.content_safety_service import ContentSafetyService
 
 
 class TutorAgent(Protocol):
@@ -82,6 +83,25 @@ class LLMBackedTutorAgent:
                     model=self.model,
                     fallback_used=True,
                     fallback_reason="LLM answer contradicted non-empty retrieved chunks.",
+                    duration_ms=_elapsed_ms(started),
+                )
+            output_safety = ContentSafetyService().review_output(
+                result.content,
+                allowed_source_refs={str(item["source_ref"]) for item in source_refs if item.get("source_ref")},
+            )
+            if not output_safety.allowed:
+                fallback = self.fallback_agent.answer(question, chunks, profile_summary, course_title)
+                return TutorAgentResult(
+                    answer=fallback.answer,
+                    source_refs=fallback.source_refs,
+                    input_summary=fallback.input_summary,
+                    output_summary="LLM provider 输出未通过确定性内容安全检查，已回退到 rule-based tutor answer。",
+                    decision_basis=f"{fallback.decision_basis} Safety fallback: {output_safety.category}.",
+                    execution_mode="rule_based_fallback",
+                    provider=self.provider_name,
+                    model=self.model,
+                    fallback_used=True,
+                    fallback_reason=f"Content safety blocked LLM output: {output_safety.category}",
                     duration_ms=_elapsed_ms(started),
                 )
             grounded_answer = _ensure_grounded_citations(result.content, source_refs)

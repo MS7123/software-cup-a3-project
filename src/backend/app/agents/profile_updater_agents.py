@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.adapters.protocols import LLMProvider
+from app.services.content_safety_service import ContentSafetyService
 
 
 PROFILE_TRACE_ANALYSIS_SCHEMA: dict[str, Any] = {
@@ -46,6 +47,9 @@ class LLMBackedProfileUpdaterAgent:
 
     def analyze(self, trace_steps: list[dict[str, str | int]]) -> ProfileTraceAnalysis:
         started = time.perf_counter()
+        safety = ContentSafetyService().review_input(json.dumps(trace_steps, ensure_ascii=False, default=str))
+        if not safety.allowed:
+            raise ValueError(f"Content safety blocked input: {safety.category}")
         result = self.provider.generate(
             _build_profile_update_messages(trace_steps),
             response_schema=PROFILE_TRACE_ANALYSIS_SCHEMA,

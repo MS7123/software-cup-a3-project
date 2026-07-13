@@ -17,6 +17,7 @@ from app.schemas import EvaluationResult, QuizItemResponse, QuizResponse
 from app.services.agent_run_service import AgentRunService
 from app.services.agent_execution_metadata import build_execution_metadata
 from app.services.demo_data_service import DemoDataService
+from app.services.content_safety_service import ContentSafetyService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.learning_path_service import LearningPathService
 from app.services.profile_updater_service import ProfileUpdaterService
@@ -100,23 +101,66 @@ class AssessmentService:
             decision_basis=f"Router Agent dispatches quiz task with constraints: {route.constraints}",
             status="completed",
         )
-        chunks = KnowledgeBaseService(database_url=self.database_url).search(
+        retrieved_chunks = KnowledgeBaseService(database_url=self.database_url).search(
             course_id,
             concept_slug,
             top_k=3,
             owner_user_id=owner_user_id,
         )
+        retrieval_safety = ContentSafetyService().filter_retrieved_chunks(retrieved_chunks)
+        chunks = retrieval_safety.safe_chunks
         run_service.record_step(
             run.id,
             "retriever",
             input_summary=f"query={concept_slug}; top_k=3",
-            output_summary=f"Retriever Agent returned {len(chunks)} chunks for Quiz Agent.",
+            output_summary=(
+                f"Retriever Agent returned {len(retrieved_chunks)} chunks; "
+                f"{len(chunks)} passed deterministic safety filtering for Quiz Agent."
+            ),
             decision_basis="Only Retriever Agent can call KnowledgeBaseService.search for quiz grounding.",
             status="completed",
             execution_metadata=build_execution_metadata(
                 source_refs=[chunk.source_ref for chunk in chunks if chunk.source_ref]
             ),
         )
+        if retrieval_safety.blocked_source_refs:
+            run_service.record_step(
+                run.id,
+                "evaluator",
+                input_summary="Review retrieved chunks as untrusted content.",
+                output_summary=f"安全规则隔离了 {len(retrieval_safety.blocked_source_refs)} 个 RAG 污染片段。",
+                decision_basis=(
+                    "unsafe untrusted content detected in retrieved source refs: "
+                    + ",".join(retrieval_safety.blocked_source_refs)
+                ),
+                status="completed",
+                execution_metadata=build_execution_metadata(source_refs=retrieval_safety.blocked_source_refs),
+            )
+        if not chunks:
+            with session_scope(self.database_url) as session:
+                quiz = Quiz(
+                    concept_id=concept_id_value,
+                    student_profile_id=profile_id_value,
+                    difficulty=effective_difficulty,
+                    status="failed",
+                )
+                session.add(quiz)
+                session.flush()
+                response = self._to_quiz_response(quiz, [], [])
+            message = "课程资料不足或检索证据未通过安全校验，未生成测验题目。"
+            run_service.record_step(
+                run.id,
+                "quiz",
+                input_summary=f"concept={concept_name}; difficulty={effective_difficulty}",
+                output_summary=message,
+                decision_basis="无安全可用的 Retriever chunk 时拒绝生成题目，避免无依据编题。",
+                status="completed",
+            )
+            run_service.complete_run(run.id, message)
+            response.agent_run_id = run.id
+            response.safety_status = "degraded"
+            response.safety_message = message
+            return response
         result = self.quiz_agent.generate(concept_name, effective_difficulty, chunks, quiz_context)
         run_service.record_step(
             run.id,

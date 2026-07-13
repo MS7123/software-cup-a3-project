@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.agents.rule_based_agents import QuizAgentResult, ResourceAgentResult
+from app.services.content_safety_service import ContentSafetyService
 
 
 @dataclass(frozen=True)
@@ -20,10 +21,34 @@ class RuleBasedCriticAgent:
         result: ResourceAgentResult,
         resource_type: str,
         profile_preferences: dict[str, Any] | None = None,
+        available_source_refs: set[str] | None = None,
     ) -> CriticResult:
         preferences = profile_preferences or {}
         content = result.content
+        allowed_refs = (
+            available_source_refs
+            if available_source_refs is not None
+            else {
+                str(item.get("source_ref"))
+                for item in result.source_refs
+                if isinstance(item, dict) and item.get("source_ref")
+            }
+        )
+        safety = ContentSafetyService().review_output(content, allowed_source_refs=allowed_refs)
+        if not safety.allowed:
+            return CriticResult(
+                approved=False,
+                output_summary=f"资源安全审查未通过：{safety.category}。",
+                decision_basis=f"确定性内容安全规则拒绝输出：{safety.reason}",
+                revision_instruction="删除危险或违规内容，并且仅保留本次 Retriever 白名单内的课程依据。",
+            )
         if not result.source_refs:
+            if "资料不足" in content and ("暂不生成" in content or "补充课程资料" in content):
+                return CriticResult(
+                    approved=True,
+                    output_summary="资源审查通过：无可用证据时返回明确限制说明，未生成伪造来源。",
+                    decision_basis="资料不足时允许安全拒绝生成，但不得输出事实性内容或 source_ref。",
+                )
             return CriticResult(
                 approved=False,
                 output_summary="资源审查未通过：缺少可追溯来源。",
@@ -62,7 +87,18 @@ class RuleBasedCriticAgent:
         cited_source_refs = {
             str(item.get("source_ref")) for item in result.source_refs if isinstance(item, dict) and item.get("source_ref")
         }
-        if available_source_refs and (not cited_source_refs or not cited_source_refs.issubset(available_source_refs)):
+        allowed_refs = available_source_refs if available_source_refs is not None else cited_source_refs
+        safety = ContentSafetyService().review_output(text, allowed_source_refs=allowed_refs)
+        if not safety.allowed:
+            return CriticResult(
+                approved=False,
+                output_summary=f"测验安全审查未通过：{safety.category}。",
+                decision_basis=f"确定性内容安全规则拒绝输出：{safety.reason}",
+                revision_instruction="删除危险或违规内容，仅生成课程范围内且有真实依据的题目。",
+            )
+        if available_source_refs is not None and (
+            not cited_source_refs or not cited_source_refs.issubset(available_source_refs)
+        ):
             return CriticResult(
                 approved=False,
                 output_summary="测验审查未通过：题目缺少真实引用或包含引用白名单之外的来源。",
