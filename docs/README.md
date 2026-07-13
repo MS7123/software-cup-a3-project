@@ -26,7 +26,8 @@ docs/
 ├─ process/          开发路线和敏捷开发记录
 ├─ plans/            阶段计划和后续增量计划
 │  ├─ rag/           RAG 专项计划
-│  └─ demo/          演示体验和短期增量计划
+│  ├─ demo/          演示体验和短期增量计划
+│  └─ competition/   赛题要求差距和比赛交付计划
 ├─ runbooks/         手动验证和演示操作手册
 ├─ competition/      比赛对齐材料
 ├─ compliance/       开源合规材料
@@ -77,6 +78,12 @@ docs/
 | [08-next-demo-increments-plan.md](plans/demo/08-next-demo-increments-plan.md) | 后续短期演示增量计划 |
 | [10-demo-ux-and-agent-tuning-plan.md](plans/demo/10-demo-ux-and-agent-tuning-plan.md) | Demo UX、Markdown、Agent loading 和 Tutor tuning |
 
+### Competition Plans
+
+| 文档 | 说明 |
+|---|---|
+| [16-a3-requirements-gap-roadmap.md](plans/competition/16-a3-requirements-gap-roadmap.md) | 针对新版官网要求的未完成项、优先级、预期效果和验收标准 |
+
 ## 7. Runbooks
 
 | 文档 | 说明 |
@@ -88,7 +95,9 @@ docs/
 
 | 目录 | 文档 | 说明 |
 |---|---|---|
-| `competition/` | [competition-fit.md](competition/competition-fit.md) | A3 比赛目标对齐 |
+| `competition/` | [a3-official-requirements.md](competition/a3-official-requirements.md) | 官方赛题要求整理、检查表和项目对应关系 |
+| `competition/` | [a3-official-requirements-original.md](competition/a3-official-requirements-original.md) | 官网赛题要求原版复制 |
+| `competition/` | [competition-fit.md](competition/competition-fit.md) | A3 比赛目标对齐与开发主线冻结 |
 | `compliance/` | [open-source-compliance.md](compliance/open-source-compliance.md) | 开源合规说明 |
 | `research/` | [a3-open-source-research.md](research/a3-open-source-research.md) | A3 开源调研 |
 | `research/` | [a6-project-discussion-summary.md](research/a6-project-discussion-summary.md) | A6 赛题讨论总结，非当前主线 |
@@ -98,6 +107,7 @@ docs/
 - 顶层只保留 `README.md` 作为入口。
 - 新的 RAG 阶段计划放入 `docs/plans/rag/`。
 - 新的演示体验或短期增量计划放入 `docs/plans/demo/`。
+- 新的赛题差距和比赛交付计划放入 `docs/plans/competition/`。
 - 手动测试、演示脚本、运行手册放入 `docs/runbooks/`。
 - 项目状态和开发记录分别维护在 `project/06-project-state.md` 和 `process/05-agile-development-log.md`。
 - 不恢复旧的 Requirement -> Architect -> Implementation -> Review -> State 重流程。

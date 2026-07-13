@@ -26,6 +26,22 @@
 
 | Task ID | 任务 | 关联需求 | 关联验收标准 | 状态 | 说明 |
 |---|---|---|---|---|---|
+| COMP-001 | 构造完整高校专业课程知识库 | A3-课程知识库 | COMP-001-AC | Backlog | 目标效果与验收标准见 `docs/plans/competition/16-a3-requirements-gap-roadmap.md` |
+| COMP-002 | 完成初始对话画像 LLM 接入 | A3-对话式画像 | COMP-002-AC | Backlog | 新增 LLMProfileBuilderAgent，保留 rule-based fallback |
+| COMP-003 | 完成 Hybrid 学习路径与主动资源推荐 | A3-学习路径与资源推送 | COMP-003-AC | Backlog | 知识图谱硬约束与 LLM 排序结合 |
+| COMP-004 | 完成 Quiz LLM 接入 | A3-个性化练习题 | COMP-004-AC | Backlog | 新增 LLMQuizAgent，保留 Critic 和 fallback |
+| COMP-005 | 新增科大讯飞星辰 MaaS 比赛默认启动入口 | A3-大模型融合 | COMP-005-AC | Backlog | 使用控制台 MaaS `/v2` endpoint，默认启用 LLM purposes |
+| COMP-006 | 启用并验证已经接入的 LLM 能力 | A3-大模型融合 | COMP-006-AC | Backlog | 不重复开发 Tutor、Resource、Evaluator、ProfileUpdater |
+| COMP-007 | 统一 LLM 配置与运行证据 | A3-Multi-Agent | COMP-007-AC | Backlog | 记录 execution mode、provider、model 和 fallback |
+| COMP-008 | 建立防幻觉与内容安全验证闭环 | A3-非功能要求 | COMP-008-AC | Backlog | 固化引用白名单、安全拦截和降级策略 |
+| COMP-009 | 完成比赛交付文档与合规材料 | A3-文档及其他要求 | COMP-009-AC | Backlog | 开发说明、测试说明、依赖协议和 AI 工具说明 |
+| COMP-010 | 冻结 7 分钟演示与初赛作品目录 | A3-初赛提交要求 | COMP-010-AC | Backlog | 固定演示数据、流程和比赛启动入口 |
+| COMP-011 | 实现真实可验证的教学动画或视频资源 | A3-多模态资源/加分项 | COMP-011-AC | Backlog | P1，产物必须真实可播放或交互 |
+| COMP-012 | 增强学习效果评估与掌握度模型 | A3-学习效果评估/加分项 | COMP-012-AC | Backlog | P1，评估结果驱动路径或推荐变化 |
+| COMP-013 | 补齐失败路径、跨环境和移动端测试 | A3-非功能要求 | COMP-013-AC | Backlog | P1，覆盖 MaaS、RAG、浏览器和移动视口 |
+| COMP-014 | 统一项目状态、需求和验收文档 | A3-配套文档 | COMP-014-AC | Backlog | P1，统一完成状态和证据链接 |
+| COMP-015 | 正式数据库、向量检索和异步任务增强 | 工程增强 | COMP-015-AC | Backlog | P2，不得阻塞比赛交付 |
+| COMP-016 | 认证、多用户隔离和长期学习历史 | 工程增强 | COMP-016-AC | Backlog | P2，不得阻塞比赛交付 |
 
 ## 已裁决事项
 
