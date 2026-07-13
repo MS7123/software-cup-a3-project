@@ -1,0 +1,318 @@
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+
+from app.adapters.llm_provider import LLMSettings
+from app.adapters.protocols import LLMResult
+from app.agents.planner_agents import (
+    HybridPlannerAgent,
+    PlannerConcept,
+    PlannerContext,
+    PlannerRelation,
+    RuleBasedHybridPlannerAgent,
+    build_planner_agent,
+)
+from app.db.session import get_engine
+from app.main import create_app
+
+
+class FakePlannerProvider:
+    def __init__(self, payload: dict) -> None:
+        self.payload = payload
+
+    def generate(self, messages, response_schema=None) -> LLMResult:
+        return LLMResult(
+            content=json.dumps(self.payload, ensure_ascii=False),
+            metadata={"provider": "openai_compatible", "model": "planner-test-model"},
+        )
+
+
+class RaisingPlannerProvider:
+    def generate(self, messages, response_schema=None) -> LLMResult:
+        raise TimeoutError("planner timeout")
+
+
+class HybridPlannerAgentTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.concepts = [
+            PlannerConcept(id=30, slug="foundation", name="基础", chapter="第一章", difficulty="basic"),
+            PlannerConcept(id=10, slug="advanced", name="进阶", chapter="第二章", difficulty="medium"),
+            PlannerConcept(id=20, slug="practice", name="实践", chapter="第三章", difficulty="basic"),
+        ]
+        self.relations = [PlannerRelation(source_concept_id=30, target_concept_id=10)]
+
+    def test_rule_based_fallback_uses_topology_instead_of_concept_id(self) -> None:
+        result = RuleBasedHybridPlannerAgent().plan(
+            self.concepts,
+            self.relations,
+            PlannerContext(
+                goal="掌握课程",
+                profile_type="weak_foundation",
+                foundation_level="beginner",
+                learning_preference="step_by_step",
+                available_time="每天一小时",
+                weak_points=["基础"],
+                resource_preference="讲解文档",
+            ),
+        )
+
+        order = [item.concept_id for item in result.recommendations]
+        self.assertNotEqual(order, [10, 20, 30])
+        self.assertLess(order.index(30), order.index(10))
+        self.assertEqual(result.execution_mode, "rule_based")
+
+    def test_two_profiles_receive_different_resource_recommendations(self) -> None:
+        planner = RuleBasedHybridPlannerAgent()
+        code_result = planner.plan(
+            self.concepts,
+            self.relations,
+            PlannerContext(
+                goal="掌握课程",
+                profile_type="algorithm_practice",
+                foundation_level="intermediate",
+                learning_preference="code_driven",
+                available_time="每周六小时",
+                weak_points=[],
+                resource_preference="代码实操案例",
+            ),
+        )
+        sprint_result = planner.plan(
+            self.concepts,
+            self.relations,
+            PlannerContext(
+                goal="掌握课程",
+                profile_type="exam_sprint",
+                foundation_level="intermediate",
+                learning_preference="summary_first",
+                available_time="每天两小时",
+                weak_points=[],
+                resource_preference="练习题",
+            ),
+        )
+
+        self.assertNotEqual(
+            code_result.recommendations[0].recommended_resource_type,
+            sprint_result.recommendations[0].recommended_resource_type,
+        )
+
+    def test_llm_can_rank_only_real_concepts_when_prerequisites_remain_valid(self) -> None:
+        provider = FakePlannerProvider(
+            {
+                "recommendations": [
+                    {"concept_id": 20, "recommended_resource_type": "coding_case", "reason": "先实践", "priority": 1},
+                    {"concept_id": 30, "recommended_resource_type": "guided_note", "reason": "再补基础", "priority": 2},
+                    {"concept_id": 10, "recommended_resource_type": "practice_questions", "reason": "最后进阶", "priority": 3},
+                ]
+            }
+        )
+        result = HybridPlannerAgent(provider, provider_name="openai_compatible", model="planner-test-model").plan(
+            self.concepts,
+            self.relations,
+            PlannerContext(
+                goal="掌握课程",
+                profile_type="algorithm_practice",
+                foundation_level="intermediate",
+                learning_preference="code_driven",
+                available_time="每周六小时",
+                weak_points=["实践"],
+                resource_preference="代码实操案例",
+            ),
+        )
+
+        self.assertEqual([item.concept_id for item in result.recommendations], [20, 30, 10])
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertFalse(result.fallback_used)
+
+    def test_unknown_or_prerequisite_violating_llm_output_falls_back_to_topology(self) -> None:
+        for recommendations in (
+            [
+                {"concept_id": 999, "recommended_resource_type": "guided_note", "reason": "unknown", "priority": 1},
+                {"concept_id": 30, "recommended_resource_type": "guided_note", "reason": "基础", "priority": 2},
+                {"concept_id": 10, "recommended_resource_type": "guided_note", "reason": "进阶", "priority": 3},
+            ],
+            [
+                {"concept_id": 10, "recommended_resource_type": "guided_note", "reason": "错误提前", "priority": 1},
+                {"concept_id": 30, "recommended_resource_type": "guided_note", "reason": "基础", "priority": 2},
+                {"concept_id": 20, "recommended_resource_type": "guided_note", "reason": "实践", "priority": 3},
+            ],
+            [
+                {"concept_id": 30, "recommended_resource_type": "guided_note", "reason": "重复一", "priority": 1},
+                {"concept_id": 30, "recommended_resource_type": "guided_note", "reason": "重复二", "priority": 2},
+                {"concept_id": 20, "recommended_resource_type": "guided_note", "reason": "实践", "priority": 3},
+            ],
+        ):
+            with self.subTest(recommendations=recommendations):
+                agent = HybridPlannerAgent(FakePlannerProvider({"recommendations": recommendations}))
+                result = agent.plan(
+                    self.concepts,
+                    self.relations,
+                    PlannerContext(
+                        goal="掌握课程",
+                        profile_type="weak_foundation",
+                        foundation_level="beginner",
+                        learning_preference="step_by_step",
+                        available_time="每天一小时",
+                        weak_points=[],
+                        resource_preference="讲解文档",
+                    ),
+                )
+                order = [item.concept_id for item in result.recommendations]
+                self.assertEqual(result.execution_mode, "rule_based_fallback")
+                self.assertTrue(result.fallback_reason)
+                self.assertLess(order.index(30), order.index(10))
+
+    def test_cycle_is_rejected_and_provider_timeout_uses_topological_fallback(self) -> None:
+        context = PlannerContext(
+            goal="掌握课程",
+            profile_type="weak_foundation",
+            foundation_level="beginner",
+            learning_preference="step_by_step",
+            available_time="每天一小时",
+            weak_points=[],
+            resource_preference="讲解文档",
+        )
+        with self.assertRaisesRegex(ValueError, "cycle"):
+            RuleBasedHybridPlannerAgent().plan(
+                self.concepts,
+                [PlannerRelation(30, 10), PlannerRelation(10, 30)],
+                context,
+            )
+
+        result = HybridPlannerAgent(RaisingPlannerProvider()).plan(self.concepts, self.relations, context)
+        self.assertEqual(result.execution_mode, "rule_based_fallback")
+        self.assertIn("TimeoutError", result.fallback_reason)
+        order = [item.concept_id for item in result.recommendations]
+        self.assertLess(order.index(30), order.index(10))
+
+    def test_factory_uses_planner_specific_flag(self) -> None:
+        settings = LLMSettings(
+            provider="openai_compatible",
+            base_url="https://example.invalid/v1",
+            api_key="test-only-key",
+            model="planner-test-model",
+            enable_for_planner=True,
+        )
+        self.assertIsInstance(build_planner_agent(settings), HybridPlannerAgent)
+        self.assertTrue(settings.can_call_remote("planner"))
+        with patch.dict(
+            os.environ,
+            {
+                "LLM_PROVIDER": "openai_compatible",
+                "LLM_BASE_URL": "https://example.invalid/v1",
+                "LLM_API_KEY": "test-only-key",
+                "LLM_MODEL": "planner-test-model",
+                "LLM_ENABLE_FOR_PLANNER": "true",
+            },
+            clear=True,
+        ):
+            self.assertTrue(LLMSettings.from_env().enable_for_planner)
+
+
+class HybridPlannerApiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        database_path = Path(self.temp_dir.name) / "hybrid-planner.sqlite3"
+        self.database_url = f"sqlite:///{database_path.as_posix()}"
+        os.environ["APP_DATABASE_URL"] = self.database_url
+
+    def tearDown(self) -> None:
+        get_engine().dispose()
+        get_engine(self.database_url).dispose()
+        get_engine.cache_clear()
+        os.environ.pop("APP_DATABASE_URL", None)
+        self.temp_dir.cleanup()
+
+    def test_path_api_adds_recommendation_fields_and_respects_prerequisites(self) -> None:
+        with TestClient(create_app()) as client:
+            demo = client.post("/api/v1/demo-data/load").json()["demo_data"]
+            profile = client.get("/api/v1/student-profiles").json()[0]
+            graph = client.get(f"/api/v1/courses/{demo['course_id']}/graph").json()
+            response = client.post(
+                "/api/v1/learning-paths",
+                json={
+                    "student_profile_id": profile["id"],
+                    "course_id": demo["course_id"],
+                    "goal": "掌握数据结构课程",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            flow = response.json()
+            path = flow["learning_path"]
+
+            self.assertIn(path["execution_mode"], {"rule_based", "llm", "rule_based_fallback"})
+            positions = {item["concept_id"]: item["order_index"] for item in path["items"]}
+            for relation in graph["relations"]:
+                if relation["relation_type"] == "prerequisite":
+                    self.assertLess(positions[relation["source_concept_id"]], positions[relation["target_concept_id"]])
+            for item in path["items"]:
+                self.assertTrue(item["recommended_resource_type"])
+                self.assertTrue(item["recommendation_reason"])
+                self.assertGreater(item["priority"], 0)
+
+            planner_step = next(step for step in flow["agent_run"]["steps"] if step["agent_type"] == "planner")
+            self.assertIn("execution_mode=", planner_step["decision_basis"])
+
+    def test_different_demo_profiles_produce_different_resource_plans(self) -> None:
+        with TestClient(create_app()) as client:
+            demo = client.post("/api/v1/demo-data/load").json()["demo_data"]
+            profiles = client.get("/api/v1/student-profiles").json()
+            resource_sequences = []
+            for profile in (profiles[0], profiles[2]):
+                flow = client.post(
+                    "/api/v1/learning-paths",
+                    json={
+                        "student_profile_id": profile["id"],
+                        "course_id": demo["course_id"],
+                        "goal": "掌握数据结构课程",
+                    },
+                ).json()
+                resource_sequences.append(
+                    [item["recommended_resource_type"] for item in flow["learning_path"]["items"]]
+                )
+
+            self.assertNotEqual(resource_sequences[0], resource_sequences[1])
+
+    def test_low_quiz_mastery_reorders_pending_path_with_an_explanation(self) -> None:
+        with TestClient(create_app()) as client:
+            demo = client.post("/api/v1/demo-data/load").json()["demo_data"]
+            profile = client.get("/api/v1/student-profiles").json()[0]
+            graph = client.get(f"/api/v1/courses/{demo['course_id']}/graph").json()
+            hash_concept = next(concept for concept in graph["concepts"] if concept["slug"] == "hash-table")
+            flow = client.post(
+                "/api/v1/learning-paths",
+                json={
+                    "student_profile_id": profile["id"],
+                    "course_id": demo["course_id"],
+                    "goal": "掌握数据结构课程",
+                },
+            ).json()
+            path = flow["learning_path"]
+            before_item = next(item for item in path["items"] if item["concept_id"] == hash_concept["id"])
+
+            quiz = client.post(
+                "/api/v1/quizzes/generate",
+                json={
+                    "student_profile_id": profile["id"],
+                    "concept_id": hash_concept["id"],
+                    "difficulty": "basic",
+                },
+            ).json()
+            attempt = client.post(
+                f"/api/v1/quizzes/{quiz['id']}/attempts",
+                json={"student_profile_id": profile["id"], "answers": {"answer": ""}},
+            )
+            self.assertEqual(attempt.status_code, 200)
+
+            refreshed = client.get(f"/api/v1/learning-paths/{path['id']}").json()
+            after_item = next(item for item in refreshed["items"] if item["concept_id"] == hash_concept["id"])
+            self.assertLess(after_item["order_index"], before_item["order_index"])
+            self.assertIn("掌握度偏低", after_item["recommendation_reason"])
+
+
+if __name__ == "__main__":
+    unittest.main()

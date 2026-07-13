@@ -1,17 +1,17 @@
 # Current Tasks
 
-最后更新：2026-06-05
+最后更新：2026-07-13
 维护角色：State Manager Agent / Task Manager
 
 ## 当前批准执行
 
-### COMP-003: 完成 Hybrid 学习路径与主动资源推荐
+### COMP-004: 完成 Quiz LLM 接入
 
 - 状态：Current
 - 依据：`docs/plans/competition/16-a3-requirements-gap-roadmap.md`
-- 前置依赖：`COMP-002` 已完成自动化、星火联机与端到端历史证据验证。
-- 执行边界：规则层负责先修约束、候选真实性、去重和无环校验；LLM 仅负责合法候选排序与推荐理由。
-- Done 条件：满足路线图 COMP-003 的全部自动化和联机验收标准后，才能移入 Done。
+- 前置依赖：`COMP-003` 已完成自动化、前端构建、星火联机与动态重排验证。
+- 执行边界：LLM 负责基于课程资料、画像、掌握度和最近错误生成结构化题目；现有 Critic、客观题确定性判分与规则 fallback 保持不变。
+- Done 条件：满足路线图 COMP-004 的全部自动化和联机验收标准后，才能移入 Done。
 
 ### PLAN-002: 编写测试计划
 

@@ -1,8 +1,24 @@
 from sqlalchemy import select
 
+from app.agents.planner_agents import (
+    PlannerConcept,
+    PlannerContext,
+    PlannerRelation,
+    PlannerResult,
+    build_planner_agent,
+)
 from app.db.session import session_scope
 from app.domain.exceptions import ConflictError, NotFoundError
-from app.models import Concept, Course, LearningPath, LearningPathItem, StudentProfile
+from app.models import (
+    Concept,
+    ConceptRelation,
+    Course,
+    LearningPath,
+    LearningPathItem,
+    LearningPathRecommendation,
+    MasteryRecord,
+    StudentProfile,
+)
 from app.schemas import LearningPathItemResponse, LearningPathResponse
 from app.services.demo_data_service import DemoDataService
 from app.services.profile_updater_service import ProfileUpdaterService
@@ -21,35 +37,41 @@ class LearningPathService:
         DemoDataService(database_url=self.database_url).load_demo_data()
         with session_scope(self.database_url) as session:
             profile, course = self._get_profile_and_course(session, profile_id, course_id)
-            concepts = session.scalars(
-                select(Concept).where(Concept.course_id == course.id).order_by(Concept.id)
-            ).all()
-            rationale = self._build_rationale(profile, course, goal)
+            concepts, relations = self._course_graph(session, course.id)
+            context = self._planner_context(session, profile, goal)
+            result = build_planner_agent().plan(concepts, relations, context)
+            concept_by_id = {concept.id: concept for concept in concepts}
             path = LearningPath(
                 student_profile_id=profile.id,
                 course_id=course.id,
                 goal=goal,
-                rationale=rationale,
+                rationale=self._path_rationale(profile, course, goal, result, "initial_creation"),
                 status="active",
             )
             session.add(path)
             session.flush()
 
             items: list[LearningPathItem] = []
-            for index, concept in enumerate(concepts, start=1):
+            recommendations: list[LearningPathRecommendation] = []
+            for index, recommendation in enumerate(result.recommendations, start=1):
+                concept = concept_by_id[recommendation.concept_id]
                 item = LearningPathItem(
                     path_id=path.id,
                     concept_id=concept.id,
                     order_index=index,
                     title=f"阶段 {index}: {concept.name}",
                     objective=f"围绕“{concept.name}”完成概念理解、例题复盘和关键操作掌握。",
-                    rationale=f"该步骤关联 {concept.chapter or '数据结构'}，难度为 {concept.difficulty}，用于支撑目标：{goal}",
+                    rationale=recommendation.reason,
                     status="pending" if index > 1 else "in_progress",
                 )
                 session.add(item)
+                session.flush()
                 items.append(item)
+                record = self._recommendation_record(item.id, recommendation, result)
+                session.add(record)
+                recommendations.append(record)
             session.flush()
-            return self._to_path_response(path, items)
+            return self._to_path_response(path, items, recommendations)
 
     @staticmethod
     def _get_profile_and_course(session, profile_id: int, course_id: int) -> tuple[StudentProfile, Course]:
@@ -66,10 +88,9 @@ class LearningPathService:
             path = session.get(LearningPath, path_id)
             if path is None:
                 raise NotFoundError("Learning path", path_id)
-            items = session.scalars(
-                select(LearningPathItem).where(LearningPathItem.path_id == path.id).order_by(LearningPathItem.order_index)
-            ).all()
-            return self._to_path_response(path, items)
+            items = self._path_items(session, path.id)
+            recommendations = self._recommendations(session, items)
+            return self._to_path_response(path, items, recommendations)
 
     def complete_item(self, item_id: int) -> LearningPathResponse:
         with session_scope(self.database_url) as session:
@@ -82,39 +103,198 @@ class LearningPathService:
             if path is None:
                 raise NotFoundError("Learning path", item.path_id)
             item.status = "completed"
-            next_item = session.scalar(
-                select(LearningPathItem).where(
-                    LearningPathItem.path_id == path.id,
-                    LearningPathItem.status == "pending",
-                    LearningPathItem.order_index > item.order_index,
-                ).order_by(LearningPathItem.order_index)
-            )
-            if next_item is not None:
-                next_item.status = "in_progress"
-                path.status = "active"
-            else:
-                path.status = "completed"
-            session.flush()
-            items = session.scalars(
-                select(LearningPathItem).where(LearningPathItem.path_id == path.id).order_by(LearningPathItem.order_index)
-            ).all()
-            response = self._to_path_response(path, items)
+            path_id = path.id
             profile_id = path.student_profile_id
+            course_id = path.course_id
+            remaining = session.scalar(
+                select(LearningPathItem.id).where(
+                    LearningPathItem.path_id == path.id,
+                    LearningPathItem.status != "completed",
+                ).limit(1)
+            )
+            path.status = "active" if remaining is not None else "completed"
+            session.flush()
 
         ProfileUpdaterService(database_url=self.database_url).update_from_trace(
-            profile_id, trigger_type="path_item_completed", event_key=f"path_item:{item_id}:completed"
+            profile_id,
+            trigger_type="path_item_completed",
+            event_key=f"path_item:{item_id}:completed",
         )
-        return response
+        if self.get_path(path_id).status != "completed":
+            self.refresh_active_paths(profile_id, course_id, trigger=f"path_item:{item_id}:completed")
+        return self.get_path(path_id)
 
-    def _build_rationale(self, profile: StudentProfile, course: Course, goal: str) -> str:
-        preference = profile.preferences.get("style", "default") if isinstance(profile.preferences, dict) else "default"
-        return (
-            f"Planner Agent 根据学生画像 {profile.profile_type}、基础水平 {profile.level}、"
-            f"学习偏好 {preference}、可用时间 {profile.time_budget}，结合课程“{course.title}”"
-            f"的 MVP 知识点先修顺序，为目标“{goal}”生成阶段化路径。"
+    def refresh_active_paths(self, profile_id: int, course_id: int, trigger: str) -> list[LearningPathResponse]:
+        refreshed: list[LearningPathResponse] = []
+        trace_payloads: list[tuple[int, PlannerResult]] = []
+        with session_scope(self.database_url) as session:
+            profile, course = self._get_profile_and_course(session, profile_id, course_id)
+            concepts, relations = self._course_graph(session, course.id)
+            paths = session.scalars(
+                select(LearningPath).where(
+                    LearningPath.student_profile_id == profile_id,
+                    LearningPath.course_id == course_id,
+                    LearningPath.status == "active",
+                )
+            ).all()
+            for path in paths:
+                items = self._path_items(session, path.id)
+                completed_items = [item for item in items if item.status == "completed"]
+                completed_ids = {item.concept_id for item in completed_items}
+                context = self._planner_context(session, profile, path.goal, completed_ids)
+                result = build_planner_agent().plan(concepts, relations, context)
+                pending_by_concept = {item.concept_id: item for item in items if item.status != "completed"}
+                if set(pending_by_concept) != {item.concept_id for item in result.recommendations}:
+                    raise ValueError("Planner refresh did not preserve the pending concept set.")
+
+                start_index = len(completed_items) + 1
+                recommendation_records = {record.path_item_id: record for record in self._recommendations(session, items)}
+                for offset, recommendation in enumerate(result.recommendations):
+                    item = pending_by_concept[recommendation.concept_id]
+                    item.order_index = start_index + offset
+                    item.title = f"阶段 {item.order_index}: {self._concept_name(concepts, item.concept_id)}"
+                    item.rationale = recommendation.reason
+                    item.status = "in_progress" if offset == 0 else "pending"
+                    record = recommendation_records.get(item.id)
+                    if record is None:
+                        record = self._recommendation_record(item.id, recommendation, result)
+                        session.add(record)
+                        recommendation_records[item.id] = record
+                    else:
+                        self._update_recommendation_record(record, recommendation, result)
+                path.rationale = self._path_rationale(profile, course, path.goal, result, trigger)
+                session.flush()
+                ordered_items = self._path_items(session, path.id)
+                records = self._recommendations(session, ordered_items)
+                refreshed.append(self._to_path_response(path, ordered_items, records))
+                trace_payloads.append((path.id, result))
+
+        for path_id, result in trace_payloads:
+            self._record_replan_trace(profile_id, course_id, path_id, trigger, result)
+        return refreshed
+
+    def _course_graph(self, session, course_id: int) -> tuple[list[PlannerConcept], list[PlannerRelation]]:
+        concept_rows = session.scalars(select(Concept).where(Concept.course_id == course_id)).all()
+        concepts = [
+            PlannerConcept(
+                id=concept.id,
+                slug=concept.slug,
+                name=concept.name,
+                chapter=concept.chapter or "数据结构",
+                difficulty=concept.difficulty,
+            )
+            for concept in concept_rows
+        ]
+        concept_ids = {concept.id for concept in concepts}
+        relation_rows = session.scalars(
+            select(ConceptRelation).where(ConceptRelation.relation_type == "prerequisite")
+        ).all()
+        relations = [
+            PlannerRelation(row.source_concept_id, row.target_concept_id)
+            for row in relation_rows
+            if row.source_concept_id in concept_ids and row.target_concept_id in concept_ids
+        ]
+        return concepts, relations
+
+    def _planner_context(
+        self,
+        session,
+        profile: StudentProfile,
+        goal: str,
+        completed_ids: set[int] | None = None,
+    ) -> PlannerContext:
+        preferences = profile.preferences if isinstance(profile.preferences, dict) else {}
+        mastery: dict[int, float] = {}
+        records = session.scalars(
+            select(MasteryRecord)
+            .where(MasteryRecord.student_profile_id == profile.id)
+            .order_by(MasteryRecord.id)
+        ).all()
+        for record in records:
+            mastery[record.concept_id] = record.mastery_score
+        weak_points = [
+            item.strip()
+            for item in str(preferences.get("weak_points") or "").replace("，", "、").split("、")
+            if item.strip()
+        ]
+        return PlannerContext(
+            goal=goal,
+            profile_type=str(profile.profile_type),
+            foundation_level=str(preferences.get("foundation_level") or profile.level),
+            learning_preference=str(preferences.get("learning_preference") or preferences.get("style") or "step_by_step"),
+            available_time=str(preferences.get("available_time") or profile.time_budget),
+            weak_points=weak_points[:5],
+            resource_preference=str(preferences.get("resource_preference") or preferences.get("resource") or "讲解文档"),
+            completed_concept_ids=completed_ids or set(),
+            mastery_scores=mastery,
         )
 
-    def _to_path_response(self, path: LearningPath, items: list[LearningPathItem]) -> LearningPathResponse:
+    def _path_items(self, session, path_id: int) -> list[LearningPathItem]:
+        return session.scalars(
+            select(LearningPathItem)
+            .where(LearningPathItem.path_id == path_id)
+            .order_by(LearningPathItem.order_index)
+        ).all()
+
+    def _recommendations(self, session, items: list[LearningPathItem]) -> list[LearningPathRecommendation]:
+        item_ids = [item.id for item in items]
+        if not item_ids:
+            return []
+        return session.scalars(
+            select(LearningPathRecommendation).where(LearningPathRecommendation.path_item_id.in_(item_ids))
+        ).all()
+
+    def _recommendation_record(self, item_id, recommendation, result: PlannerResult) -> LearningPathRecommendation:
+        return LearningPathRecommendation(
+            path_item_id=item_id,
+            resource_type=recommendation.recommended_resource_type,
+            reason=recommendation.reason,
+            priority=recommendation.priority,
+            execution_mode=result.execution_mode,
+            provider=result.provider,
+            model=result.model,
+            fallback_used=result.fallback_used,
+            fallback_reason=result.fallback_reason,
+            duration_ms=result.duration_ms,
+        )
+
+    def _update_recommendation_record(self, record, recommendation, result: PlannerResult) -> None:
+        record.resource_type = recommendation.recommended_resource_type
+        record.reason = recommendation.reason
+        record.priority = recommendation.priority
+        record.execution_mode = result.execution_mode
+        record.provider = result.provider
+        record.model = result.model
+        record.fallback_used = result.fallback_used
+        record.fallback_reason = result.fallback_reason
+        record.duration_ms = result.duration_ms
+
+    def _to_path_response(
+        self,
+        path: LearningPath,
+        items: list[LearningPathItem],
+        recommendations: list[LearningPathRecommendation],
+    ) -> LearningPathResponse:
+        by_item = {record.path_item_id: record for record in recommendations}
+        first_record = next((by_item.get(item.id) for item in items if by_item.get(item.id)), None)
+        response_items = []
+        for item in items:
+            record = by_item.get(item.id)
+            response_items.append(
+                LearningPathItemResponse(
+                    id=item.id,
+                    path_id=item.path_id,
+                    concept_id=item.concept_id,
+                    order_index=item.order_index,
+                    title=item.title,
+                    objective=item.objective,
+                    rationale=item.rationale,
+                    status=item.status,
+                    recommended_resource_type=record.resource_type if record else None,
+                    recommendation_reason=record.reason if record else item.rationale,
+                    priority=record.priority if record else item.order_index,
+                )
+            )
         return LearningPathResponse(
             id=path.id,
             student_profile_id=path.student_profile_id,
@@ -122,6 +302,47 @@ class LearningPathService:
             goal=path.goal,
             rationale=path.rationale,
             status=path.status,
-            items=[LearningPathItemResponse.model_validate(item) for item in items],
+            items=response_items,
             created_at=path.created_at,
+            execution_mode=first_record.execution_mode if first_record else "rule_based",
+            provider=first_record.provider if first_record else "rule_based",
+            model=first_record.model if first_record else "",
+            fallback_used=first_record.fallback_used if first_record else False,
+            fallback_reason=first_record.fallback_reason if first_record else None,
+            planner_duration_ms=first_record.duration_ms if first_record else 0,
         )
+
+    def _path_rationale(self, profile, course, goal: str, result: PlannerResult, trigger: str) -> str:
+        return (
+            f"Planner Agent 使用知识图谱先修约束与画像排序；trigger={trigger}；"
+            f"execution_mode={result.execution_mode}；provider={result.provider}；"
+            f"基础水平={profile.level}；课程={course.title}；目标={goal}。"
+        )
+
+    def _record_replan_trace(self, profile_id, course_id, path_id, trigger: str, result: PlannerResult) -> None:
+        from app.services.agent_run_service import AgentRunService
+
+        run_service = AgentRunService(database_url=self.database_url)
+        run = run_service.start_run(
+            "learning_path_replanning",
+            profile_id,
+            course_id,
+            input_summary=f"path_id={path_id}; trigger={trigger}",
+        )
+        run_service.record_step(
+            run.id,
+            "planner",
+            input_summary=f"Recompute pending nodes for path_id={path_id}; trigger={trigger}",
+            output_summary=f"Re-ranked {len(result.recommendations)} pending nodes.",
+            decision_basis=(
+                f"execution_mode={result.execution_mode}; provider={result.provider}; model={result.model or 'none'}; "
+                f"fallback_used={str(result.fallback_used).lower()}; fallback_reason={result.fallback_reason or 'none'}"
+            ),
+            status="completed",
+            duration_ms=result.duration_ms,
+        )
+        run_service.complete_run(run.id, f"Planner refreshed path {path_id} after {trigger}.")
+
+    @staticmethod
+    def _concept_name(concepts: list[PlannerConcept], concept_id: int) -> str:
+        return next(concept.name for concept in concepts if concept.id == concept_id)

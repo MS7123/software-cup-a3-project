@@ -1269,6 +1269,8 @@ function PathItemCard({ item, concept, selected, onSelect }: { item: LearningPat
       <span>第 {item.order_index} 步</span>
       <strong>{item.title}</strong>
       <p>{item.objective}</p>
+      {item.recommended_resource_type ? <small>推荐资源：{resourceTypeLabel(item.recommended_resource_type)}</small> : null}
+      {item.priority ? <small>优先级：{item.priority}</small> : null}
       <small>{concept?.name ?? `概念 ${item.concept_id}`}</small>
     </button>
   );
@@ -1281,6 +1283,8 @@ function NodeSummary({ item, concept }: { item: LearningPathItem | null; concept
       <p className="eyebrow">当前节点</p>
       <strong>{item.title}</strong>
       <span>{item.objective}</span>
+      {item.recommended_resource_type ? <span>推荐资源：{resourceTypeLabel(item.recommended_resource_type)}</span> : null}
+      {item.recommendation_reason ? <small>{item.recommendation_reason}</small> : null}
       <small>{concept?.name ?? `概念 ${item.concept_id}`}</small>
     </div>
   );
@@ -1313,6 +1317,17 @@ function ProfileHistoryPanel({ history }: { history: StudentProfileHistory[] }) 
       )}
     </section>
   );
+}
+
+function resourceTypeLabel(resourceType: string) {
+  const labels: Record<string, string> = {
+    guided_note: "讲解文档",
+    practice_questions: "练习题",
+    mind_map: "思维导图",
+    extended_reading: "拓展阅读",
+    coding_case: "代码实操案例",
+  };
+  return labels[resourceType] ?? resourceType;
 }
 
 function ProfileDimensionList({ profile }: { profile: StudentProfile }) {

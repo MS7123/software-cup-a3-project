@@ -39,6 +39,8 @@ class AgentRunService:
         output_summary: str,
         decision_basis: str,
         status: str,
+        duration_ms: int | None = None,
+        error: str | None = None,
     ) -> AgentRunStepResponse:
         with session_scope(self.database_url) as session:
             run = session.get(AgentRun, run_id)
@@ -58,6 +60,8 @@ class AgentRunService:
                 input_summary=input_summary,
                 output_summary=output_summary,
                 decision_basis=decision_basis,
+                duration_ms=duration_ms,
+                error=error,
             )
             session.add(step)
             session.flush()

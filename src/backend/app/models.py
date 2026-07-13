@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -158,6 +158,23 @@ class LearningPathItem(Base):
     status: Mapped[str] = mapped_column(String(40), nullable=False)
 
     path: Mapped[LearningPath] = relationship(back_populates="items")
+
+
+class LearningPathRecommendation(TimestampMixin, Base):
+    __tablename__ = "learning_path_recommendations"
+    __table_args__ = (UniqueConstraint("path_item_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    path_item_id: Mapped[int] = mapped_column(ForeignKey("learning_path_items.id"), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False)
+    execution_mode: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider: Mapped[str] = mapped_column(String(80), nullable=False)
+    model: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    fallback_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    fallback_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class GeneratedResource(TimestampMixin, Base):

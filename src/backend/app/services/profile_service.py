@@ -9,6 +9,7 @@ from app.models import (
     GeneratedResource,
     LearningPath,
     LearningPathItem,
+    LearningPathRecommendation,
     MasteryRecord,
     Quiz,
     QuizItem,
@@ -96,6 +97,7 @@ class ProfileService:
             ]
 
             if item_ids:
+                session.execute(delete(LearningPathRecommendation).where(LearningPathRecommendation.path_item_id.in_(item_ids)))
                 session.execute(delete(GeneratedResource).where(GeneratedResource.path_item_id.in_(item_ids)))
             if path_ids:
                 session.execute(delete(LearningPathItem).where(LearningPathItem.path_id.in_(path_ids)))

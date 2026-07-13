@@ -200,6 +200,9 @@ class LearningPathItemResponse(BaseModel):
     objective: str
     rationale: str | None = None
     status: LearningPathItemStatus
+    recommended_resource_type: str | None = None
+    recommendation_reason: str | None = None
+    priority: int | None = None
 
 
 class LearningPathResponse(BaseModel):
@@ -213,6 +216,12 @@ class LearningPathResponse(BaseModel):
     status: LearningPathStatus
     items: list[LearningPathItemResponse] = Field(default_factory=list)
     created_at: datetime | None = None
+    execution_mode: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    planner_duration_ms: int | None = None
 
 
 class ResourceGenerateRequest(BaseModel):

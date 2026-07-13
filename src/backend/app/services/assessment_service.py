@@ -13,6 +13,7 @@ from app.schemas import EvaluationResult, QuizItemResponse, QuizResponse
 from app.services.agent_run_service import AgentRunService
 from app.services.demo_data_service import DemoDataService
 from app.services.knowledge_base_service import KnowledgeBaseService
+from app.services.learning_path_service import LearningPathService
 from app.services.profile_updater_service import ProfileUpdaterService
 
 
@@ -214,6 +215,11 @@ class AssessmentService:
         run_service.complete_run(run.id, f"Evaluator Agent evaluated attempt {attempt_id}.")
         ProfileUpdaterService(database_url=self.database_url).update_from_trace(
             profile_id_value, trigger_type="quiz", event_key=f"quiz:{attempt_id}"
+        )
+        LearningPathService(database_url=self.database_url).refresh_active_paths(
+            profile_id_value,
+            course_id,
+            trigger=f"quiz:{attempt_id}",
         )
         return EvaluationResult(
             attempt_id=attempt_id,

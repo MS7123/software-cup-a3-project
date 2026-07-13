@@ -1,6 +1,6 @@
 # Deployment and Local Demo
 
-最后更新：2026-06-17
+最后更新：2026-07-13
 
 本文档覆盖当前比赛演示可运行的本地部署配置，包括默认离线启动、真实 LLM API 设置、embedding / 向量模型 API 设置、RAG 检索模式切换，以及各便捷启动脚本会得到什么效果。
 
@@ -180,6 +180,7 @@ $env:LLM_ENABLE_FOR_RESOURCE='true'
 $env:LLM_ENABLE_FOR_EVALUATOR='true'
 $env:LLM_ENABLE_FOR_PROFILE_UPDATER='true'
 $env:LLM_ENABLE_FOR_PROFILE_BUILDER='true'
+$env:LLM_ENABLE_FOR_PLANNER='true'
 $env:LLM_TIMEOUT_SECONDS='20'
 $env:LLM_MAX_RETRIES='0'
 $env:LLM_FALLBACK_MODE='rule_based'
@@ -243,6 +244,7 @@ $env:EMBEDDING_BYPASS_PROXY='false'
 | `LLM_ENABLE_FOR_EVALUATOR` | `false` | 显式启用后，Evaluator Agent 会用 LLM 生成评分反馈、薄弱点和下一步建议，失败时回退到 rule-based。 |
 | `LLM_ENABLE_FOR_PROFILE_UPDATER` | `false` | 显式启用后，ProfileUpdater 会先用固定 JSON schema 分析 Agent trace，失败时回退到 rule-based。 |
 | `LLM_ENABLE_FOR_PROFILE_BUILDER` | `false` | 显式启用后，初始对话画像由 LLM 结构化抽取六个维度，非法输出或远程失败时回退到现有规则构建器。 |
+| `LLM_ENABLE_FOR_PLANNER` | `false` | 显式启用后，Hybrid Planner 由规则层保证知识图谱约束，LLM 对合法候选排序并生成推荐资源和理由；非法输出回退到确定性拓扑排序。 |
 | `LLM_BASE_URL` | 空 | OpenAI-compatible endpoint base URL。 |
 | `LLM_API_KEY` | 空 | Secret，不得写入仓库、日志、frontend bundle 或 agent run 记录。 |
 | `LLM_MODEL` | 空 | 模型名称。 |

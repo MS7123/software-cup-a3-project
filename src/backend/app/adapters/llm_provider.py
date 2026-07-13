@@ -27,6 +27,7 @@ class LLMSettings:
     enable_for_resource: bool = False
     enable_for_evaluator: bool = False
     enable_for_profile_builder: bool = False
+    enable_for_planner: bool = False
     bypass_proxy: bool = False
 
     @classmethod
@@ -44,6 +45,7 @@ class LLMSettings:
             enable_for_resource=_bool_from_env("LLM_ENABLE_FOR_RESOURCE", False),
             enable_for_evaluator=_bool_from_env("LLM_ENABLE_FOR_EVALUATOR", False),
             enable_for_profile_builder=_bool_from_env("LLM_ENABLE_FOR_PROFILE_BUILDER", False),
+            enable_for_planner=_bool_from_env("LLM_ENABLE_FOR_PLANNER", False),
             bypass_proxy=_bool_from_env("LLM_BYPASS_PROXY", False),
         )
 
@@ -56,6 +58,8 @@ class LLMSettings:
             enabled = self.enable_for_evaluator
         elif purpose == "profile_builder":
             enabled = self.enable_for_profile_builder
+        elif purpose == "planner":
+            enabled = self.enable_for_planner
         else:
             enabled = self.enable_for_tutor
         return (

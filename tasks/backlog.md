@@ -28,8 +28,8 @@
 |---|---|---|---|---|---|
 | COMP-001 | 构造完整高校专业课程知识库 | A3-课程知识库 | COMP-001-AC | Backlog | 目标效果与验收标准见 `docs/plans/competition/16-a3-requirements-gap-roadmap.md` |
 | COMP-002 | 完成初始对话画像 LLM 接入 | A3-对话式画像 | COMP-002-AC | Done | 已完成 LLMProfileBuilderAgent、六维 schema、星火联机验证、历史证据和 rule-based fallback |
-| COMP-003 | 完成 Hybrid 学习路径与主动资源推荐 | A3-学习路径与资源推送 | COMP-003-AC | Current | 下一开发增量：知识图谱硬约束与 LLM 排序结合 |
-| COMP-004 | 完成 Quiz LLM 接入 | A3-个性化练习题 | COMP-004-AC | Backlog | 新增 LLMQuizAgent，保留 Critic 和 fallback |
+| COMP-003 | 完成 Hybrid 学习路径与主动资源推荐 | A3-学习路径与资源推送 | COMP-003-AC | Done | 已完成图谱硬约束、LLM 排序、主动推荐、动态重算、fallback 与星火联机验证 |
+| COMP-004 | 完成 Quiz LLM 接入 | A3-个性化练习题 | COMP-004-AC | Current | 下一开发增量：新增 LLMQuizAgent，保留 Critic、确定性评分和 fallback |
 | COMP-005 | 新增科大讯飞星辰 MaaS 比赛默认启动入口 | A3-大模型融合 | COMP-005-AC | Backlog | 使用控制台 MaaS `/v2` endpoint，默认启用 LLM purposes |
 | COMP-006 | 启用并验证已经接入的 LLM 能力 | A3-大模型融合 | COMP-006-AC | Backlog | 不重复开发 Tutor、Resource、Evaluator、ProfileUpdater |
 | COMP-007 | 统一 LLM 配置与运行证据 | A3-Multi-Agent | COMP-007-AC | Backlog | 记录 execution mode、provider、model 和 fallback |

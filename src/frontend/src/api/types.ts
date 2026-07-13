@@ -150,6 +150,9 @@ export interface LearningPathItem {
   objective: string;
   rationale: string | null;
   status: string;
+  recommended_resource_type?: string | null;
+  recommendation_reason?: string | null;
+  priority?: number | null;
 }
 
 export interface LearningPath {
@@ -161,6 +164,12 @@ export interface LearningPath {
   status: string;
   items: LearningPathItem[];
   created_at: string | null;
+  execution_mode?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  fallback_used?: boolean;
+  fallback_reason?: string | null;
+  planner_duration_ms?: number | null;
 }
 
 export interface AgentRunStep {

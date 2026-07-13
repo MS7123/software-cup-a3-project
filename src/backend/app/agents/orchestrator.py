@@ -44,8 +44,13 @@ class AgentOrchestrator:
             "planner",
             input_summary=f"基于学生画像 {profile_id}、课程 {course_id} 和目标生成学习路径。",
             output_summary=f"生成 {len(path.items)} 个阶段化学习步骤，覆盖数据结构 MVP 知识点。",
-            decision_basis=path.rationale or "依据学生画像、课程知识点顺序和先修关系规划路径。",
+            decision_basis=(
+                f"execution_mode={path.execution_mode}; provider={path.provider}; model={path.model or 'none'}; "
+                f"fallback_used={str(path.fallback_used).lower()}; fallback_reason={path.fallback_reason or 'none'}; "
+                f"{path.rationale or '依据学生画像、课程知识点顺序和先修关系规划路径。'}"
+            ),
             status="completed",
+            duration_ms=path.planner_duration_ms,
         )
         final_summary = f"Planner Agent 已生成学习路径 {path.id}，包含 {len(path.items)} 个步骤。"
         run_service.complete_run(run.id, final_summary)

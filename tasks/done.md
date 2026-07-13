@@ -29,6 +29,12 @@
 
 ## 已通过 Review 的实现任务
 
+- [x] `COMP-003`：完成 Hybrid 学习路径与主动资源推荐。
+  - 完成范围：新增 Hybrid Planner agent/factory、`LLM_ENABLE_FOR_PLANNER`、知识图谱拓扑约束、画像与掌握度排序、资源类型/理由/优先级、Quiz/画像/节点完成后的幂等重算，以及结构化校验和 rule-based fallback。
+  - 自动化证据：`tests/test_hybrid_planner.py` 的 9 项测试覆盖真实节点、先修关系、未知/重复节点、环、timeout、配置开关、画像差异和 Quiz 后重排；相关回归 20 项、全量后端测试及前端生产构建均通过。
+  - 联机证据：科大讯飞星辰 MaaS `xop3qwen1b7` 返回合法规划，`execution_mode=llm`、`fallback_used=false` 且先修关系有效；违规排序会被规则层拒绝并生成合法拓扑 fallback。
+  - 保留边界：知识点真实性、先修硬约束、无环/去重/schema 校验与 fallback 继续由规则层负责，LLM 不得绕过确定性约束。
+
 - [x] `COMP-002`：完成初始对话画像 LLM 接入。
   - 完成范围：新增 `LLMProfileBuilderAgent`、独立 factory、六维 Pydantic schema、`LLM_ENABLE_FOR_PROFILE_BUILDER`、规则 fallback，以及画像 history/Agent run 的 execution mode、provider、model、耗时和 fallback reason 证据。
   - 自动化证据：`tests/test_profile_builder_llm.py` 覆盖配置开关、六维合法输出、否定表达输入、字段别名、非法 JSON、timeout、HTTP error、API contract、LLM history 和 fallback history。
