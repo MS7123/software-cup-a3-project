@@ -2274,6 +2274,121 @@ button:disabled {
   background: rgba(74, 108, 247, 0.04);
 }
 
+.path-intent-summary {
+  display: grid;
+  gap: 1rem;
+  margin: 1.25rem 0;
+  padding: 1.25rem;
+  border: 1px solid #dfe5dc;
+  border-radius: 0.75rem;
+  background: #f8faf7;
+}
+
+.path-intent-summary header,
+.path-intent-meta,
+.path-milestone-card,
+.path-milestone-card div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.path-intent-summary header > div:first-child,
+.path-milestone-card div {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.path-intent-summary header span,
+.path-phase-summary span,
+.path-milestone-card span {
+  color: #64705f;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.path-intent-summary header strong {
+  color: #172018;
+  font-size: 1.1rem;
+}
+
+.path-intent-meta span {
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  background: #e8eee5;
+  color: #344333;
+}
+
+.path-phase-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.path-phase-summary article {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.9rem;
+  border-left: 3px solid #d8ddd5;
+  background: #ffffff;
+}
+
+.path-phase-summary .path-phase-focus {
+  border-left-color: #647b5e;
+  background: #f2f6ef;
+}
+
+.path-phase-summary small,
+.path-milestone-card small {
+  color: #6b7280;
+  line-height: 1.55;
+}
+
+.path-fallback-note {
+  margin: 0;
+  color: #7a5b2d;
+  font-size: 0.82rem;
+}
+
+.path-card-target {
+  border-color: #b9c8b4;
+  background: #f5f8f3;
+  box-shadow: inset 0 3px 0 #647b5e;
+}
+
+.path-card-prerequisite {
+  background: #fbfbfa;
+}
+
+.path-milestone-card {
+  margin-top: 1rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid #cfd9cb;
+  border-left: 4px solid #50634b;
+  border-radius: 0.75rem;
+  background: #f2f6ef;
+}
+
+.path-milestone-card p {
+  margin: 0;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+@media (max-width: 760px) {
+  .path-intent-summary header,
+  .path-milestone-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .path-phase-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
 .safety-status {
   margin: 0.75rem 0;
   border: 1px solid rgba(180, 83, 9, 0.28);

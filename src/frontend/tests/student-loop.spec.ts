@@ -42,6 +42,12 @@ test("学生端界面可以完成主要学习闭环", async ({ page }) => {
   await page.getByRole("button", { name: "学习路径", exact: true }).click();
   await page.getByTestId("create-path-button").click();
   await expect(page.getByTestId("path-item-card").first()).toBeVisible();
+  await expect(page.getByTestId("path-intent-summary")).toContainText("本次重点");
+  await expect(page.getByTestId("path-intent-summary")).toContainText("二叉树遍历");
+  await expect(page.getByTestId("path-intent-summary")).toContainText("BFS/DFS");
+  await expect(page.getByTestId("path-intent-summary")).toContainText("课程小测准备");
+  await expect(page.getByTestId("path-intent-summary")).toContainText("重点巩固");
+  await expect(page.getByTestId("path-milestone")).toContainText("课程小测模拟检验");
   await page.getByTestId("path-item-card").nth(1).click();
   await page.getByTestId("complete-path-item-button").click();
   await expect(page.getByTestId("complete-path-item-button")).toContainText("当前节点已完成");

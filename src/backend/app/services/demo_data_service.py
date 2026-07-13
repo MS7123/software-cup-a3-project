@@ -130,27 +130,42 @@ class DemoDataService:
                 session.flush()
             concepts_by_slug[concept.slug] = concept
 
-        for source_slug, target_slug, relation_type in DEMO_RELATIONS:
-            source = concepts_by_slug[source_slug]
-            target = concepts_by_slug[target_slug]
-            existing_pair = session.scalars(
-                select(ConceptRelation).where(
-                    ConceptRelation.source_concept_id == source.id,
-                    ConceptRelation.target_concept_id == target.id,
+        expected_relations = {
+            (
+                concepts_by_slug[source_slug].id,
+                concepts_by_slug[target_slug].id,
+                relation_type,
+            )
+            for source_slug, target_slug, relation_type in DEMO_RELATIONS
+        }
+        concept_ids = set(session.scalars(
+            select(Concept.id).where(Concept.course_id == course.id)
+        ).all())
+        existing_relations = session.scalars(
+            select(ConceptRelation).where(
+                ConceptRelation.source_concept_id.in_(concept_ids),
+                ConceptRelation.target_concept_id.in_(concept_ids),
+            )
+        ).all()
+        retained: set[tuple[int, int, str]] = set()
+        for relation in existing_relations:
+            key = (
+                relation.source_concept_id,
+                relation.target_concept_id,
+                relation.relation_type,
+            )
+            if key not in expected_relations or key in retained:
+                session.delete(relation)
+            else:
+                retained.add(key)
+        for source_id, target_id, relation_type in expected_relations - retained:
+            session.add(
+                ConceptRelation(
+                    source_concept_id=source_id,
+                    target_concept_id=target_id,
+                    relation_type=relation_type,
                 )
-            ).all()
-            relation = next((item for item in existing_pair if item.relation_type == relation_type), None)
-            for stale in existing_pair:
-                if stale.relation_type != relation_type:
-                    session.delete(stale)
-            if relation is None:
-                session.add(
-                    ConceptRelation(
-                        source_concept_id=source.id,
-                        target_concept_id=target.id,
-                        relation_type=relation_type,
-                    )
-                )
+            )
         return course
 
     def _load_profiles(self, session: Session) -> None:

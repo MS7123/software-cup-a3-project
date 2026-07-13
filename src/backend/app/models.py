@@ -144,6 +144,7 @@ class LearningPath(TimestampMixin, Base):
     learning_intent: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     target_concept_ids: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
     intent_confidence: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    milestones: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
 
     items: Mapped[list["LearningPathItem"]] = relationship(back_populates="path")
 

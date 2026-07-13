@@ -88,6 +88,263 @@ class HybridPlannerAgentTests(unittest.TestCase):
         self.assertEqual(result.execution_mode, "rule_based_fallback")
         self.assertIn("activity_generation", result.fallback_reason or "")
 
+    def test_explicit_bfs_goal_repairs_llm_extra_target(self) -> None:
+        concepts = [
+            PlannerConcept(4, "bfs-dfs", "BFS/DFS", "图", "medium"),
+            PlannerConcept(6, "asymptotic-notation", "渐进记号", "复杂度", "basic"),
+        ]
+        resolution = {
+            "course_scope": "focused",
+            "target_concept_ids": [4, 6],
+            "optional_support_concept_ids": [],
+            "purpose": "assessment_preparation",
+            "action": "consolidate",
+            "assessment_type": "course_quiz",
+            "time_horizon": "short_term",
+            "preferred_activities": ["concept_comparison", "mock_assessment"],
+            "desired_outcome": "能够区分两种算法",
+            "confidence": 0.9,
+        }
+        activities = {"activities": [{
+            "concept_id": 4,
+            "node_role": "target",
+            "activity_type": "error_review",
+            "objective": "对比 BFS 与 DFS 并复盘易错点",
+            "estimated_minutes": 35,
+            "success_criterion": "完成典型题并解释队列、栈和访问顺序",
+            "recommended_resource_type": "practice_questions",
+            "reason": "匹配课程小测目标",
+            "priority": 1,
+        }]}
+        result = HybridPlannerAgent(SequentialPlannerProvider([resolution, activities])).plan(
+            concepts,
+            [],
+            PlannerContext(
+                goal="巩固深度搜索和广度搜索，为课程小测做准备",
+                profile_type="exam_sprint",
+                foundation_level="beginner",
+                learning_preference="step_by_step",
+                available_time="一小时",
+                weak_points=[],
+                resource_preference="练习题",
+            ),
+        )
+
+        self.assertEqual(result.target_concept_ids, [4])
+        self.assertEqual([item.concept_id for item in result.recommendations], [4])
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertIn("target_anchors_repaired", result.warning_reason or "")
+        self.assertEqual(result.phase_traces[0].warning_reason, "target_anchors_repaired")
+
+    def test_quiz_fallback_prioritizes_targets_and_adds_path_assessment(self) -> None:
+        concepts = [
+            PlannerConcept(3, "graph-representation", "图的表示", "图", "basic"),
+            PlannerConcept(4, "bfs-dfs", "BFS/DFS", "图", "medium", "广度优先与深度优先搜索"),
+        ]
+        resolution = {
+            "course_scope": "focused",
+            "target_concept_ids": [4],
+            "optional_support_concept_ids": [],
+            "purpose": "assessment_preparation",
+            "action": "consolidate",
+            "assessment_type": "course_quiz",
+            "time_horizon": "short_term",
+            "preferred_activities": ["concept_comparison", "mock_assessment"],
+            "desired_outcome": "能够区分 BFS 与 DFS",
+            "confidence": 0.9,
+        }
+        result = HybridPlannerAgent(
+            SequentialPlannerProvider([resolution, TimeoutError("activity timeout")])
+        ).plan(
+            concepts,
+            [PlannerRelation(3, 4, "prerequisite")],
+            PlannerContext(
+                goal="巩固 BFS/DFS，为课程小测做准备",
+                profile_type="exam_sprint",
+                foundation_level="beginner",
+                learning_preference="step_by_step",
+                available_time="一小时",
+                weak_points=["BFS/DFS"],
+                resource_preference="练习题",
+            ),
+        )
+
+        prerequisite, target = result.recommendations
+        self.assertEqual(prerequisite.activity_type, "worked_example")
+        self.assertNotEqual(prerequisite.activity_type, "mock_assessment")
+        self.assertGreater(target.estimated_minutes, prerequisite.estimated_minutes)
+        self.assertIn("易错点", target.objective)
+        self.assertEqual(len(result.milestones), 1)
+        self.assertEqual(result.milestones[0].milestone_type, "mock_assessment")
+        self.assertEqual(result.milestones[0].covered_concept_ids, [4])
+
+    def test_quiz_llm_output_without_target_focus_is_rejected(self) -> None:
+        concepts = [
+            PlannerConcept(3, "graph-representation", "图的表示", "图", "basic"),
+            PlannerConcept(4, "bfs-dfs", "BFS/DFS", "图", "medium"),
+        ]
+        resolution = {
+            "course_scope": "focused",
+            "target_concept_ids": [4],
+            "optional_support_concept_ids": [],
+            "purpose": "assessment_preparation",
+            "action": "consolidate",
+            "assessment_type": "course_quiz",
+            "time_horizon": "short_term",
+            "preferred_activities": ["concept_comparison", "mock_assessment"],
+            "desired_outcome": "完成小测准备",
+            "confidence": 0.9,
+        }
+        unfocused = {"activities": [
+            {
+                "concept_id": 3,
+                "node_role": "prerequisite",
+                "activity_type": "mock_assessment",
+                "objective": "测试图的表示",
+                "estimated_minutes": 20,
+                "success_criterion": "完成练习",
+                "recommended_resource_type": "practice_questions",
+                "reason": "准备小测",
+                "priority": 1,
+            },
+            {
+                "concept_id": 4,
+                "node_role": "target",
+                "activity_type": "concept_comparison",
+                "objective": "对比 BFS 与 DFS",
+                "estimated_minutes": 20,
+                "success_criterion": "完成练习",
+                "recommended_resource_type": "practice_questions",
+                "reason": "准备小测",
+                "priority": 2,
+            },
+        ]}
+        result = HybridPlannerAgent(SequentialPlannerProvider([resolution, unfocused])).plan(
+            concepts,
+            [PlannerRelation(3, 4, "prerequisite")],
+            PlannerContext(
+                goal="巩固 BFS/DFS，为课程小测做准备",
+                profile_type="exam_sprint",
+                foundation_level="beginner",
+                learning_preference="step_by_step",
+                available_time="一小时",
+                weak_points=[],
+                resource_preference="练习题",
+            ),
+        )
+
+        self.assertEqual(result.execution_mode, "rule_based_fallback")
+        prerequisite, target = result.recommendations
+        self.assertEqual(prerequisite.activity_type, "worked_example")
+        self.assertGreater(target.estimated_minutes, prerequisite.estimated_minutes)
+
+    def test_resource_type_in_activity_field_is_safely_repaired(self) -> None:
+        concepts = [PlannerConcept(4, "bfs-dfs", "BFS/DFS", "图", "medium")]
+        resolution = {
+            "course_scope": "focused",
+            "target_concept_ids": [4],
+            "optional_support_concept_ids": [],
+            "purpose": "assessment_preparation",
+            "action": "consolidate",
+            "assessment_type": "course_quiz",
+            "time_horizon": "short_term",
+            "preferred_activities": ["concept_comparison", "mock_assessment"],
+            "desired_outcome": "完成小测准备",
+            "confidence": 0.9,
+        }
+        confused_activity = {"activities": [{
+            "concept_id": 4,
+            "node_role": "target",
+            "activity_type": "guided_note",
+            "objective": "对比 BFS 与 DFS",
+            "estimated_minutes": 35,
+            "success_criterion": "完成两道典型题",
+            "recommended_resource_type": "guided_note",
+            "reason": "匹配小测目标",
+            "priority": 1,
+        }]}
+        result = HybridPlannerAgent(
+            SequentialPlannerProvider([resolution, confused_activity])
+        ).plan(
+            concepts,
+            [],
+            PlannerContext(
+                goal="巩固 BFS/DFS，为课程小测做准备",
+                profile_type="exam_sprint",
+                foundation_level="beginner",
+                learning_preference="step_by_step",
+                available_time="一小时",
+                weak_points=[],
+                resource_preference="练习题",
+            ),
+        )
+
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertEqual(result.recommendations[0].activity_type, "explanation")
+        self.assertIn("activity_type_repaired", result.warning_reason or "")
+
+    def test_quiz_llm_time_is_rebalanced_without_discarding_content(self) -> None:
+        concepts = [
+            PlannerConcept(3, "graph-representation", "图的表示", "图", "basic"),
+            PlannerConcept(4, "bfs-dfs", "BFS/DFS", "图", "medium"),
+        ]
+        resolution = {
+            "course_scope": "focused",
+            "target_concept_ids": [4],
+            "optional_support_concept_ids": [],
+            "purpose": "assessment_preparation",
+            "action": "consolidate",
+            "assessment_type": "course_quiz",
+            "time_horizon": "short_term",
+            "preferred_activities": ["worked_example", "error_review"],
+            "desired_outcome": "完成小测准备",
+            "confidence": 0.9,
+        }
+        activities = {"activities": [
+            {
+                "concept_id": 3,
+                "node_role": "prerequisite",
+                "activity_type": "worked_example",
+                "objective": "确认图表示基础",
+                "estimated_minutes": 20,
+                "success_criterion": "完成诊断题",
+                "recommended_resource_type": "practice_questions",
+                "reason": "检查先修",
+                "priority": 1,
+            },
+            {
+                "concept_id": 4,
+                "node_role": "target",
+                "activity_type": "error_review",
+                "objective": "保留这段 LLM 生成的重点复盘内容",
+                "estimated_minutes": 20,
+                "success_criterion": "完成两道典型题",
+                "recommended_resource_type": "practice_questions",
+                "reason": "匹配小测",
+                "priority": 2,
+            },
+        ]}
+        result = HybridPlannerAgent(SequentialPlannerProvider([resolution, activities])).plan(
+            concepts,
+            [PlannerRelation(3, 4, "prerequisite")],
+            PlannerContext(
+                goal="巩固 BFS/DFS，为课程小测做准备",
+                profile_type="exam_sprint",
+                foundation_level="beginner",
+                learning_preference="step_by_step",
+                available_time="一小时",
+                weak_points=[],
+                resource_preference="练习题",
+            ),
+        )
+
+        prerequisite, target = result.recommendations
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertEqual(prerequisite.estimated_minutes, 5)
+        self.assertEqual(target.estimated_minutes, 40)
+        self.assertIn("保留这段 LLM", target.objective)
+        self.assertIn("assessment_time_rebalanced", result.warning_reason or "")
+
     def test_activity_with_wrong_node_role_is_rejected_and_falls_back(self) -> None:
         invalid = _activities()
         invalid["activities"][0]["node_role"] = "prerequisite"

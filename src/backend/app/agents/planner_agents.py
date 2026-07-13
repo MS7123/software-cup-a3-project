@@ -113,6 +113,16 @@ class PlannerPhaseTrace:
     phase: str
     execution_mode: str
     fallback_reason: str | None = None
+    warning_reason: str | None = None
+
+
+class PlannerMilestone(BaseModel):
+    milestone_type: Literal["mock_assessment"]
+    title: str = Field(min_length=1, max_length=160)
+    objective: str = Field(min_length=1, max_length=300)
+    covered_concept_ids: list[int] = Field(min_length=1, max_length=100)
+    estimated_minutes: int = Field(ge=5, le=60)
+    success_criterion: str = Field(min_length=1, max_length=300)
 
 
 @dataclass(frozen=True)
@@ -130,6 +140,7 @@ class PlannerResult:
     target_concept_ids: list[int] = field(default_factory=list)
     intent_confidence: float = 0
     phase_traces: list[PlannerPhaseTrace] = field(default_factory=list)
+    milestones: list[PlannerMilestone] = field(default_factory=list)
 
 
 class ActivityOutputItem(BaseModel):
@@ -164,12 +175,14 @@ class RuleBasedHybridPlannerAgent:
             concepts, relations, resolution.target_concept_ids, resolution.optional_support_concept_ids, context, resolution.learning_intent
         )
         recommendations = _fallback_activities(selected, resolution.learning_intent, context)
+        milestones = _build_path_milestones(resolution.learning_intent, resolution.target_concept_ids, context)
         return PlannerResult(
             recommendations, "rule_based", "rule_based", "", False, None, _elapsed_ms(started),
             learning_intent=resolution.learning_intent,
             target_concept_ids=resolution.target_concept_ids,
             intent_confidence=resolution.confidence,
             phase_traces=[PlannerPhaseTrace("goal_resolution", "rule_based"), PlannerPhaseTrace("constraint_validation", "rule_based"), PlannerPhaseTrace("activity_generation", "rule_based")],
+            milestones=milestones,
         )
 
 
@@ -188,6 +201,7 @@ class HybridPlannerAgent:
             raise GoalResolutionError("学习目标包含无法安全处理的内容，请改写后重试。")
         phase_traces: list[PlannerPhaseTrace] = []
         fallback_reasons: list[str] = []
+        warning_reasons: list[str] = []
         provider_metadata: dict[str, Any] = {}
         try:
             if context.preserve_candidate_set and context.persisted_learning_intent and context.persisted_target_concept_ids:
@@ -201,12 +215,20 @@ class HybridPlannerAgent:
                 raw = self.provider.generate(_goal_resolution_messages(concepts, context), response_schema=GOAL_RESOLUTION_WIRE_SCHEMA)
                 provider_metadata.update(raw.metadata)
                 resolution = _parse_goal_resolution(raw.content)
+                anchored_resolution = _apply_explicit_target_anchors(resolution, context.goal, concepts)
+                if anchored_resolution.target_concept_ids != resolution.target_concept_ids:
+                    warning_reasons.append("target_anchors_repaired")
+                resolution = anchored_resolution
                 _validate_resolution(resolution, concepts, context.goal)
                 if resolution.course_scope == "full_course":
                     resolution = resolution.model_copy(
                         update={"target_concept_ids": [concept.id for concept in concepts]}
                     )
-                phase_traces.append(PlannerPhaseTrace("goal_resolution", "llm"))
+                phase_traces.append(PlannerPhaseTrace(
+                    "goal_resolution",
+                    "llm",
+                    warning_reason="; ".join(warning_reasons) or None,
+                ))
         except GoalResolutionError:
             raise
         except Exception as exc:
@@ -222,11 +244,27 @@ class HybridPlannerAgent:
             concepts, relations, resolution.target_concept_ids, resolution.optional_support_concept_ids, context, resolution.learning_intent
         )
         phase_traces.append(PlannerPhaseTrace("constraint_validation", "rule_based"))
+        milestones = _build_path_milestones(resolution.learning_intent, resolution.target_concept_ids, context)
         try:
             raw = self.provider.generate(_activity_messages(selected, resolution.learning_intent, context), response_schema=ACTIVITY_OUTPUT_SCHEMA)
             provider_metadata.update(raw.metadata)
-            activities = _parse_activity_output(raw.content)
-            recommendations = _validate_and_convert_activities(activities, selected, context)
+            activities, activity_warnings = _parse_activity_output(raw.content)
+            warning_reasons.extend(activity_warnings)
+            activities, focus_warnings = _rebalance_assessment_minutes(
+                activities,
+                selected,
+                resolution.learning_intent,
+                context,
+                reserved_minutes=sum(item.estimated_minutes for item in milestones),
+            )
+            warning_reasons.extend(focus_warnings)
+            recommendations = _validate_and_convert_activities(
+                activities,
+                selected,
+                context,
+                resolution.learning_intent,
+                reserved_minutes=sum(item.estimated_minutes for item in milestones),
+            )
             phase_traces.append(PlannerPhaseTrace("activity_generation", "llm"))
         except Exception as exc:
             reason = _fallback_reason(exc)
@@ -245,11 +283,13 @@ class HybridPlannerAgent:
             fallback_used=fallback_used,
             fallback_reason="; ".join(fallback_reasons) or None,
             duration_ms=_elapsed_ms(started),
+            warning_reason="; ".join(warning_reasons) or None,
             provider_metadata=provider_metadata,
             learning_intent=resolution.learning_intent,
             target_concept_ids=resolution.target_concept_ids,
             intent_confidence=resolution.confidence,
             phase_traces=phase_traces,
+            milestones=milestones,
         )
 
 
@@ -277,15 +317,47 @@ def resolve_goal_deterministically(goal: str, concepts: list[PlannerConcept]) ->
         target_ids = [item.id for item in concepts]
         intent = _infer_intent(goal, concepts)
         return GoalResolution(course_scope="full_course", target_concept_ids=target_ids[:4], learning_intent=intent, confidence=0.9)
-    matched: list[int] = []
-    for concept in concepts:
-        names = (concept.name, concept.slug, *_ALIASES.get(concept.slug, ()))
-        if any(_normalize(name) in normalized for name in names if _normalize(name)):
-            matched.append(concept.id)
-    matched = list(dict.fromkeys(matched))[:4]
+    matched = _explicit_target_ids(goal, concepts)[:4]
     if not matched:
         raise GoalResolutionError()
     return GoalResolution(target_concept_ids=matched, learning_intent=_infer_intent(goal, concepts), confidence=0.75)
+
+
+def _explicit_target_ids(goal: str, concepts: list[PlannerConcept]) -> list[int]:
+    normalized_goal = _normalize(goal)
+    matches: list[tuple[PlannerConcept, str]] = []
+    for concept in concepts:
+        phrases = {
+            _normalize(value)
+            for value in (concept.name, concept.slug, *_ALIASES.get(concept.slug, ()))
+            if _normalize(value)
+        }
+        matched_phrases = [phrase for phrase in phrases if phrase in normalized_goal]
+        if matched_phrases:
+            matches.append((concept, max(matched_phrases, key=len)))
+
+    explicit: list[int] = []
+    for concept, phrase in matches:
+        shadowed_by_more_specific_match = any(
+            other.id != concept.id and phrase != other_phrase and phrase in other_phrase
+            for other, other_phrase in matches
+        )
+        if not shadowed_by_more_specific_match:
+            explicit.append(concept.id)
+    return list(dict.fromkeys(explicit))
+
+
+def _apply_explicit_target_anchors(
+    resolution: GoalResolution,
+    goal: str,
+    concepts: list[PlannerConcept],
+) -> GoalResolution:
+    if resolution.course_scope != "focused":
+        return resolution
+    explicit_ids = _explicit_target_ids(goal, concepts)
+    if not explicit_ids:
+        return resolution
+    return resolution.model_copy(update={"target_concept_ids": explicit_ids[:4]})
 
 
 def _infer_intent(goal: str, concepts: list[PlannerConcept]) -> LearningIntent:
@@ -384,6 +456,8 @@ def _topological_order(concepts: list[PlannerConcept], relations: list[PlannerRe
 
 
 def _fallback_activities(selected: list[SelectedPlannerConcept], intent: LearningIntent, context: PlannerContext) -> list[PlannerRecommendation]:
+    if intent.purpose == "assessment_preparation" and intent.assessment_type != "none":
+        return _assessment_fallback_activities(selected, intent, context)
     preferred = list(intent.preferred_activities)
     recommendations = []
     available = _available_minutes(context.available_time)
@@ -407,7 +481,134 @@ def _fallback_activities(selected: list[SelectedPlannerConcept], intent: Learnin
     return recommendations
 
 
-def _validate_and_convert_activities(output: ActivityOutput, selected: list[SelectedPlannerConcept], context: PlannerContext) -> list[PlannerRecommendation]:
+def _assessment_fallback_activities(
+    selected: list[SelectedPlannerConcept],
+    intent: LearningIntent,
+    context: PlannerContext,
+) -> list[PlannerRecommendation]:
+    available = _available_minutes(context.available_time) or 60
+    target_count = sum(item.node_role == "target" for item in selected)
+    prerequisite_count = len(selected) - target_count
+    milestone_minutes = _assessment_minutes(available)
+    prerequisite_minutes = 5
+    remaining_for_targets = max(
+        target_count * 5,
+        available - milestone_minutes - prerequisite_count * prerequisite_minutes,
+    )
+    target_minutes = max(5, remaining_for_targets // max(1, target_count))
+    recommendations: list[PlannerRecommendation] = []
+    for index, item in enumerate(selected, start=1):
+        concept = item.concept
+        if item.node_role == "prerequisite":
+            recommendations.append(PlannerRecommendation(
+                concept_id=concept.id,
+                node_role="prerequisite",
+                activity_type="worked_example",
+                objective=f"用一道诊断题快速确认“{concept.name}”的必要基础，正确后直接进入重点复习。",
+                estimated_minutes=prerequisite_minutes,
+                success_criterion=f"在 {prerequisite_minutes} 分钟内正确完成“{concept.name}”基础诊断题。",
+                recommended_resource_type="practice_questions",
+                reason="该节点只用于检查硬先修是否满足，不占用主要复习时间。",
+                priority=index,
+            ))
+            continue
+        coverage = concept.description or concept.name
+        recommendations.append(PlannerRecommendation(
+            concept_id=concept.id,
+            node_role="target",
+            activity_type="error_review",
+            objective=(
+                f"围绕“{concept.name}”完成概念对比、典型题和易错点复盘，"
+                f"重点覆盖：{coverage}"
+            ),
+            estimated_minutes=target_minutes,
+            success_criterion=f"完成至少 2 道“{concept.name}”典型题，并能解释错误选项或错误步骤。",
+            recommended_resource_type="practice_questions",
+            reason=f"“{concept.name}”是本次小测准备的明确重点，优先分配练习和复盘时间。",
+            priority=index,
+        ))
+    return recommendations
+
+
+def _build_path_milestones(
+    intent: LearningIntent,
+    target_concept_ids: list[int],
+    context: PlannerContext,
+) -> list[PlannerMilestone]:
+    if intent.purpose != "assessment_preparation" or intent.assessment_type == "none":
+        return []
+    available = _available_minutes(context.available_time) or 60
+    assessment_label = {
+        "course_quiz": "课程小测",
+        "final_exam": "期末考试",
+        "interview": "面试检验",
+    }.get(intent.assessment_type, "学习检测")
+    return [PlannerMilestone(
+        milestone_type="mock_assessment",
+        title=f"{assessment_label}模拟检验",
+        objective="完成一组覆盖全部目标知识点的综合题，并根据错题定位下一轮复习重点。",
+        covered_concept_ids=list(dict.fromkeys(target_concept_ids)),
+        estimated_minutes=_assessment_minutes(available),
+        success_criterion="正确率达到 80%，并能解释每一道错题对应的知识点。",
+    )]
+
+
+def _assessment_minutes(available: int) -> int:
+    return max(10, min(20, round(available * 0.25)))
+
+
+def _rebalance_assessment_minutes(
+    output: ActivityOutput,
+    selected: list[SelectedPlannerConcept],
+    intent: LearningIntent,
+    context: PlannerContext,
+    reserved_minutes: int = 0,
+) -> tuple[ActivityOutput, list[str]]:
+    """Keep LLM-authored activities while enforcing assessment time focus."""
+    if intent.purpose != "assessment_preparation" or intent.assessment_type == "none":
+        return output, []
+
+    roles = {item.concept.id: item.node_role for item in selected}
+    ordered = sorted(output.activities, key=lambda item: item.priority)
+    prerequisite_ids = [item.concept_id for item in ordered if roles.get(item.concept_id) == "prerequisite"]
+    target_ids = [item.concept_id for item in ordered if roles.get(item.concept_id) == "target"]
+    if not target_ids:
+        return output, []
+
+    available = _available_minutes(context.available_time) or 60
+    prerequisite_minutes = 5
+    target_budget = max(
+        len(target_ids) * 5,
+        available - reserved_minutes - len(prerequisite_ids) * prerequisite_minutes,
+    )
+    target_base, target_remainder = divmod(target_budget, len(target_ids))
+    target_position = {concept_id: index for index, concept_id in enumerate(target_ids)}
+
+    changed = False
+    rebalanced = []
+    for item in output.activities:
+        role = roles.get(item.concept_id)
+        if role == "prerequisite":
+            minutes = prerequisite_minutes
+        elif role == "target":
+            minutes = target_base + (1 if target_position[item.concept_id] < target_remainder else 0)
+        else:
+            minutes = item.estimated_minutes
+        minutes = max(5, min(60, minutes))
+        changed = changed or minutes != item.estimated_minutes
+        rebalanced.append(item.model_copy(update={"estimated_minutes": minutes}))
+
+    warnings = ["assessment_time_rebalanced"] if changed else []
+    return ActivityOutput(activities=rebalanced), warnings
+
+
+def _validate_and_convert_activities(
+    output: ActivityOutput,
+    selected: list[SelectedPlannerConcept],
+    context: PlannerContext,
+    intent: LearningIntent,
+    reserved_minutes: int = 0,
+) -> list[PlannerRecommendation]:
     expected = {item.concept.id: item for item in selected}
     if len(output.activities) != len(expected) or {item.concept_id for item in output.activities} != set(expected):
         raise ValueError("Activity output must contain every selected concept exactly once.")
@@ -417,8 +618,15 @@ def _validate_and_convert_activities(output: ActivityOutput, selected: list[Sele
     for item in ordered:
         if item.node_role != expected[item.concept_id].node_role:
             raise ValueError("Activity node_role must match the validated path role.")
+    if intent.purpose == "assessment_preparation" and intent.assessment_type != "none":
+        if any(item.node_role == "prerequisite" and item.activity_type == "mock_assessment" for item in ordered):
+            raise ValueError("Prerequisite nodes may not consume the path-level mock assessment.")
+        target_minutes = sum(item.estimated_minutes for item in ordered if item.node_role == "target")
+        prerequisite_minutes = sum(item.estimated_minutes for item in ordered if item.node_role == "prerequisite")
+        if prerequisite_minutes and target_minutes < prerequisite_minutes * 2:
+            raise ValueError("Assessment preparation must prioritize target concepts over prerequisites.")
     available = _available_minutes(context.available_time)
-    if available and sum(item.estimated_minutes for item in ordered) > available * 1.2:
+    if available and sum(item.estimated_minutes for item in ordered) + reserved_minutes > available * 1.2:
         raise ValueError("Activity time clearly exceeds the student's available time.")
     return [PlannerRecommendation(**item.model_dump()) for item in ordered]
 
@@ -441,7 +649,7 @@ def _goal_resolution_messages(concepts: list[PlannerConcept], context: PlannerCo
 
 def _activity_messages(selected: list[SelectedPlannerConcept], intent: LearningIntent, context: PlannerContext) -> list[dict[str, str]]:
     nodes = [{"concept_id": item.concept.id, "name": item.concept.name, "node_role": item.node_role} for item in selected]
-    return [{"role": "system", "content": "为既定节点生成简体中文学习活动，只返回一个 JSON 对象，不要解释。根字段必须是 activities。每项必须完整包含 concept_id、node_role、activity_type、objective、estimated_minutes、success_criterion、recommended_resource_type、reason、priority。格式示例：{\"activities\":[{\"concept_id\":4,\"node_role\":\"target\",\"activity_type\":\"concept_comparison\",\"objective\":\"比较 BFS 与 DFS\",\"estimated_minutes\":20,\"success_criterion\":\"能够独立说出三项差异\",\"recommended_resource_type\":\"practice_questions\",\"reason\":\"匹配小测准备目标\",\"priority\":1}]}。每个节点恰好一次，priority 连续，单项 5-60 分钟，不得增加知识点。资源仅限 guided_note、practice_questions、mind_map、extended_reading、coding_case。"}, {"role": "user", "content": f"learning_intent：{intent.model_dump_json()}\n可用时间：{context.available_time}\n学习偏好：{context.learning_preference}\n资源偏好：{context.resource_preference}\n节点：{json.dumps(nodes, ensure_ascii=False)}"}]
+    return [{"role": "system", "content": "为既定节点生成简体中文学习活动，只返回一个 JSON 对象，不要解释。根字段必须是 activities。每项必须完整包含 concept_id、node_role、activity_type、objective、estimated_minutes、success_criterion、recommended_resource_type、reason、priority。activity_type 只能是 explanation、concept_comparison、worked_example、coding、error_review、mock_assessment、visual_map；recommended_resource_type 才能使用 guided_note、practice_questions、mind_map、extended_reading、coding_case，禁止混用这两个字段。格式示例：{\"activities\":[{\"concept_id\":4,\"node_role\":\"target\",\"activity_type\":\"concept_comparison\",\"objective\":\"比较 BFS 与 DFS\",\"estimated_minutes\":20,\"success_criterion\":\"能够独立说出三项差异\",\"recommended_resource_type\":\"practice_questions\",\"reason\":\"匹配小测准备目标\",\"priority\":1}]}。每个节点恰好一次，priority 连续，单项 5-60 分钟，不得增加知识点。若目标是测验准备，先修节点不得使用 mock_assessment，目标节点的总时间至少应为先修节点总时间的两倍；最终模拟测验由系统作为路径里程碑另行添加，不要在节点中重复生成。"}, {"role": "user", "content": f"learning_intent：{intent.model_dump_json()}\n可用时间：{context.available_time}\n学习偏好：{context.learning_preference}\n资源偏好：{context.resource_preference}\n节点：{json.dumps(nodes, ensure_ascii=False)}"}]
 
 
 def _resource_for_activity(activity: str, preference: str) -> str:
@@ -520,14 +728,30 @@ def _parse_goal_resolution(content: str) -> GoalResolution:
     )
 
 
-def _parse_activity_output(content: str) -> ActivityOutput:
+def _parse_activity_output(content: str) -> tuple[ActivityOutput, list[str]]:
     payload = json.loads(_extract_json_object(content))
     if isinstance(payload, dict) and "activities" not in payload:
         for alias in ("node", "nodes"):
             if isinstance(payload.get(alias), list):
                 payload = {"activities": payload[alias]}
                 break
-    return ActivityOutput.model_validate(payload)
+    warnings: list[str] = []
+    resource_to_activity = {
+        "guided_note": "explanation",
+        "practice_questions": "worked_example",
+        "mind_map": "visual_map",
+        "extended_reading": "explanation",
+        "coding_case": "coding",
+    }
+    if isinstance(payload, dict) and isinstance(payload.get("activities"), list):
+        for item in payload["activities"]:
+            if not isinstance(item, dict):
+                continue
+            activity_type = item.get("activity_type")
+            if activity_type in resource_to_activity:
+                item["activity_type"] = resource_to_activity[activity_type]
+                warnings.append("activity_type_repaired")
+    return ActivityOutput.model_validate(payload), list(dict.fromkeys(warnings))
 
 
 def _fallback_reason(exc: Exception) -> str:

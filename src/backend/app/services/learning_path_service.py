@@ -55,6 +55,7 @@ class LearningPathService:
                 learning_intent=result.learning_intent.model_dump() if result.learning_intent else {},
                 target_concept_ids=result.target_concept_ids,
                 intent_confidence=result.intent_confidence,
+                milestones=[item.model_dump() for item in result.milestones],
             )
             session.add(path)
             session.flush()
@@ -203,6 +204,7 @@ class LearningPathService:
                     else:
                         self._update_recommendation_record(record, recommendation, result)
                 path.rationale = self._path_rationale(profile, course, path.goal, result, trigger)
+                path.milestones = [item.model_dump() for item in result.milestones]
                 session.flush()
                 ordered_items = self._path_items(session, path.id)
                 records = self._recommendations(session, ordered_items)
@@ -374,7 +376,13 @@ class LearningPathService:
             learning_intent=dict(path.learning_intent or {}),
             target_concept_ids=list(path.target_concept_ids or []),
             intent_confidence=float(path.intent_confidence or 0),
-            planner_phases=[{"phase": item.phase, "execution_mode": item.execution_mode, "fallback_reason": item.fallback_reason} for item in (planner_result.phase_traces if planner_result else [])],
+            milestones=list(path.milestones or []),
+            planner_phases=[{
+                "phase": item.phase,
+                "execution_mode": item.execution_mode,
+                "fallback_reason": item.fallback_reason,
+                "warning_reason": item.warning_reason,
+            } for item in (planner_result.phase_traces if planner_result else [])],
         )
 
     def _path_rationale(self, profile, course, goal: str, result: PlannerResult, trigger: str) -> str:

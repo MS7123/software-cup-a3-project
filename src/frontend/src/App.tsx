@@ -18,6 +18,7 @@ import type {
   GeneratedResource,
   KnowledgeSearchResult,
   LearningFlow,
+  LearningPath,
   LearningPathItem,
   ManagedDocument,
   Quiz,
@@ -642,6 +643,7 @@ export function App() {
       {error ? <p className="error-note" role="alert">{error}</p> : null}
       {busy === "create-path" ? <AgentLoading testId="planner-loading" title="学习规划师正在编排路径" detail="系统正在结合画像、课程图谱和学习目标排序。" /> : null}
       <InlineAgentTrace action="path" busy={busy === "create-path"} runs={runs} visible={retainedTraces.includes("path")} />
+      <PathIntentSummary path={flow?.learning_path ?? null} concepts={graph?.concepts ?? []} />
       <div className="path-grid">
         {pathItems.map((item) => (
           <PathItemCard
@@ -654,6 +656,16 @@ export function App() {
         ))}
         {pathItems.length === 0 ? <EmptyState text="生成学习路径后，这里会展示按顺序排列的学习节点。" /> : null}
       </div>
+      {flow?.learning_path.milestones?.map((milestone) => (
+        <article className="path-milestone-card" data-testid="path-milestone" key={`${milestone.milestone_type}-${milestone.title}`}>
+          <div>
+            <span>小测检验 · {milestone.estimated_minutes} 分钟</span>
+            <strong>{milestone.title}</strong>
+          </div>
+          <p>{milestone.objective}</p>
+          <small>完成标准：{milestone.success_criterion}</small>
+        </article>
+      ))}
       {selectedItem ? (
         <button
           className="primary-button mt-3"
@@ -1374,9 +1386,64 @@ function MultiAgentOverview({ activeStep }: { activeStep: StepKey }) {
   );
 }
 
+function PathIntentSummary({ path, concepts }: { path: LearningPath | null; concepts: Concept[] }) {
+  if (!path) return null;
+  const namesById = new Map(concepts.map((concept) => [concept.id, concept.name]));
+  const targetNames = (path.target_concept_ids ?? [])
+    .map((conceptId) => namesById.get(conceptId))
+    .filter((name): name is string => Boolean(name));
+  const prerequisiteItems = path.items.filter((item) => item.node_role === "prerequisite");
+  const targetItems = path.items.filter((item) => item.node_role === "target");
+  const milestoneMinutes = (path.milestones ?? []).reduce((total, item) => total + item.estimated_minutes, 0);
+  const totalMinutes = path.items.reduce((total, item) => total + item.estimated_minutes, 0) + milestoneMinutes;
+  const purpose = String(path.learning_intent?.purpose ?? "concept_learning");
+  const assessmentType = String(path.learning_intent?.assessment_type ?? "none");
+  const hasAssessmentMilestone = Boolean(path.milestones?.length);
+  const purposeLabel = {
+    assessment_preparation: assessmentType === "final_exam" ? "期末考试准备" : "课程小测准备",
+    concept_learning: "概念学习",
+    project_application: "项目实践",
+    interview_preparation: "面试准备",
+    skill_consolidation: "知识巩固"
+  }[purpose] ?? "个性化学习";
+
+  return (
+    <section className="path-intent-summary" data-testid="path-intent-summary" aria-label="本次学习路径摘要">
+      <header>
+        <div>
+          <span>本次重点</span>
+          <strong>{targetNames.join("、") || "等待识别目标知识点"}</strong>
+        </div>
+        <div className="path-intent-meta">
+          <span>{purposeLabel}</span>
+          <span>预计 {totalMinutes} 分钟</span>
+        </div>
+      </header>
+      <div className="path-phase-summary">
+        <article>
+          <span>01 基础检查</span>
+          <strong>{prerequisiteItems.length} 个必要先修</strong>
+          <small>只做快速诊断，不占用主要复习时间</small>
+        </article>
+        <article className="path-phase-focus">
+          <span>02 重点巩固</span>
+          <strong>{targetItems.length} 个目标知识点</strong>
+          <small>完成概念对比、典型题和易错点复盘</small>
+        </article>
+        <article>
+          <span>03 {hasAssessmentMilestone ? "小测检验" : "成果检验"}</span>
+          <strong>{hasAssessmentMilestone ? "综合模拟小测" : "按目标完成检测"}</strong>
+          <small>{path.milestones?.[0]?.success_criterion ?? "完成目标节点后进行掌握度检测"}</small>
+        </article>
+      </div>
+      {path.fallback_used ? <p className="path-fallback-note">活动生成发生安全降级，系统仍按本次学习目的保留重点、时间分配和小测检验。</p> : null}
+    </section>
+  );
+}
+
 function PathItemCard({ item, concept, selected, onSelect }: { item: LearningPathItem; concept: Concept | null; selected: boolean; onSelect: () => void }) {
   return (
-    <button className={`path-card ${selected ? "path-card-active" : ""}`} data-testid="path-item-card" onClick={onSelect}>
+    <button className={`path-card path-card-${item.node_role} ${selected ? "path-card-active" : ""}`} data-testid="path-item-card" onClick={onSelect}>
       <span>第 {item.order_index} 步 · {item.node_role === "target" ? "目标节点" : "基础节点"}</span>
       <strong>{item.title}</strong>
       <p>{item.objective}</p>

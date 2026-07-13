@@ -17,7 +17,8 @@ from app.agents.planner_agents import (
 )
 from app.db.session import get_engine, session_scope
 from app.main import create_app
-from app.models import LearningPath
+from app.models import Concept, ConceptRelation, LearningPath
+from app.services.demo_data_service import DemoDataService
 
 
 class SemanticPlannerContractTests(unittest.TestCase):
@@ -124,13 +125,127 @@ class SemanticPlannerApiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, response.text)
             path = response.json()["learning_path"]
             self.assertEqual(path["learning_intent"]["purpose"], "assessment_preparation")
-            self.assertTrue(path["target_concept_ids"])
+            concept_by_id = {item["id"]: item["name"] for item in client.get(
+                f"/api/v1/courses/{demo['course_id']}/graph"
+            ).json()["concepts"]}
+            self.assertEqual(
+                {concept_by_id[item] for item in path["target_concept_ids"]},
+                {"BFS/DFS"},
+            )
             self.assertLessEqual(len(path["items"]), 8)
+            self.assertEqual(len(path["milestones"]), 1)
+            self.assertEqual(path["milestones"][0]["milestone_type"], "mock_assessment")
+            target_minutes = sum(item["estimated_minutes"] for item in path["items"] if item["node_role"] == "target")
+            prerequisite_minutes = sum(item["estimated_minutes"] for item in path["items"] if item["node_role"] == "prerequisite")
+            self.assertGreater(target_minutes, prerequisite_minutes)
             for item in path["items"]:
                 self.assertIn(item["node_role"], {"target", "prerequisite"})
                 self.assertTrue(item["activity_type"])
                 self.assertGreaterEqual(item["estimated_minutes"], 5)
                 self.assertTrue(item["success_criterion"])
+
+    def test_demo_reload_removes_obsolete_legacy_relations(self) -> None:
+        demo = DemoDataService(database_url=self.database_url).load_demo_data().demo_data
+        with session_scope(self.database_url) as session:
+            concepts = {
+                item.slug: item
+                for item in session.scalars(select(Concept).where(Concept.course_id == demo.course_id)).all()
+            }
+            legacy_concept = Concept(
+                course_id=demo.course_id,
+                slug="legacy-stack-queue",
+                name="旧版栈/队列",
+                chapter="历史数据",
+                description="旧版 Demo 概念，仅用于迁移测试。",
+                difficulty="basic",
+            )
+            session.add(legacy_concept)
+            session.flush()
+            legacy_concept_id = legacy_concept.id
+            traversal_id = concepts["binary-tree-traversal"].id
+            session.add_all([
+                ConceptRelation(
+                    source_concept_id=concepts["complexity-analysis"].id,
+                    target_concept_id=concepts["bfs-dfs"].id,
+                    relation_type="prerequisite",
+                ),
+                ConceptRelation(
+                    source_concept_id=concepts["binary-tree-traversal"].id,
+                    target_concept_id=concepts["bfs-dfs"].id,
+                    relation_type="prerequisite",
+                ),
+                ConceptRelation(
+                    source_concept_id=legacy_concept_id,
+                    target_concept_id=traversal_id,
+                    relation_type="prerequisite",
+                ),
+            ])
+
+        DemoDataService(database_url=self.database_url).load_demo_data()
+
+        with session_scope(self.database_url) as session:
+            concepts = {
+                item.slug: item
+                for item in session.scalars(select(Concept).where(Concept.course_id == demo.course_id)).all()
+            }
+            relations = session.scalars(select(ConceptRelation)).all()
+            relation_keys = {
+                (
+                    next(slug for slug, concept in concepts.items() if concept.id == item.source_concept_id),
+                    next(slug for slug, concept in concepts.items() if concept.id == item.target_concept_id),
+                    item.relation_type,
+                )
+                for item in relations
+                if item.source_concept_id in {concept.id for concept in concepts.values()}
+                and item.target_concept_id in {concept.id for concept in concepts.values()}
+            }
+            self.assertNotIn(("complexity-analysis", "bfs-dfs", "prerequisite"), relation_keys)
+            self.assertNotIn(("binary-tree-traversal", "bfs-dfs", "prerequisite"), relation_keys)
+            self.assertIn(("graph-representation", "bfs-dfs", "prerequisite"), relation_keys)
+            self.assertIsNone(session.scalar(select(ConceptRelation).where(
+                ConceptRelation.source_concept_id == legacy_concept_id,
+                ConceptRelation.target_concept_id == traversal_id,
+            )))
+
+    def test_quiz_goals_produce_exact_focus_and_minimal_paths(self) -> None:
+        with TestClient(create_app()) as client:
+            demo = client.post("/api/v1/demo-data/load").json()["demo_data"]
+            profile = client.get("/api/v1/student-profiles").json()[0]
+            concepts = client.get(f"/api/v1/courses/{demo['course_id']}/graph").json()["concepts"]
+            names = {item["id"]: item["name"] for item in concepts}
+
+            combined_response = client.post("/api/v1/learning-paths", json={
+                "student_profile_id": profile["id"],
+                "course_id": demo["course_id"],
+                "goal": "巩固二叉树遍历和图搜索，为课程小测做准备",
+            })
+            self.assertEqual(combined_response.status_code, 200, combined_response.text)
+            combined = combined_response.json()["learning_path"]
+            self.assertEqual(
+                {names[item] for item in combined["target_concept_ids"]},
+                {"二叉树遍历", "BFS/DFS"},
+            )
+            self.assertEqual(
+                {names[item["concept_id"]] for item in combined["items"]},
+                {"树的基本概念", "二叉树", "二叉树遍历", "图的表示", "BFS/DFS"},
+            )
+
+            bfs_response = client.post("/api/v1/learning-paths", json={
+                "student_profile_id": profile["id"],
+                "course_id": demo["course_id"],
+                "goal": "巩固深度搜索和广度搜索，为课程小测做准备",
+            })
+            self.assertEqual(bfs_response.status_code, 200, bfs_response.text)
+            bfs_only = bfs_response.json()["learning_path"]
+            self.assertEqual(
+                {names[item] for item in bfs_only["target_concept_ids"]},
+                {"BFS/DFS"},
+            )
+            self.assertEqual(
+                {names[item["concept_id"]] for item in bfs_only["items"]},
+                {"图的表示", "BFS/DFS"},
+            )
+            self.assertEqual(bfs_only["milestones"][0]["covered_concept_ids"], bfs_only["target_concept_ids"])
 
 
 if __name__ == "__main__":

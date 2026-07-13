@@ -59,7 +59,8 @@ class AgentOrchestrator:
                 decision_basis=(
                     f"phase={phase['phase']}; execution_mode={phase['execution_mode']}; "
                     f"provider={path.provider}; model={path.model or 'none'}; "
-                    f"fallback_reason={phase.get('fallback_reason') or 'none'}"
+                    f"fallback_reason={phase.get('fallback_reason') or 'none'}; "
+                    f"warning_reason={phase.get('warning_reason') or 'none'}"
                 ),
                 status="completed",
                 duration_ms=path.planner_duration_ms if phase["phase"] == "activity_generation" else 0,

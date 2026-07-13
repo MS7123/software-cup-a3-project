@@ -210,6 +210,15 @@ class LearningPathItemResponse(BaseModel):
     success_criterion: str = "能够完成本节点学习目标。"
 
 
+class LearningPathMilestoneResponse(BaseModel):
+    milestone_type: Literal["mock_assessment"]
+    title: str
+    objective: str
+    covered_concept_ids: list[int] = Field(default_factory=list)
+    estimated_minutes: int
+    success_criterion: str
+
+
 class LearningPathResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -233,6 +242,7 @@ class LearningPathResponse(BaseModel):
     learning_intent: dict[str, Any] = Field(default_factory=dict)
     target_concept_ids: list[int] = Field(default_factory=list)
     intent_confidence: float = 0
+    milestones: list[LearningPathMilestoneResponse] = Field(default_factory=list)
     planner_phases: list[dict[str, Any]] = Field(default_factory=list, exclude=True)
 
 

@@ -20,6 +20,7 @@ LEARNING_PATH_COLUMN_DEFINITIONS = {
     "learning_intent": "JSON NOT NULL DEFAULT '{}'",
     "target_concept_ids": "JSON NOT NULL DEFAULT '[]'",
     "intent_confidence": "FLOAT NOT NULL DEFAULT 0",
+    "milestones": "JSON NOT NULL DEFAULT '[]'",
 }
 
 LEARNING_PATH_ITEM_COLUMN_DEFINITIONS = {

@@ -159,6 +159,15 @@ export interface LearningPathItem {
     success_criterion: string;
 }
 
+export interface LearningPathMilestone {
+  milestone_type: "mock_assessment";
+  title: string;
+  objective: string;
+  covered_concept_ids: number[];
+  estimated_minutes: number;
+  success_criterion: string;
+}
+
 export interface LearningPath {
   id: number;
   student_profile_id: number;
@@ -180,6 +189,7 @@ export interface LearningPath {
     learning_intent?: Record<string, unknown>;
     target_concept_ids?: number[];
     intent_confidence?: number;
+    milestones?: LearningPathMilestone[];
 }
 
 export interface AgentExecutionMetadata {
