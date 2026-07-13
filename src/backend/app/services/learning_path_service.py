@@ -324,6 +324,7 @@ class LearningPathService:
         return (
             f"Planner Agent 使用知识图谱先修约束与画像排序；trigger={trigger}；"
             f"execution_mode={result.execution_mode}；provider={result.provider}；"
+            f"warning={result.warning_reason or 'none'}；"
             f"基础水平={profile.level}；课程={course.title}；目标={goal}。"
         )
 
@@ -344,7 +345,8 @@ class LearningPathService:
             output_summary=f"Re-ranked {len(result.recommendations)} pending nodes.",
             decision_basis=(
                 f"execution_mode={result.execution_mode}; provider={result.provider}; model={result.model or 'none'}; "
-                f"fallback_used={str(result.fallback_used).lower()}; fallback_reason={result.fallback_reason or 'none'}"
+                f"fallback_used={str(result.fallback_used).lower()}; fallback_reason={result.fallback_reason or 'none'}; "
+                f"warning={result.warning_reason or 'none'}"
             ),
             status="completed",
             duration_ms=result.duration_ms,

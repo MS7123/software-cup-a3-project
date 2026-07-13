@@ -59,6 +59,7 @@ class PlannerResult:
     fallback_used: bool
     fallback_reason: str | None
     duration_ms: int
+    warning_reason: str | None = None
 
 
 class PlannerOutputItem(BaseModel):
@@ -69,7 +70,7 @@ class PlannerOutputItem(BaseModel):
 
 
 class PlannerOutput(BaseModel):
-    recommendations: list[PlannerOutputItem] = Field(min_length=1)
+    recommendations: list[PlannerOutputItem] = Field(min_length=1, max_length=5)
 
 
 PLANNER_OUTPUT_SCHEMA: dict[str, Any] = PlannerOutput.model_json_schema()
@@ -160,15 +161,12 @@ class HybridPlannerAgent:
                 response_schema=PLANNER_OUTPUT_SCHEMA,
             )
             parsed = _parse_planner_output(result.content)
-            recommendations = [
-                PlannerRecommendation(
-                    concept_id=item.concept_id,
-                    recommended_resource_type=item.recommended_resource_type,
-                    reason=item.reason,
-                    priority=item.priority,
-                )
-                for item in parsed.recommendations
-            ]
+            recommendations, warning_reason = _compose_hybrid_recommendations(
+                parsed.recommendations,
+                concepts,
+                relations,
+                context,
+            )
             _validate_recommendations(recommendations, concepts, relations, context.completed_concept_ids)
             return PlannerResult(
                 recommendations=recommendations,
@@ -178,6 +176,7 @@ class HybridPlannerAgent:
                 fallback_used=False,
                 fallback_reason=None,
                 duration_ms=_elapsed_ms(started),
+                warning_reason=warning_reason,
             )
         except Exception as exc:
             reason = _fallback_reason(exc)
@@ -212,6 +211,7 @@ def _topological_order(
     concepts: list[PlannerConcept],
     relations: list[PlannerRelation],
     context: PlannerContext,
+    preferred_priority: dict[int, tuple[int, int]] | None = None,
 ) -> list[PlannerConcept]:
     concept_by_id = {concept.id: concept for concept in concepts}
     pending_ids = set(concept_by_id) - context.completed_concept_ids
@@ -232,7 +232,12 @@ def _topological_order(
     ordered: list[PlannerConcept] = []
     available = [concept_by_id[concept_id] for concept_id, degree in indegree.items() if degree == 0]
     while available:
-        available.sort(key=lambda concept: _personalization_key(concept, context))
+        available.sort(
+            key=lambda concept: (
+                (preferred_priority or {}).get(concept.id, (10_000, 10_000)),
+                _personalization_key(concept, context),
+            )
+        )
         concept = available.pop(0)
         ordered.append(concept)
         for target in outgoing[concept.id]:
@@ -317,9 +322,9 @@ def _build_planner_messages(
         {
             "role": "system",
             "content": (
-                "你是 Hybrid 学习路径 Planner。只能排序给定真实知识点，不得新增、删除或重复节点，"
-                "必须满足全部 prerequisite。source_concept_id 是先修节点，必须排在 target_concept_id 前面。"
-                "如个性化排序与先修约束冲突，必须优先遵守先修约束。只返回 JSON object，不输出 Markdown。"
+                "你是 Hybrid 学习路径 Planner。只从给定知识点中选择最值得优先关注的个性化信号，"
+                "不要尝试输出完整路径；完整性和 prerequisite 由规则层负责。"
+                "最多返回 5 个不重复节点，只返回 JSON object，不输出 Markdown。"
             ),
         },
         {
@@ -330,11 +335,69 @@ def _build_planner_messages(
                 f"合法候选：{json.dumps(concept_payload, ensure_ascii=False)}\n"
                 f"先修约束：{json.dumps(relation_payload, ensure_ascii=False)}\n"
                 f"先修约束的自然语言解释：{json.dumps(prerequisite_rules, ensure_ascii=False)}\n"
-                f"可直接采用的合法拓扑基线：{json.dumps(valid_baseline, ensure_ascii=False)}\n"
-                "priority 必须按最终顺序从 1 连续编号；reason 用一句中文解释画像、目标或掌握度依据。"
+                f"合法拓扑基线（仅供理解约束）：{json.dumps(valid_baseline, ensure_ascii=False)}\n"
+                "只返回 1 至 5 个最重要节点；priority 表示个性化优先信号；"
+                "reason 用一句中文解释画像、目标或掌握度依据。"
             ),
         },
     ]
+
+
+def _compose_hybrid_recommendations(
+    signals: list[PlannerOutputItem],
+    concepts: list[PlannerConcept],
+    relations: list[PlannerRelation],
+    context: PlannerContext,
+) -> tuple[list[PlannerRecommendation], str | None]:
+    eligible = {concept.id: concept for concept in concepts if concept.id not in context.completed_concept_ids}
+    signal_by_id: dict[int, PlannerOutputItem] = {}
+    signal_order: dict[int, tuple[int, int]] = {}
+    ignored_unknown: list[int] = []
+    ignored_duplicate: list[int] = []
+    for index, signal in enumerate(signals):
+        if signal.concept_id not in eligible:
+            ignored_unknown.append(signal.concept_id)
+            continue
+        if signal.concept_id in signal_by_id:
+            ignored_duplicate.append(signal.concept_id)
+            continue
+        signal_by_id[signal.concept_id] = signal
+        signal_order[signal.concept_id] = (signal.priority, index)
+
+    ordered = _topological_order(concepts, relations, context, preferred_priority=signal_order)
+    default_resource_type = _resource_type_for_context(context)
+    recommendations: list[PlannerRecommendation] = []
+    for priority, concept in enumerate(ordered, start=1):
+        signal = signal_by_id.get(concept.id)
+        recommendations.append(
+            PlannerRecommendation(
+                concept_id=concept.id,
+                recommended_resource_type=(
+                    signal.recommended_resource_type if signal is not None else default_resource_type
+                ),
+                reason=(
+                    signal.reason if signal is not None else _rule_reason(concept, context, default_resource_type)
+                ),
+                priority=priority,
+            )
+        )
+
+    warnings: list[str] = []
+    if ignored_unknown:
+        warnings.append(f"ignored_unknown_concept_ids={sorted(set(ignored_unknown))}")
+    if ignored_duplicate:
+        warnings.append(f"ignored_duplicate_concept_ids={sorted(set(ignored_duplicate))}")
+    missing_count = len(eligible) - len(signal_by_id)
+    if missing_count > 0:
+        warnings.append(f"rule_completed_missing_nodes={missing_count}")
+    signaled_output_order = [item.concept_id for item in recommendations if item.concept_id in signal_by_id]
+    requested_order = [
+        concept_id
+        for concept_id, _ in sorted(signal_order.items(), key=lambda item: item[1])
+    ]
+    if signaled_output_order != requested_order:
+        warnings.append("rule_repaired_prerequisite_order=true")
+    return recommendations, "; ".join(warnings) or None
 
 
 def _parse_planner_output(content: str) -> PlannerOutput:

@@ -128,7 +128,41 @@ class HybridPlannerAgentTests(unittest.TestCase):
         self.assertEqual(result.execution_mode, "llm")
         self.assertFalse(result.fallback_used)
 
-    def test_unknown_or_prerequisite_violating_llm_output_falls_back_to_topology(self) -> None:
+    def test_sparse_llm_signals_are_completed_by_the_rule_layer(self) -> None:
+        agent = HybridPlannerAgent(
+            FakePlannerProvider(
+                {
+                    "recommendations": [
+                        {
+                            "concept_id": 20,
+                            "recommended_resource_type": "coding_case",
+                            "reason": "优先完成实践",
+                            "priority": 1,
+                        }
+                    ]
+                }
+            )
+        )
+        result = agent.plan(
+            self.concepts,
+            self.relations,
+            PlannerContext(
+                goal="掌握课程",
+                profile_type="algorithm_practice",
+                foundation_level="intermediate",
+                learning_preference="code_driven",
+                available_time="每天一小时",
+                weak_points=["实践"],
+                resource_preference="代码实操案例",
+            ),
+        )
+
+        self.assertEqual([item.concept_id for item in result.recommendations], [20, 30, 10])
+        self.assertEqual([item.priority for item in result.recommendations], [1, 2, 3])
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertFalse(result.fallback_used)
+
+    def test_unknown_duplicate_and_prerequisite_violating_signals_are_repaired(self) -> None:
         for recommendations in (
             [
                 {"concept_id": 999, "recommended_resource_type": "guided_note", "reason": "unknown", "priority": 1},
@@ -162,9 +196,11 @@ class HybridPlannerAgentTests(unittest.TestCase):
                     ),
                 )
                 order = [item.concept_id for item in result.recommendations]
-                self.assertEqual(result.execution_mode, "rule_based_fallback")
-                self.assertTrue(result.fallback_reason)
+                self.assertEqual(set(order), {10, 20, 30})
+                self.assertEqual(result.execution_mode, "llm")
+                self.assertFalse(result.fallback_used)
                 self.assertLess(order.index(30), order.index(10))
+                self.assertTrue(result.warning_reason)
 
     def test_cycle_is_rejected_and_provider_timeout_uses_topological_fallback(self) -> None:
         context = PlannerContext(
