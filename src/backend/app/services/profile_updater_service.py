@@ -384,6 +384,7 @@ class ProfileUpdaterService:
                 model=settings.model,
                 fallback_used=True,
                 duration_ms=max(0, round((time.perf_counter() - started) * 1000)),
+                provider_metadata=getattr(exc, "metadata", {}),
             )
 
         return TraceEvidence(

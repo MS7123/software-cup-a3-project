@@ -207,7 +207,7 @@ class LLMProviderTutorTests(unittest.TestCase):
                 enable_for_tutor=True,
                 bypass_proxy=True,
             )
-            with self.assertRaises(LLMProviderError):
+            with self.assertRaises(LLMProviderError) as context:
                 OpenAICompatibleLLMProvider(settings).generate([{"role": "user", "content": "hello"}])
         finally:
             server.shutdown()
@@ -215,6 +215,9 @@ class LLMProviderTutorTests(unittest.TestCase):
             thread.join(timeout=2)
 
         self.assertEqual(OpenAICompatibleSlowHandler.attempts, 1)
+        self.assertEqual(context.exception.metadata["retry_count"], 0)
+        self.assertEqual(context.exception.metadata["purpose"], "tutor")
+        self.assertGreaterEqual(context.exception.metadata["provider_duration_ms"], 40)
 
     def test_provider_error_summary_includes_http_status_and_safe_message(self) -> None:
         server = HTTPServer(("127.0.0.1", 0), OpenAICompatibleErrorHandler)

@@ -11,7 +11,9 @@ from app.adapters.protocols import LLMProvider, LLMResult
 
 
 class LLMProviderError(RuntimeError):
-    pass
+    def __init__(self, message: str, metadata: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.metadata = metadata or {}
 
 
 @dataclass(frozen=True)
@@ -161,7 +163,9 @@ class OpenAICompatibleLLMProvider:
         )
 
         last_error: Exception | None = None
+        attempts_made = 0
         for attempt in range(self.budget.max_retries + 1):
+            attempts_made = attempt + 1
             try:
                 if self._opener is None:
                     response_context = urllib.request.urlopen(request, timeout=self.budget.timeout_seconds)
@@ -212,9 +216,21 @@ class OpenAICompatibleLLMProvider:
             ) as exc:
                 last_error = exc
                 break
+        failure_metadata = {
+            "provider": "openai_compatible",
+            "model": self.settings.model,
+            "retry_count": max(0, attempts_made - 1),
+            "provider_duration_ms": max(0, round((time.perf_counter() - started) * 1000)),
+            "usage": {},
+            "purpose": self.purpose,
+            "max_tokens": self.budget.max_tokens,
+        }
         if isinstance(last_error, LLMProviderError):
-            raise last_error
-        raise LLMProviderError(f"LLM provider request failed: {type(last_error).__name__}") from last_error
+            raise LLMProviderError(str(last_error), failure_metadata) from last_error
+        raise LLMProviderError(
+            f"LLM provider request failed: {type(last_error).__name__}",
+            failure_metadata,
+        ) from last_error
 
 
 def build_llm_provider(settings: LLMSettings | None = None, purpose: str = "tutor") -> LLMProvider | None:

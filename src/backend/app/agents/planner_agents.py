@@ -195,6 +195,7 @@ class HybridPlannerAgent:
                 fallback_used=True,
                 fallback_reason=reason,
                 duration_ms=_elapsed_ms(started),
+                provider_metadata=getattr(exc, "metadata", {}),
             )
 
 

@@ -129,7 +129,15 @@ class LLMQuizAgent:
             reason = _fallback_reason(exc)
             if self.fallback_mode == "error":
                 raise LLMProviderError(reason) from exc
-            return self._fallback(concept_name, difficulty, chunks, context, reason, started)
+            return self._fallback(
+                concept_name,
+                difficulty,
+                chunks,
+                context,
+                reason,
+                started,
+                getattr(exc, "metadata", {}),
+            )
 
     def _fallback(
         self,
@@ -139,6 +147,7 @@ class LLMQuizAgent:
         context: QuizContext,
         reason: str,
         started: float,
+        provider_metadata: dict[str, Any] | None = None,
     ) -> QuizAgentResult:
         if self.fallback_mode == "error":
             raise LLMProviderError(reason)
@@ -157,6 +166,7 @@ class LLMQuizAgent:
             fallback_used=True,
             fallback_reason=reason,
             duration_ms=_elapsed_ms(started),
+            provider_metadata=provider_metadata or {},
         )
 
 
