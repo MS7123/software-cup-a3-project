@@ -13,6 +13,7 @@ from app.models import (
     MasteryRecord,
     Quiz,
     QuizItem,
+    QuizItemGenerationMetadata,
     StudentProfile,
     StudentProfileHistory,
 )
@@ -91,6 +92,12 @@ class ProfileService:
                 row[0]
                 for row in session.execute(select(Quiz.id).where(Quiz.student_profile_id == profile_id)).all()
             ]
+            quiz_item_ids: list[int] = []
+            if quiz_ids:
+                quiz_item_ids = [
+                    row[0]
+                    for row in session.execute(select(QuizItem.id).where(QuizItem.quiz_id.in_(quiz_ids))).all()
+                ]
             run_ids = [
                 row[0]
                 for row in session.execute(select(AgentRun.id).where(AgentRun.student_profile_id == profile_id)).all()
@@ -103,6 +110,12 @@ class ProfileService:
                 session.execute(delete(LearningPathItem).where(LearningPathItem.path_id.in_(path_ids)))
                 session.execute(delete(LearningPath).where(LearningPath.id.in_(path_ids)))
             if quiz_ids:
+                if quiz_item_ids:
+                    session.execute(
+                        delete(QuizItemGenerationMetadata).where(
+                            QuizItemGenerationMetadata.quiz_item_id.in_(quiz_item_ids)
+                        )
+                    )
                 session.execute(delete(QuizItem).where(QuizItem.quiz_id.in_(quiz_ids)))
                 session.execute(delete(Attempt).where(Attempt.quiz_id.in_(quiz_ids)))
                 session.execute(delete(Quiz).where(Quiz.id.in_(quiz_ids)))

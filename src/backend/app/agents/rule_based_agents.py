@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.schemas import KnowledgeSearchResult
@@ -32,6 +32,15 @@ class QuizAgentResult:
     input_summary: str
     output_summary: str
     decision_basis: str
+    question_type: str = "short_answer"
+    options: list[str] = field(default_factory=list)
+    source_refs: list[dict[str, Any]] = field(default_factory=list)
+    execution_mode: str = "rule_based"
+    provider: str = "rule_based"
+    model: str = ""
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    duration_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -184,11 +193,22 @@ class RuleBasedTutorAgent:
 
 
 class RuleBasedQuizAgent:
-    def generate(self, concept_name: str, difficulty: str, chunk: KnowledgeSearchResult | None) -> QuizAgentResult:
-        context = chunk.content if chunk else f"{concept_name} 是当前数据结构 MVP 知识点。"
+    def generate(
+        self,
+        concept_name: str,
+        difficulty: str,
+        chunk: KnowledgeSearchResult | list[KnowledgeSearchResult] | None,
+        _quiz_context: Any | None = None,
+    ) -> QuizAgentResult:
+        if isinstance(chunk, list):
+            chunks = chunk
+            chunk = chunks[0] if chunks else None
+        else:
+            chunks = [chunk] if chunk is not None else []
+        evidence_context = chunk.content if chunk else f"{concept_name} 是当前数据结构 MVP 知识点。"
         question = f"【{difficulty}】请说明{concept_name}的核心思想，并结合一个数据结构场景说明其作用。"
         answer = f"应围绕{concept_name}的定义、适用场景和基本操作说明。"
-        explanation = f"解析依据：{context}"
+        explanation = f"解析依据：{evidence_context}"
         return QuizAgentResult(
             question=question,
             answer=answer,
@@ -197,6 +217,7 @@ class RuleBasedQuizAgent:
             input_summary=f"为知识点 {concept_name} 生成 {difficulty} 难度题目。",
             output_summary="生成 1 道包含答案、解析和知识点标签的小测题。",
             decision_basis="题目绑定 concept_id 和 difficulty，并使用课程资料 chunk 作为解析依据。",
+            source_refs=[source_ref_payload(item) for item in chunks if item.source_ref],
         )
 
 

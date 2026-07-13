@@ -268,6 +268,9 @@ class QuizItemResponse(BaseModel):
     explanation: str
     difficulty: str
     concept_tags: list[str] = Field(default_factory=list)
+    question_type: str | None = None
+    options: list[str] = Field(default_factory=list)
+    source_refs: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class QuizResponse(BaseModel):
@@ -281,6 +284,12 @@ class QuizResponse(BaseModel):
     items: list[QuizItemResponse] = Field(default_factory=list)
     created_at: datetime | None = None
     agent_run_id: int | None = None
+    execution_mode: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    quiz_duration_ms: int | None = None
 
 
 class AttemptSubmitRequest(BaseModel):

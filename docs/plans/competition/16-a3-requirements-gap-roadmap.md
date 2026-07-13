@@ -170,11 +170,13 @@
 
 **验收标准：**
 
-- [ ] 星火配置完整时 Quiz factory 构造 LLM-backed Agent。
-- [ ] 不同画像或薄弱点生成不同题型、难度或题目内容。
-- [ ] 题目符合 schema，并能被 Critic、提交 API 和 Evaluator 正常处理。
-- [ ] 题目引用来自真实课程资料，不生成伪造 `source_ref`。
-- [ ] fallback 题目仍可完成后续评价闭环。
+- [x] 星火配置完整时 Quiz factory 构造 LLM-backed Agent。
+- [x] 不同画像或薄弱点生成不同题型、难度或题目内容。
+- [x] 题目符合 schema，并能被 Critic、提交 API 和 Evaluator 正常处理。
+- [x] 题目引用来自真实课程资料，不生成伪造 `source_ref`。
+- [x] fallback 题目仍可完成后续评价闭环。
+
+**完成证据（2026-07-13）：** 新增 `LLMQuizAgent`、factory、`LLM_ENABLE_FOR_QUIZ` 和五类题型 Pydantic schema；生成上下文包含课程资料、画像、最新掌握度和最近错误。Quiz metadata 以独立表兼容已有数据库，API 可选返回题型、选项、真实引用和执行证据；选择/填空题使用确定性评分，开放题继续交给已有 Evaluator。`test_quiz_llm.py` 覆盖五类题型、画像差异、假引用、正文伪引用、非法 JSON、timeout、无检索证据、Critic 安全 fallback、API trace 和完整评价闭环。科大讯飞星辰 MaaS `xop3qwen1b7` 联机验证中，两种画像均得到 `execution_mode=llm`、`fallback_used=false` 的合法 grounded Quiz，题干指纹不同；真实 API 生成、Critic、持久化、确定性评分和掌握度更新闭环通过。
 
 ### COMP-005：新增科大讯飞星火比赛默认启动入口
 
@@ -211,11 +213,13 @@ LLM_ENABLE_FOR_QUIZ=true
 
 **验收标准：**
 
-- [ ] 缺少 `XFYUN_SPARK_API_KEY` 时脚本在启动服务前明确失败。
-- [ ] 配置完整时所有 factory 选择对应 LLM-backed Agent。
-- [ ] `-SmokeOnly` 能验证后端、前端和星火配置，不泄露密钥。
-- [ ] 单次远程调用失败时业务可按配置降级，且 trace 明确记录原因。
-- [ ] `run-local.ps1` 的默认离线行为和现有自动化测试不受影响。
+- [x] 缺少 `XFYUN_SPARK_API_KEY` 时脚本在启动服务前明确失败。
+- [x] 配置完整时所有 factory 选择对应 LLM-backed Agent。
+- [x] `-SmokeOnly` 能验证后端、前端和星火配置，不泄露密钥。
+- [x] 单次远程调用失败时业务可按配置降级，且 trace 明确记录原因。
+- [x] `run-local.ps1` 的默认离线行为和现有自动化测试不受影响。
+
+**完成证据（2026-07-13 状态校正）：** `scripts/run-competition-spark.ps1` 已由提交 `3ba978a` 实现，并由 `7347a27`、`6d2d789` 完成默认端口调整和自动选择可用端口；脚本从 User/Process scope 安全读取 MaaS APIKey，默认配置 `/v2`、`xop3qwen1b7`、所有七项 LLM purpose 和 rule-based fallback，并在退出时恢复原环境。`test_spark_competition_script.py` 覆盖配置、缺少密钥保护顺序、所有 purpose、参数传递、端口占用和 `-SmokeOnly`；本地离线测试与全量回归继续通过。该任务仅校正文档状态，不重复开发启动脚本。
 
 ### COMP-006：启用并验证已经接入的 LLM 能力
 

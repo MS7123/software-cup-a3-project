@@ -209,6 +209,23 @@ class QuizItem(Base):
     concept_tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
 
 
+class QuizItemGenerationMetadata(TimestampMixin, Base):
+    __tablename__ = "quiz_item_generation_metadata"
+    __table_args__ = (UniqueConstraint("quiz_item_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quiz_item_id: Mapped[int] = mapped_column(ForeignKey("quiz_items.id"), nullable=False)
+    question_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    options: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    source_refs: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    execution_mode: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider: Mapped[str] = mapped_column(String(80), nullable=False)
+    model: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    fallback_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    fallback_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class Attempt(TimestampMixin, Base):
     __tablename__ = "attempts"
 

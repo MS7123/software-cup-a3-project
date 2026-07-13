@@ -181,6 +181,7 @@ $env:LLM_ENABLE_FOR_EVALUATOR='true'
 $env:LLM_ENABLE_FOR_PROFILE_UPDATER='true'
 $env:LLM_ENABLE_FOR_PROFILE_BUILDER='true'
 $env:LLM_ENABLE_FOR_PLANNER='true'
+$env:LLM_ENABLE_FOR_QUIZ='true'
 $env:LLM_TIMEOUT_SECONDS='20'
 $env:LLM_MAX_RETRIES='0'
 $env:LLM_FALLBACK_MODE='rule_based'
@@ -245,6 +246,7 @@ $env:EMBEDDING_BYPASS_PROXY='false'
 | `LLM_ENABLE_FOR_PROFILE_UPDATER` | `false` | 显式启用后，ProfileUpdater 会先用固定 JSON schema 分析 Agent trace，失败时回退到 rule-based。 |
 | `LLM_ENABLE_FOR_PROFILE_BUILDER` | `false` | 显式启用后，初始对话画像由 LLM 结构化抽取六个维度，非法输出或远程失败时回退到现有规则构建器。 |
 | `LLM_ENABLE_FOR_PLANNER` | `false` | 显式启用后，Hybrid Planner 由规则层保证知识图谱约束，LLM 对合法候选排序并生成推荐资源和理由；非法输出回退到确定性拓扑排序。 |
+| `LLM_ENABLE_FOR_QUIZ` | `false` | 显式启用后，Quiz Agent 根据课程证据、画像、掌握度和最近错误生成结构化题目；假引用、非法结构或远程失败时回退到规则题目。 |
 | `LLM_BASE_URL` | 空 | OpenAI-compatible endpoint base URL。 |
 | `LLM_API_KEY` | 空 | Secret，不得写入仓库、日志、frontend bundle 或 agent run 记录。 |
 | `LLM_MODEL` | 空 | 模型名称。 |

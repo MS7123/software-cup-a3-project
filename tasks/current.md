@@ -5,13 +5,13 @@
 
 ## 当前批准执行
 
-### COMP-004: 完成 Quiz LLM 接入
+### COMP-006: 启用并验证已经接入的 LLM 能力
 
 - 状态：Current
 - 依据：`docs/plans/competition/16-a3-requirements-gap-roadmap.md`
-- 前置依赖：`COMP-003` 已完成自动化、前端构建、星火联机与动态重排验证。
-- 执行边界：LLM 负责基于课程资料、画像、掌握度和最近错误生成结构化题目；现有 Critic、客观题确定性判分与规则 fallback 保持不变。
-- Done 条件：满足路线图 COMP-004 的全部自动化和联机验收标准后，才能移入 Done。
+- 前置依赖：`COMP-004` 已完成 Quiz LLM 自动化、前端构建、星火联机与评价闭环验证；`COMP-005` 比赛启动入口已完成并通过状态复核。
+- 执行边界：禁止重复开发 Tutor、Resource、Evaluator 和 ProfileUpdater；仅补充星火联机验收、必要兼容修正和可核验 trace 证据。
+- Done 条件：满足路线图 COMP-006 的全部自动化与星火联机验收标准后，才能移入 Done。
 
 ### PLAN-002: 编写测试计划
 

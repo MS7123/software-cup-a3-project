@@ -222,6 +222,9 @@ export interface QuizItem {
   explanation: string;
   difficulty: string;
   concept_tags: string[];
+  question_type?: string | null;
+  options?: string[];
+  source_refs?: Array<Record<string, unknown>>;
 }
 
 export interface Quiz {
@@ -232,6 +235,12 @@ export interface Quiz {
   status: string;
   items: QuizItem[];
   agent_run_id: number | null;
+  execution_mode?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  fallback_used?: boolean;
+  fallback_reason?: string | null;
+  quiz_duration_ms?: number | null;
 }
 
 export interface EvaluationResult {

@@ -742,10 +742,17 @@ export function App() {
       <InlineAgentTrace action="quiz" busy={busy === "generate-quiz"} runs={runs} visible={retainedTraces.includes("quiz")} />
       {quiz ? (
         <div className="quiz-box">
+          {quiz.fallback_used ? <p className="muted-text">大模型出题暂不可用，已安全降级：{quiz.fallback_reason ?? "rule-based fallback"}</p> : null}
           {quiz.items.map((item, index) => (
             <article key={index} className="quiz-question" data-testid="quiz-question">
-              <strong>第 {index + 1} 题</strong>
-              <p>{item.question}</p>
+              <strong>第 {index + 1} 题 · {quizQuestionTypeLabel(item.question_type)}</strong>
+              <MarkdownBlock text={item.question} />
+              {item.options?.length ? (
+                <ul>
+                  {item.options.map((option) => <li key={option}>{option}</li>)}
+                </ul>
+              ) : null}
+              <SourceEvidence sourceRefs={item.source_refs ?? []} />
             </article>
           ))}
           <textarea
@@ -1328,6 +1335,17 @@ function resourceTypeLabel(resourceType: string) {
     coding_case: "代码实操案例",
   };
   return labels[resourceType] ?? resourceType;
+}
+
+function quizQuestionTypeLabel(questionType?: string | null) {
+  const labels: Record<string, string> = {
+    multiple_choice: "选择题",
+    fill_blank: "填空题",
+    short_answer: "简答题",
+    application: "应用题",
+    code_analysis: "代码分析题",
+  };
+  return labels[questionType ?? ""] ?? "练习题";
 }
 
 function ProfileDimensionList({ profile }: { profile: StudentProfile }) {

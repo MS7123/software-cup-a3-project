@@ -55,9 +55,34 @@ class RuleBasedCriticAgent:
         result: QuizAgentResult,
         difficulty: str,
         profile_preferences: dict[str, Any] | None = None,
+        available_source_refs: set[str] | None = None,
     ) -> CriticResult:
         preferences = profile_preferences or {}
         text = " ".join([result.question, result.answer, result.explanation])
+        cited_source_refs = {
+            str(item.get("source_ref")) for item in result.source_refs if isinstance(item, dict) and item.get("source_ref")
+        }
+        if available_source_refs and (not cited_source_refs or not cited_source_refs.issubset(available_source_refs)):
+            return CriticResult(
+                approved=False,
+                output_summary="测验审查未通过：题目缺少真实引用或包含引用白名单之外的来源。",
+                decision_basis="Quiz source_refs 必须是 Retriever 本次返回来源的非空子集，禁止伪造引用。",
+                revision_instruction="仅使用本次 Retriever 提供的 source_ref，并在解析中说明证据依据。",
+            )
+        if result.question_type == "multiple_choice" and len(result.options) < 2:
+            return CriticResult(
+                approved=False,
+                output_summary="测验审查未通过：选择题选项不完整。",
+                decision_basis="multiple_choice 必须包含至少两个可辨识选项和明确答案。",
+                revision_instruction="补齐至少两个互斥选项，并确保 answer 对应其中一个选项标签。",
+            )
+        if result.question_type == "code_analysis" and "```" not in result.question:
+            return CriticResult(
+                approved=False,
+                output_summary="测验审查未通过：代码分析题缺少 fenced code block。",
+                decision_basis="code_analysis 必须包含可识别代码片段，才能形成可执行的分析对象。",
+                revision_instruction="在题干中补充 fenced code block，并提出与代码执行或边界条件相关的问题。",
+            )
         if self._is_weak_foundation(preferences) and (difficulty in {"hard", "advanced"} or self._contains_high_difficulty(text)):
             return CriticResult(
                 approved=False,

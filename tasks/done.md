@@ -29,6 +29,17 @@
 
 ## 已通过 Review 的实现任务
 
+- [x] `COMP-005`：新增科大讯飞星辰 MaaS 比赛默认启动入口。
+  - 完成范围：复用现有 OpenAI-compatible adapter，配置 MaaS `/v2`、`xop3qwen1b7`、User/Process scope APIKey、七项 LLM purpose、rule-based fallback、环境恢复和前端自动可用端口。
+  - 自动化证据：`tests/test_spark_competition_script.py` 覆盖配置、密钥保护顺序、全部 purpose、参数传递、端口占用、`-SmokeOnly` 和部署文档；既有提交为 `3ba978a`、`7347a27`、`6d2d789`。
+  - 保留边界：`run-local.ps1` 继续作为离线 rule-based 开发入口，比赛脚本不保存或输出真实 APIKey。
+
+- [x] `COMP-004`：完成 Quiz LLM 接入。
+  - 完成范围：新增 LLMQuizAgent/factory、五类题型 schema、课程证据/画像/掌握度/最近错误上下文、Quiz metadata、Critic 引用与格式底线、客观题确定性评分、开放题 Evaluator 路由和安全 fallback。
+  - 自动化证据：`tests/test_quiz_llm.py` 覆盖五类题型、画像差异、假引用、正文伪引用、非法 JSON、timeout、无检索、Critic 连续拒绝、API trace、确定性评分和 fallback 评价闭环；全量后端测试和前端生产构建通过。
+  - 联机证据：星火 MaaS `xop3qwen1b7` 对两种画像均返回 grounded LLM Quiz 且题干指纹不同；真实 API 返回 `execution_mode=llm`、2 个 Retriever 引用，提交后确定性评分和掌握度更新成功。
+  - 保留边界：RuleBasedCriticAgent、客观题确定性评分、开放题已有 Evaluator 和 RuleBasedQuizAgent fallback 均继续保留。
+
 - [x] `COMP-003`：完成 Hybrid 学习路径与主动资源推荐。
   - 完成范围：新增 Hybrid Planner agent/factory、`LLM_ENABLE_FOR_PLANNER`、知识图谱拓扑约束、画像与掌握度排序、资源类型/理由/优先级、Quiz/画像/节点完成后的幂等重算，以及结构化校验和 rule-based fallback。
   - 自动化证据：`tests/test_hybrid_planner.py` 的 9 项测试覆盖真实节点、先修关系、未知/重复节点、环、timeout、配置开关、画像差异和 Quiz 后重排；相关回归 20 项、全量后端测试及前端生产构建均通过。
