@@ -24,8 +24,10 @@ from app.main import create_app
 class FakePlannerProvider:
     def __init__(self, payload: dict) -> None:
         self.payload = payload
+        self.messages = []
 
     def generate(self, messages, response_schema=None) -> LLMResult:
+        self.messages = messages
         return LLMResult(
             content=json.dumps(self.payload, ensure_ascii=False),
             metadata={"provider": "openai_compatible", "model": "planner-test-model"},
@@ -161,6 +163,49 @@ class HybridPlannerAgentTests(unittest.TestCase):
         self.assertEqual([item.priority for item in result.recommendations], [1, 2, 3])
         self.assertEqual(result.execution_mode, "llm")
         self.assertFalse(result.fallback_used)
+
+    def test_llm_prompt_uses_an_eight_node_rolling_window(self) -> None:
+        concepts = [
+            PlannerConcept(
+                id=index,
+                slug=f"concept-{index}",
+                name=f"知识点 {index}",
+                chapter=f"第 {((index - 1) // 3) + 1} 章",
+                difficulty="basic",
+            )
+            for index in range(1, 26)
+        ]
+        provider = FakePlannerProvider(
+            {
+                "recommendations": [
+                    {
+                        "concept_id": 1,
+                        "recommended_resource_type": "guided_note",
+                        "reason": "优先学习",
+                        "priority": 1,
+                    }
+                ]
+            }
+        )
+
+        result = HybridPlannerAgent(provider).plan(
+            concepts,
+            [],
+            PlannerContext(
+                goal="掌握完整课程",
+                profile_type="weak_foundation",
+                foundation_level="beginner",
+                learning_preference="step_by_step",
+                available_time="每天一小时",
+                weak_points=[],
+                resource_preference="讲解文档",
+            ),
+        )
+
+        prompt = provider.messages[1]["content"]
+        window_payload = prompt.split("LLM 候选窗口：", 1)[1].split("\n先修约束：", 1)[0]
+        self.assertEqual(len(json.loads(window_payload)), 8)
+        self.assertEqual(len(result.recommendations), 25)
 
     def test_unknown_duplicate_and_prerequisite_violating_signals_are_repaired(self) -> None:
         for recommendations in (

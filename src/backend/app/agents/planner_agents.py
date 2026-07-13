@@ -12,6 +12,7 @@ from app.services.content_safety_service import ContentSafetyService
 
 
 ResourceType = Literal["guided_note", "practice_questions", "mind_map", "extended_reading", "coding_case"]
+PLANNER_LLM_WINDOW_SIZE = 8
 
 
 @dataclass(frozen=True)
@@ -156,8 +157,9 @@ class HybridPlannerAgent:
             eligible = [concept for concept in concepts if concept.id not in context.completed_concept_ids]
             if not eligible:
                 return PlannerResult([], "llm", self.provider_name, self.model, False, None, _elapsed_ms(started))
+            planning_window = _topological_order(concepts, relations, context)[:PLANNER_LLM_WINDOW_SIZE]
             result = self.provider.generate(
-                _build_planner_messages(eligible, relations, context),
+                _build_planner_messages(planning_window, relations, context),
                 response_schema=PLANNER_OUTPUT_SCHEMA,
             )
             parsed = _parse_planner_output(result.content)
@@ -332,7 +334,7 @@ def _build_planner_messages(
             "content": (
                 f"输出 schema：{json.dumps(PLANNER_OUTPUT_SCHEMA, ensure_ascii=False)}\n"
                 f"学生上下文：{json.dumps(context_payload, ensure_ascii=False)}\n"
-                f"合法候选：{json.dumps(concept_payload, ensure_ascii=False)}\n"
+                f"LLM 候选窗口：{json.dumps(concept_payload, ensure_ascii=False)}\n"
                 f"先修约束：{json.dumps(relation_payload, ensure_ascii=False)}\n"
                 f"先修约束的自然语言解释：{json.dumps(prerequisite_rules, ensure_ascii=False)}\n"
                 f"合法拓扑基线（仅供理解约束）：{json.dumps(valid_baseline, ensure_ascii=False)}\n"
