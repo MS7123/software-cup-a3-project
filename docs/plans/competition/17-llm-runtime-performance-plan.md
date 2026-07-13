@@ -13,7 +13,23 @@ tags:
 最后更新：2026-07-13
 
 > [!success] 开发状态
-> **PERF-001～PERF-005 的代码开发与真实星火复测均已完成**。后端全量 **186 项测试通过**，**10 项真实星火测试按 opt-in 配置跳过**；前端 production build 与 Playwright 学习闭环通过。真实凭据由 Windows User scope 的 `XFYUN_SPARK_API_KEY` 提供，未写入仓库或测试输出。
+> **PERF-001～PERF-005 以及后续 T2 + P2 的代码开发与真实星火复测均已完成**。后端全量 **194 项测试通过**，**10 项真实星火测试按 opt-in 配置跳过**；前端 production build 通过。真实凭据由 Windows User scope 的 `XFYUN_SPARK_API_KEY` 提供，未写入仓库或测试输出。
+
+> [!info] T2 + P2 后续架构更新
+> 旧版“Planner 最多返回 5 个排序信号、规则层补全候选集合”和“模型直接输出真实 `source_ref`”已经由 T2 + P2 取代。以下历史性能数据仍用于说明优化动机；当前有效运行合同以本节和 README 为准。
+
+## 0. T2 + P2 当前运行合同
+
+| 能力 | 当前远端调用 | 规则层职责 | 失败行为 |
+|---|---:|---|---|
+| Tutor | 1 次，25 秒、0 retry、800 tokens | 5 条证据去重压缩为最多 3 条与 2400 字符；映射 `E1`～`E3`；执行安全和引用白名单校验 | 中文降级说明，不在主回答回显英文 chunk；来源面板保留证据 |
+| Planner goal resolution | 1 次 purpose 预算调用 | 验证真实 ID、focused 最多 4 个目标、低置信度确定性 resolver、hard prerequisite 与 mastery | 明确概念可确定性解析；仍不明确则 `422` 且不创建路径 |
+| Planner activity generation | 1 次 purpose 预算调用 | 每个既定节点恰好一次、priority 连续、5～60 分钟、五类资源与总时间检查 | 只为原节点集合生成通用 rule-based 活动，不扩大路径范围 |
+| Planner refresh | 不重新解释原目标 | 读取持久化 `learning_intent` 和目标集合，只处理未完成节点 | 保持路径主题和目标集合 |
+
+focused 路径没有强制最小节点数，最多 **8 个节点**；只有用户明确表达“完整课程、全部课程、系统掌握整门课程”时才允许 full-course。`queue → binary-tree-traversal`、`binary-tree-traversal → graph-representation`、`linear-list-comparison → stack`、`recursion → tree-basics` 已改为 `related`，规则层不再把这些关系递归补入硬先修链。
+
+2026-07-13 的 T2 + P2 联机复测使用当前 MaaS `xop3qwen1b7`：Tutor 两次真实调用均为 `llm`，耗时分别为 **5.237 秒**和 **10.600 秒**，真实引用映射与 trace 校验通过；Planner 两个语义化样本均完成 goal resolution 与 activity generation，远端阶段耗时 p50 **7.775 秒**、p95 **12.108 秒**，fallback 为 **0**。MaaS 对嵌套 response schema 存在已观测兼容差异，因此 Provider-facing goal contract 使用扁平字段，Tutor 仅对三个精确顶层 section 字段执行受控归一化；内部 Pydantic、节点、引用与安全合同保持不变。
 
 ## 1. 历史真实基线
 
@@ -41,7 +57,7 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 | 根因 | 修改前 | 已实施方案 | 对用户体验的影响 |
 |---|---|---|---|
 | 同步后处理 | Quiz、Resource、Tutor 等待画像或路径更新 | 业务结果先返回，后处理进入 `Task` + FastAPI background task | 成绩、资源、回答不再等待后处理 |
-| Planner 合同脆弱 | LLM 必须返回完整节点集合 | LLM 只返回少量排序信号，规则层补全、去重、修复先修关系 | 漏节点不再导致整条路径 fallback |
+| Planner 合同脆弱 | LLM 必须返回完整节点集合 | 当前由目标解析与活动生成两阶段 schema 取代；规则层只验证目标和最小硬先修闭包 | 同义表达不再因别名漏匹配扩展为完整课程 |
 | Planner prompt 过大 | 一次发送完整 25 节点图 | 完整图保留，每轮最多发送 8 个合法候选 | 降低 prompt、输出长度和超时概率 |
 | 统一调用预算 | 全部 purpose 使用 45 秒、1 次 retry | 每个 purpose 独立 timeout、max tokens、retry | Planner 最坏等待由约 90 秒降为单次 18 秒后 fallback |
 | 结构化输出波动 | MaaS Qwen 会返回字段合法但缺少外层 envelope 的对象序列 | 仅修复字段完整的 Planner signal object，随后继续执行 Pydantic 与拓扑校验 | 避免对可恢复输出进行远程重试或整条路径 fallback |
@@ -73,8 +89,8 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 - 规则层先从目标文本识别目标知识点，并补齐学习这些目标所需的基础节点，形成最多 **8 个节点**的合法目标子图。
 - 明确的全课程目标仍可使用完整候选集合；已有路径刷新保持原候选集合，避免后台更新意外改变用户已创建路径的范围。
 - LLM 只接收本次目标子图中的合法候选节点。
-- LLM 最多返回 **5 个个性化推荐信号**。
-- 规则层忽略未知/重复项，修复先修顺序，并补全 LLM 未返回的目标子图节点，不再把无关课程节点补进聚焦路径。
+- 第一次 LLM 返回 `target_concept_ids + learning_intent`，第二次 LLM 只为规则层确认的节点生成活动；不再使用“5 个排序信号 + 补全候选集合”的旧合同。
+- 规则层拒绝未知节点、重复活动和不连续 priority，并只递归补充 hard prerequisite，不再把无关课程节点补进聚焦路径。
 - LLM 失败时回退到确定性拓扑排序，不再回退到裸 `Concept.id` 顺序。
 
 ## 4. 分用途调用预算
@@ -140,7 +156,7 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 
 | 验证项 | 结果 | 说明 |
 |---|---|---|
-| 后端全量 | **190 passed** | 10 项真实星火测试按 opt-in 配置跳过 |
+| 后端全量 | **194 passed** | 10 项真实星火测试按 opt-in 配置跳过 |
 | Planner 专项 | **13 passed** | 含稀疏信号、未知/重复项、先修修复、结构 envelope 修复、8 节点窗口和聚焦目标范围 |
 | Resource/Tutor 后处理 | **5 passed** | 含慢后处理与 API timing 边界 |
 | Provider/预算专项 | **15 passed** | 含 max tokens、timeout 不重试、瞬态断连重试 |
@@ -211,7 +227,7 @@ python scripts/report-llm-performance.py data/demo.sqlite3
   - `2688171`：Resource/Tutor 画像后台后处理。
   - `c4d61d6`：API/LLM 安全性能证据与 p50/p95 报告。
 - 本轮收口增量已提交至当前分支最新提交：Planner 结构 envelope 修复、ProfileBuilder 资源枚举归一化、Resource 输出预算调优、真实星火性能测试与证据回填。
-- 后端全量：`python -m unittest discover -s tests -q`，结果 190 passed、10 skipped。
+- 后端全量：`python -m unittest discover -s tests -q`，结果 194 passed、10 skipped。
 - 前端构建：在 `src/frontend` 执行 `npm run build`，结果通过。
 - 浏览器闭环：真实本地服务下 `npm run test:smoke`，结果 1 passed。
 - 真实星火：ProfileBuilder、Planner、Quiz、Resource、Tutor、Evaluator、ProfileUpdater 均已复测；最终验收样本 fallback 数为 0。

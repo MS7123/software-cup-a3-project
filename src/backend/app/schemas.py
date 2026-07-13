@@ -204,6 +204,10 @@ class LearningPathItemResponse(BaseModel):
     recommended_resource_type: str | None = None
     recommendation_reason: str | None = None
     priority: int | None = None
+    node_role: Literal["target", "prerequisite"] = "target"
+    activity_type: str = "explanation"
+    estimated_minutes: int = 20
+    success_criterion: str = "能够完成本节点学习目标。"
 
 
 class LearningPathResponse(BaseModel):
@@ -226,6 +230,10 @@ class LearningPathResponse(BaseModel):
     provider_duration_ms: int = 0
     retry_count: int = 0
     token_usage: dict[str, int] = Field(default_factory=dict)
+    learning_intent: dict[str, Any] = Field(default_factory=dict)
+    target_concept_ids: list[int] = Field(default_factory=list)
+    intent_confidence: float = 0
+    planner_phases: list[dict[str, Any]] = Field(default_factory=list, exclude=True)
 
 
 class ResourceGenerateRequest(BaseModel):
@@ -355,6 +363,10 @@ class AgentExecutionMetadata(BaseModel):
     provider_duration_ms: int = Field(default=0, ge=0)
     retry_count: int = Field(default=0, ge=0)
     token_usage: dict[str, int] = Field(default_factory=dict)
+    retrieved_count: int = Field(default=0, ge=0)
+    selected_evidence_count: int = Field(default=0, ge=0)
+    context_chars: int = Field(default=0, ge=0)
+    evidence_ids_used: list[str] = Field(default_factory=list)
 
 
 class AgentRunStepResponse(BaseModel):

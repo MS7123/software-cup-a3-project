@@ -10,6 +10,7 @@ from app.adapters.protocols import LLMResult
 from app.agents.critic_agents import RuleBasedCriticAgent
 from app.agents.evaluator_agents import LLMBackedEvaluatorAgent
 from app.agents.planner_agents import HybridPlannerAgent, PlannerConcept, PlannerContext
+from app.domain.exceptions import GoalResolutionError
 from app.agents.profile_builder_agents import LLMProfileBuilderAgent
 from app.agents.profile_updater_agents import LLMBackedProfileUpdaterAgent
 from app.agents.quiz_agents import LLMQuizAgent, QuizContext
@@ -208,7 +209,7 @@ class ContentSafetyIntegrationTests(unittest.TestCase):
                 json={
                     "student_profile_id": profile["id"],
                     "course_id": demo["course_id"],
-                    "goal": "复习数据结构",
+                    "goal": "复习 BFS/DFS",
                 },
             ).json()
             path_item_id = flow["learning_path"]["items"][0]["id"]
@@ -272,19 +273,20 @@ class ContentSafetyIntegrationTests(unittest.TestCase):
         )
 
         planner_provider = CountingProvider()
-        planner_result = HybridPlannerAgent(planner_provider).plan(
-            [PlannerConcept(id=1, slug="bfs", name="BFS", chapter="图", difficulty="basic")],
-            [],
-            PlannerContext(
-                goal=injection,
-                profile_type="exam_sprint",
-                foundation_level="beginner",
-                learning_preference="step_by_step",
-                available_time="2h",
-                weak_points=[],
-                resource_preference="讲解文档",
-            ),
-        )
+        with self.assertRaises(GoalResolutionError):
+            HybridPlannerAgent(planner_provider).plan(
+                [PlannerConcept(id=1, slug="bfs", name="BFS", chapter="图", difficulty="basic")],
+                [],
+                PlannerContext(
+                    goal=injection,
+                    profile_type="exam_sprint",
+                    foundation_level="beginner",
+                    learning_preference="step_by_step",
+                    available_time="2h",
+                    weak_points=[],
+                    resource_preference="讲解文档",
+                ),
+            )
 
         resource_provider = CountingProvider()
         resource_result = LLMBackedResourceAgent(resource_provider).generate(
@@ -319,7 +321,7 @@ class ContentSafetyIntegrationTests(unittest.TestCase):
             updater_provider,
         ]:
             self.assertEqual(provider.calls, 0)
-        for result in [profile_result, planner_result, resource_result, quiz_result, evaluator_result]:
+        for result in [profile_result, resource_result, quiz_result, evaluator_result]:
             self.assertTrue(result.fallback_used)
             self.assertIn("prompt_injection", result.fallback_reason)
 

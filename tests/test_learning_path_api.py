@@ -65,7 +65,10 @@ class LearningPathApiTests(unittest.TestCase):
             self.assertEqual(run["course_id"], payload["course_id"])
             self.assertEqual(run["status"], "completed")
             self.assertTrue(run["final_summary"])
-            self.assertEqual([step["agent_type"] for step in run["steps"]], ["router", "planner"])
+            self.assertEqual(run["steps"][0]["agent_type"], "router")
+            planner_steps = [step for step in run["steps"] if step["agent_type"] == "planner"]
+            self.assertEqual(len(planner_steps), 3)
+            self.assertIn("phase=goal_resolution", planner_steps[0]["decision_basis"])
             planner_step = next(step for step in run["steps"] if step["agent_type"] == "planner")
             self.assertEqual(planner_step["status"], "completed")
             self.assertTrue(planner_step["input_summary"])

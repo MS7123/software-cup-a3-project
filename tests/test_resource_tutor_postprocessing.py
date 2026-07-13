@@ -42,7 +42,7 @@ class ResourceTutorPostprocessingTests(unittest.TestCase):
             json={
                 "student_profile_id": self.profile["id"],
                 "course_id": self.demo["course_id"],
-                "goal": "掌握数据结构课程",
+                "goal": "系统掌握整门数据结构课程",
             },
         ).json()
         self.path_item_id = flow["learning_path"]["items"][0]["id"]

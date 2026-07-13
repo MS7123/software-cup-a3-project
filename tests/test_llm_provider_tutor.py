@@ -16,7 +16,7 @@ from app.adapters.protocols import LLMResult
 from app.db.session import get_engine
 from app.main import create_app
 from app.agents.rule_based_agents import RuleBasedTutorAgent
-from app.agents.tutor_agents import LLMBackedTutorAgent
+from app.agents.tutor_agents import LLMBackedTutorAgent, select_tutor_evidence
 from app.agents.tutor_factory import build_tutor_agent
 from app.schemas import KnowledgeSearchResult
 from app.services.citation_service import validate_citations
@@ -29,7 +29,19 @@ class FakeProvider:
     def generate(self, messages, response_schema=None) -> LLMResult:
         if self.fail:
             raise RuntimeError("provider unavailable")
-        return LLMResult(content="这是来自模拟 LLM provider 的回答。", metadata={"provider": "fake"})
+        return LLMResult(
+            content=json.dumps(
+                {
+                    "sections": [
+                        {"heading": "direct_answer", "content": "这是来自模拟 LLM provider 的回答。", "evidence_ids": ["E1"]},
+                        {"heading": "profile_adaptation", "content": "根据当前基础先比较核心差异。", "evidence_ids": ["E1"]},
+                        {"heading": "next_step", "content": "完成一个小例子验证理解。", "evidence_ids": ["E1"]},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            metadata={"provider": "fake"},
+        )
 
 
 class NoContextProvider:
@@ -51,7 +63,19 @@ class PromptCaptureProvider:
 
     def generate(self, messages, response_schema=None) -> LLMResult:
         self.messages = messages
-        return LLMResult(content="provider answer", metadata={"provider": "fake"})
+        return LLMResult(
+            content=json.dumps(
+                {
+                    "sections": [
+                        {"heading": "direct_answer", "content": "BFS 按层扩展，DFS 沿分支深入。", "evidence_ids": ["E1"]},
+                        {"heading": "profile_adaptation", "content": "先比较队列与栈。", "evidence_ids": ["E1"]},
+                        {"heading": "next_step", "content": "用一个小图手工遍历。", "evidence_ids": ["E1"]},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            metadata={"provider": "fake"},
+        )
 
 
 class OpenAICompatibleHandler(BaseHTTPRequestHandler):
@@ -134,6 +158,81 @@ class OpenAICompatibleSlowHandler(OpenAICompatibleHandler):
 
 
 class LLMProviderTutorTests(unittest.TestCase):
+    def test_tutor_evidence_is_deduplicated_and_bounded(self) -> None:
+        chunks = [
+            KnowledgeSearchResult(chunk_id=1, content="BFS 使用队列按层遍历。", score=1.0, source_ref="document:1#chunk:1"),
+            KnowledgeSearchResult(chunk_id=2, content="  BFS   使用队列按层遍历。 ", score=0.9, source_ref="document:1#chunk:2"),
+            KnowledgeSearchResult(chunk_id=3, content="DFS 使用栈沿分支深入。" * 120, score=0.8, source_ref="document:1#chunk:3"),
+            KnowledgeSearchResult(chunk_id=4, content="图搜索需要记录访问状态。" * 120, score=0.7, source_ref="document:1#chunk:4"),
+            KnowledgeSearchResult(chunk_id=5, content="无关补充。", score=0.1, source_ref="document:1#chunk:5"),
+        ]
+
+        selected = select_tutor_evidence(chunks)
+
+        self.assertLessEqual(len(selected), 3)
+        self.assertLessEqual(sum(len(item.content) for item in selected), 2400)
+        self.assertTrue(all(len(item.content) <= 900 for item in selected))
+        self.assertEqual([item.evidence_id for item in selected], [f"E{i}" for i in range(1, len(selected) + 1)])
+
+    def test_tutor_prompt_hides_internal_source_refs_and_maps_evidence_ids(self) -> None:
+        provider = PromptCaptureProvider()
+        chunk = KnowledgeSearchResult(
+            chunk_id=90,
+            content="BFS 使用队列，DFS 使用递归或显式栈。",
+            score=1.0,
+            source_ref="document:9#chunk:0",
+        )
+
+        result = LLMBackedTutorAgent(provider).answer("如何区分 BFS 和 DFS？", [chunk])
+
+        prompt = "\n".join(message["content"] for message in provider.messages)
+        self.assertIn("E1", prompt)
+        self.assertNotIn("document:9#chunk:0", prompt)
+        self.assertIn("[document:9#chunk:0]", result.answer)
+        self.assertEqual(result.provider_metadata["retrieved_count"], 1)
+        self.assertEqual(result.provider_metadata["selected_evidence_count"], 1)
+        self.assertEqual(result.provider_metadata["evidence_ids_used"], ["E1"])
+
+    def test_tutor_accepts_schema_json_inside_a_markdown_fence(self) -> None:
+        provider = PromptCaptureProvider()
+        original_generate = provider.generate
+
+        def fenced_generate(messages, response_schema=None):
+            result = original_generate(messages, response_schema)
+            return LLMResult(content=f"```json\n{result.content}\n```", metadata=result.metadata)
+
+        provider.generate = fenced_generate
+        result = LLMBackedTutorAgent(provider).answer("如何区分 BFS 和 DFS？", [_chunk()])
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertFalse(result.fallback_used)
+
+    def test_tutor_repairs_only_the_known_flat_section_shape(self) -> None:
+        class FlatProvider:
+            def generate(self, messages, response_schema=None):
+                return LLMResult(content=json.dumps({
+                    "direct_answer": "BFS 按层扩展，DFS 沿分支深入。",
+                    "profile_adaptation": "先比较队列和栈。",
+                    "next_step": "手工遍历一个小图。",
+                }, ensure_ascii=False), metadata={"provider": "fake"})
+
+        result = LLMBackedTutorAgent(FlatProvider()).answer("如何区分？", [_chunk()])
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertEqual(result.provider_metadata["structure_repaired"], "flat_sections")
+        self.assertIn("[demo.md#graph-search]", result.answer)
+
+    def test_tutor_fallback_does_not_echo_english_chunk_in_main_answer(self) -> None:
+        chunk = KnowledgeSearchResult(
+            chunk_id=1,
+            content="BFS uses a queue and DFS uses a stack.",
+            score=1.0,
+            source_ref="document:1#chunk:0",
+        )
+
+        result = LLMBackedTutorAgent(FakeProvider(fail=True)).answer("如何区分两种搜索？", [chunk])
+
+        self.assertIn("已切换为安全降级", result.answer)
+        self.assertNotIn("BFS uses a queue", result.answer)
+        self.assertTrue(result.source_refs)
     def test_openai_compatible_provider_uses_contract_without_exposing_key(self) -> None:
         server = HTTPServer(("127.0.0.1", 0), OpenAICompatibleHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -300,7 +399,7 @@ class LLMProviderTutorTests(unittest.TestCase):
         result = agent.answer("BFS 和 DFS 有什么不同？", [_chunk()])
         self.assertIn("模拟 LLM provider", result.answer)
         self.assertTrue(result.source_refs)
-        self.assertIn("LLMProvider adapter", result.decision_basis)
+        self.assertIn("E1-E3", result.decision_basis)
 
     def test_llm_tutor_agent_appends_verified_source_when_provider_omits_inline_citation(self) -> None:
         chunk = KnowledgeSearchResult(
@@ -344,14 +443,14 @@ class LLMProviderTutorTests(unittest.TestCase):
 
         system_prompt = provider.messages[0]["content"]
         user_prompt = provider.messages[1]["content"]
-        self.assertIn("Direct answer", system_prompt)
-        self.assertIn("Based on your current profile", system_prompt)
-        self.assertIn("Grounded next step", system_prompt)
-        self.assertIn("student profile", system_prompt.lower())
-        self.assertIn("source refs", system_prompt.lower())
-        self.assertIn("450 Chinese characters", system_prompt)
+        self.assertIn("direct_answer", system_prompt)
+        self.assertIn("profile_adaptation", system_prompt)
+        self.assertIn("next_step", system_prompt)
+        self.assertIn("简体中文", system_prompt)
+        self.assertIn("禁止输出 document:*", system_prompt)
         self.assertIn("level=beginner", user_prompt)
-        self.assertIn("source=demo.md#graph-search", user_prompt)
+        self.assertIn("E1:", user_prompt)
+        self.assertNotIn("demo.md#graph-search", user_prompt)
 
     def test_tutor_prompt_caps_each_retrieved_chunk_to_keep_latency_bounded(self) -> None:
         provider = PromptCaptureProvider()
@@ -372,7 +471,7 @@ class LLMProviderTutorTests(unittest.TestCase):
     def test_llm_tutor_agent_falls_back_when_provider_fails(self) -> None:
         agent = LLMBackedTutorAgent(FakeProvider(fail=True))
         result = agent.answer("复杂度分析有什么用？", [_chunk()])
-        self.assertIn("根据课程资料", result.answer)
+        self.assertIn("已切换为安全降级", result.answer)
         self.assertIn("Fallback reason", result.decision_basis)
         self.assertIn("rule-based", result.output_summary)
 
@@ -442,7 +541,7 @@ class LLMProviderTutorTests(unittest.TestCase):
                     },
                 )
                 self.assertEqual(tutor_body["safety_status"], "degraded")
-                self.assertIn("根据课程资料", tutor_body["answer"])
+                self.assertIn("已切换为安全降级", tutor_body["answer"])
                 self.assertTrue(tutor_body["source_refs"])
 
                 run = client.get(f"/api/v1/agent-runs/{tutor_body['agent_run_id']}")
@@ -459,6 +558,9 @@ class LLMProviderTutorTests(unittest.TestCase):
                 self.assertTrue(tutor_step["execution_metadata"]["fallback_used"])
                 self.assertIn("HTTP 404", tutor_step["execution_metadata"]["fallback_reason"])
                 self.assertTrue(tutor_step["execution_metadata"]["source_refs"])
+                self.assertGreater(tutor_step["execution_metadata"]["retrieved_count"], 0)
+                self.assertLessEqual(tutor_step["execution_metadata"]["selected_evidence_count"], 3)
+                self.assertLessEqual(tutor_step["execution_metadata"]["context_chars"], 2400)
                 self.assertNotIn("integration-secret", json.dumps(run_body, ensure_ascii=False))
         finally:
             get_engine().dispose()

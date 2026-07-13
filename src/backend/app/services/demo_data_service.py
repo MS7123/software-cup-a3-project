@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import ProcessingStatus, ProfileType
 from app.db.base import Base
-from app.db.schema_compat import ensure_agent_run_step_columns, ensure_document_columns
+from app.db.schema_compat import ensure_agent_run_step_columns, ensure_document_columns, ensure_learning_path_columns
 from app.db.session import get_engine, session_scope
 from app.models import (
     AgentRun,
@@ -105,6 +105,7 @@ class DemoDataService:
         Base.metadata.create_all(get_engine(self.database_url))
         ensure_document_columns(self.database_url)
         ensure_agent_run_step_columns(self.database_url)
+        ensure_learning_path_columns(self.database_url)
 
     def _load_course_graph(self, session: Session) -> Course:
         course = session.scalar(
@@ -132,13 +133,16 @@ class DemoDataService:
         for source_slug, target_slug, relation_type in DEMO_RELATIONS:
             source = concepts_by_slug[source_slug]
             target = concepts_by_slug[target_slug]
-            relation = session.scalar(
+            existing_pair = session.scalars(
                 select(ConceptRelation).where(
                     ConceptRelation.source_concept_id == source.id,
                     ConceptRelation.target_concept_id == target.id,
-                    ConceptRelation.relation_type == relation_type,
                 )
-            )
+            ).all()
+            relation = next((item for item in existing_pair if item.relation_type == relation_type), None)
+            for stale in existing_pair:
+                if stale.relation_type != relation_type:
+                    session.delete(stale)
             if relation is None:
                 session.add(
                     ConceptRelation(

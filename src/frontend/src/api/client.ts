@@ -30,9 +30,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Request failed with ${response.status}`);
+    if (!response.ok) {
+      const text = await response.text();
+      let message = text;
+      try {
+        const payload = JSON.parse(text) as { detail?: string };
+        message = payload.detail || text;
+      } catch {
+        // Keep non-JSON server errors unchanged.
+      }
+      throw new Error(message || `请求失败（HTTP ${response.status}）`);
   }
 
   const text = await response.text();

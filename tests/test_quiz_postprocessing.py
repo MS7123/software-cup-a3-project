@@ -39,7 +39,7 @@ class QuizPostprocessingTests(unittest.TestCase):
             json={
                 "student_profile_id": self.profile["id"],
                 "course_id": demo["course_id"],
-                "goal": "掌握数据结构课程",
+                "goal": "系统掌握整门数据结构课程",
             },
         ).json()
         concept_id = self.flow["learning_path"]["items"][0]["concept_id"]

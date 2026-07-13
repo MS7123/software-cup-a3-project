@@ -1,6 +1,7 @@
 from sqlalchemy import select
 
 from app.agents.planner_agents import (
+    LearningIntent,
     PlannerConcept,
     PlannerContext,
     PlannerRelation,
@@ -8,11 +9,13 @@ from app.agents.planner_agents import (
     build_planner_agent,
 )
 from app.db.session import session_scope
+from app.db.schema_compat import ensure_learning_path_columns
 from app.domain.exceptions import ConflictError, NotFoundError
 from app.models import (
     Concept,
     ConceptRelation,
     Course,
+    Attempt,
     LearningPath,
     LearningPathItem,
     LearningPathRecommendation,
@@ -36,6 +39,7 @@ class LearningPathService:
 
     def create_path(self, profile_id: int, course_id: int, goal: str) -> LearningPathResponse:
         DemoDataService(database_url=self.database_url).load_demo_data()
+        ensure_learning_path_columns(self.database_url)
         with session_scope(self.database_url) as session:
             profile, course = self._get_profile_and_course(session, profile_id, course_id)
             concepts, relations = self._course_graph(session, course.id)
@@ -48,6 +52,9 @@ class LearningPathService:
                 goal=goal,
                 rationale=self._path_rationale(profile, course, goal, result, "initial_creation"),
                 status="active",
+                learning_intent=result.learning_intent.model_dump() if result.learning_intent else {},
+                target_concept_ids=result.target_concept_ids,
+                intent_confidence=result.intent_confidence,
             )
             session.add(path)
             session.flush()
@@ -61,9 +68,13 @@ class LearningPathService:
                     concept_id=concept.id,
                     order_index=index,
                     title=f"阶段 {index}: {concept.name}",
-                    objective=f"围绕“{concept.name}”完成概念理解、例题复盘和关键操作掌握。",
+                    objective=recommendation.objective,
                     rationale=recommendation.reason,
                     status="pending" if index > 1 else "in_progress",
+                    node_role=recommendation.node_role,
+                    activity_type=recommendation.activity_type,
+                    estimated_minutes=recommendation.estimated_minutes,
+                    success_criterion=recommendation.success_criterion,
                 )
                 session.add(item)
                 session.flush()
@@ -163,6 +174,8 @@ class LearningPathService:
                     path.goal,
                     completed_ids,
                     preserve_candidate_set=True,
+                    persisted_learning_intent=path.learning_intent,
+                    persisted_target_concept_ids=path.target_concept_ids,
                 )
                 result = build_planner_agent().plan(path_concepts, path_relations, context)
                 pending_by_concept = {item.concept_id: item for item in items if item.status != "completed"}
@@ -176,6 +189,11 @@ class LearningPathService:
                     item.order_index = start_index + offset
                     item.title = f"阶段 {item.order_index}: {self._concept_name(concepts, item.concept_id)}"
                     item.rationale = recommendation.reason
+                    item.objective = recommendation.objective
+                    item.node_role = recommendation.node_role
+                    item.activity_type = recommendation.activity_type
+                    item.estimated_minutes = recommendation.estimated_minutes
+                    item.success_criterion = recommendation.success_criterion
                     item.status = "in_progress" if offset == 0 else "pending"
                     record = recommendation_records.get(item.id)
                     if record is None:
@@ -204,15 +222,14 @@ class LearningPathService:
                 name=concept.name,
                 chapter=concept.chapter or "数据结构",
                 difficulty=concept.difficulty,
+                description=concept.description or "",
             )
             for concept in concept_rows
         ]
         concept_ids = {concept.id for concept in concepts}
-        relation_rows = session.scalars(
-            select(ConceptRelation).where(ConceptRelation.relation_type == "prerequisite")
-        ).all()
+        relation_rows = session.scalars(select(ConceptRelation)).all()
         relations = [
-            PlannerRelation(row.source_concept_id, row.target_concept_id)
+            PlannerRelation(row.source_concept_id, row.target_concept_id, row.relation_type)
             for row in relation_rows
             if row.source_concept_id in concept_ids and row.target_concept_id in concept_ids
         ]
@@ -225,6 +242,8 @@ class LearningPathService:
         goal: str,
         completed_ids: set[int] | None = None,
         preserve_candidate_set: bool = False,
+        persisted_learning_intent: dict | None = None,
+        persisted_target_concept_ids: list[int] | None = None,
     ) -> PlannerContext:
         preferences = profile.preferences if isinstance(profile.preferences, dict) else {}
         mastery: dict[int, float] = {}
@@ -235,6 +254,12 @@ class LearningPathService:
         ).all()
         for record in records:
             mastery[record.concept_id] = record.mastery_score
+        recent_attempts = session.scalars(
+            select(Attempt)
+            .where(Attempt.student_profile_id == profile.id, Attempt.score < 0.8)
+            .order_by(Attempt.id.desc())
+            .limit(5)
+        ).all()
         weak_points = [
             item.strip()
             for item in str(preferences.get("weak_points") or "").replace("，", "、").split("、")
@@ -251,6 +276,10 @@ class LearningPathService:
             completed_concept_ids=completed_ids or set(),
             mastery_scores=mastery,
             preserve_candidate_set=preserve_candidate_set,
+            learning_goal=str(profile.goal or ""),
+            recent_errors=[attempt.feedback[:240] for attempt in recent_attempts if attempt.feedback],
+            persisted_learning_intent=LearningIntent.model_validate(persisted_learning_intent) if persisted_learning_intent else None,
+            persisted_target_concept_ids=list(persisted_target_concept_ids or []),
         )
 
     def _path_items(self, session, path_id: int) -> list[LearningPathItem]:
@@ -318,6 +347,10 @@ class LearningPathService:
                     recommended_resource_type=record.resource_type if record else None,
                     recommendation_reason=record.reason if record else item.rationale,
                     priority=record.priority if record else item.order_index,
+                    node_role=item.node_role,
+                    activity_type=item.activity_type,
+                    estimated_minutes=item.estimated_minutes,
+                    success_criterion=item.success_criterion,
                 )
             )
         return LearningPathResponse(
@@ -338,6 +371,10 @@ class LearningPathService:
             provider_duration_ms=int((planner_result.provider_metadata if planner_result else {}).get("provider_duration_ms") or 0),
             retry_count=int((planner_result.provider_metadata if planner_result else {}).get("retry_count") or 0),
             token_usage=dict((planner_result.provider_metadata if planner_result else {}).get("usage") or {}),
+            learning_intent=dict(path.learning_intent or {}),
+            target_concept_ids=list(path.target_concept_ids or []),
+            intent_confidence=float(path.intent_confidence or 0),
+            planner_phases=[{"phase": item.phase, "execution_mode": item.execution_mode, "fallback_reason": item.fallback_reason} for item in (planner_result.phase_traces if planner_result else [])],
         )
 
     def _path_rationale(self, profile, course, goal: str, result: PlannerResult, trigger: str) -> str:

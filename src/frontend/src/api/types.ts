@@ -152,7 +152,11 @@ export interface LearningPathItem {
   status: string;
   recommended_resource_type?: string | null;
   recommendation_reason?: string | null;
-  priority?: number | null;
+    priority?: number | null;
+    node_role: "target" | "prerequisite";
+    activity_type: string;
+    estimated_minutes: number;
+    success_criterion: string;
 }
 
 export interface LearningPath {
@@ -172,7 +176,10 @@ export interface LearningPath {
   planner_duration_ms?: number | null;
   provider_duration_ms?: number;
   retry_count?: number;
-  token_usage?: Record<string, number>;
+    token_usage?: Record<string, number>;
+    learning_intent?: Record<string, unknown>;
+    target_concept_ids?: number[];
+    intent_confidence?: number;
 }
 
 export interface AgentExecutionMetadata {

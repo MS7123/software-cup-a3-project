@@ -117,7 +117,7 @@ class ProfileHistoryApiTests(unittest.TestCase):
             demo = client.post("/api/v1/demo-data/load").json()["demo_data"]
             profile = client.get("/api/v1/student-profiles").json()[0]
             flow = client.post("/api/v1/learning-paths", json={
-                "student_profile_id": profile["id"], "course_id": demo["course_id"], "goal": "掌握课程主线"
+                "student_profile_id": profile["id"], "course_id": demo["course_id"], "goal": "系统掌握整门课程"
             }).json()
             item_id = flow["learning_path"]["items"][0]["id"]
             completed = client.post(f"/api/v1/learning-path-items/{item_id}/complete")

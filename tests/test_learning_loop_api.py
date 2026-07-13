@@ -43,7 +43,7 @@ class LearningLoopApiTests(unittest.TestCase):
                 json={
                     "student_profile_id": profile["id"],
                     "course_id": demo["course_id"],
-                    "goal": "准备数据结构小测",
+                    "goal": "准备 BFS/DFS 课程小测",
                 },
             ).json()
             path_item = learning_flow["learning_path"]["items"][0]
@@ -134,7 +134,7 @@ class LearningLoopApiTests(unittest.TestCase):
                 json={
                     "student_profile_id": profile["id"],
                     "course_id": demo["course_id"],
-                    "goal": "准备数据结构小测",
+                    "goal": "准备 BFS/DFS 课程小测",
                 },
             ).json()
             path_item = learning_flow["learning_path"]["items"][0]

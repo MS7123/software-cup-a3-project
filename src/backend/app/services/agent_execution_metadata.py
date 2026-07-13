@@ -23,6 +23,10 @@ def build_execution_metadata(result: object | None = None, **overrides: Any) -> 
                     "provider_duration_ms": provider_metadata.get("provider_duration_ms"),
                     "retry_count": provider_metadata.get("retry_count"),
                     "token_usage": provider_metadata.get("usage"),
+                    "retrieved_count": provider_metadata.get("retrieved_count"),
+                    "selected_evidence_count": provider_metadata.get("selected_evidence_count"),
+                    "context_chars": provider_metadata.get("context_chars"),
+                    "evidence_ids_used": provider_metadata.get("evidence_ids_used"),
                 }
             )
         for field in (
@@ -36,6 +40,10 @@ def build_execution_metadata(result: object | None = None, **overrides: Any) -> 
             "provider_duration_ms",
             "retry_count",
             "token_usage",
+            "retrieved_count",
+            "selected_evidence_count",
+            "context_chars",
+            "evidence_ids_used",
         ):
             if hasattr(result, field):
                 values[field] = getattr(result, field)
@@ -50,6 +58,10 @@ def build_execution_metadata(result: object | None = None, **overrides: Any) -> 
         "provider_duration_ms",
         "retry_count",
         "token_usage",
+        "retrieved_count",
+        "selected_evidence_count",
+        "context_chars",
+        "evidence_ids_used",
     ):
         if field in overrides:
             values[field] = overrides[field]
@@ -85,6 +97,10 @@ def sanitize_execution_metadata(value: dict[str, Any] | AgentExecutionMetadata |
         provider_duration_ms=provider_duration_ms,
         retry_count=retry_count,
         token_usage=token_usage,
+        retrieved_count=_safe_duration(raw.get("retrieved_count")),
+        selected_evidence_count=_safe_duration(raw.get("selected_evidence_count")),
+        context_chars=_safe_duration(raw.get("context_chars")),
+        evidence_ids_used=[item for item in (_safe_identifier(value, "", 8) for value in (raw.get("evidence_ids_used") or [])) if item][:3],
     )
 
 

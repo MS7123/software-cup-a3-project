@@ -141,6 +141,9 @@ class LearningPath(TimestampMixin, Base):
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False)
+    learning_intent: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    target_concept_ids: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+    intent_confidence: Mapped[float] = mapped_column(Float, default=0, nullable=False)
 
     items: Mapped[list["LearningPathItem"]] = relationship(back_populates="path")
 
@@ -156,6 +159,10 @@ class LearningPathItem(Base):
     objective: Mapped[str] = mapped_column(Text, nullable=False)
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False)
+    node_role: Mapped[str] = mapped_column(String(40), default="target", nullable=False)
+    activity_type: Mapped[str] = mapped_column(String(80), default="explanation", nullable=False)
+    estimated_minutes: Mapped[int] = mapped_column(Integer, default=20, nullable=False)
+    success_criterion: Mapped[str] = mapped_column(Text, default="能够完成本节点学习目标。", nullable=False)
 
     path: Mapped[LearningPath] = relationship(back_populates="items")
 

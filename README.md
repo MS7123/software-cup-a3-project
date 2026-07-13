@@ -107,14 +107,16 @@
 当前七项核心 Agent 已通过统一 `LLMProvider` adapter 接入 OpenAI-compatible 模型，并保留 rule-based fallback：
 
 - ProfileBuilder：自然语言构建六维初始画像。
-- Planner：完整知识图保持不变；规则层按学习目标选择最多 8 个相关节点并补齐必要基础，LLM 排序并生成主动资源推荐。
+- Planner：采用两阶段语义规划；第一次 LLM 解析真实目标节点与 `learning_intent`，规则层只补充未掌握的 hard prerequisite，第二次 LLM 为最多 8 个节点生成活动、资源、时间和完成标准。低置信度目标返回中文 `422`，不再扩展为完整课程。
 - Resource：生成五类差异化、有来源的学习资源。
-- Tutor：仅基于当前 RAG 证据生成不超过 450 个中文字符的回答。
+- Tutor：检索 5 条原始证据后去重压缩为最多 3 条、总计不超过 2400 字符；模型只能引用 `E1`～`E3`，后端再映射真实 `source_ref` 并执行安全与引用校验。失败时主回答只显示中文降级说明，原始证据保留在独立来源面板。
 - Quiz：生成全中文的结构化、多题型、有引用测验；代码和通用技术缩写可以保留英文。
 - Evaluator：输出结构化评分、反馈、薄弱点和下一步建议。
 - ProfileUpdater：根据真实学习 trace 动态更新画像。
 
 `run-competition-spark.ps1` 默认启用上述七项能力；`verify.ps1`、`run-local.ps1 -SmokeOnly` 和 Playwright smoke 仍关闭远端 LLM，以保证无 API key、无网络时可以回归验证。`ImageGenerationProvider` 仍只是 adapter contract 预留，尚未接入真实生图模型。
+
+比赛入口的 Tutor 继续使用 **25 秒、0 retry、800 tokens** 预算。Planner 每次创建 focused 路径会进行 **goal resolution** 与 **activity generation** 两次受限调用，trace 通过 `phase` 区分 `goal_resolution`、`constraint_validation` 和 `activity_generation`。任一远端阶段失败时只在已经确认的节点范围内执行 rule-based fallback，不会补齐到 25 个节点。
 
 ### 当前技术栈
 

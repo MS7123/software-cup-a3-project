@@ -90,6 +90,19 @@ class AgentRunService:
             steps = self._load_steps(session, run_id)
             return self._to_run_response(run, steps)
 
+    def fail_run(self, run_id: int, error: str) -> AgentRunResponse:
+        with session_scope(self.database_url) as session:
+            run = session.get(AgentRun, run_id)
+            if run is None:
+                raise NotFoundError("Agent run", run_id)
+            safe_error = sanitize_trace_text(error, 1000)
+            run.status = "failed"
+            run.error = safe_error
+            run.final_summary = safe_error
+            run.completed_at = datetime.utcnow()
+            session.flush()
+            return self._to_run_response(run, self._load_steps(session, run_id))
+
     def get_run(self, run_id: int) -> AgentRunResponse:
         with session_scope(self.database_url) as session:
             run = session.get(AgentRun, run_id)

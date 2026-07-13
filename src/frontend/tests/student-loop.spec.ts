@@ -10,7 +10,7 @@ test("学生端界面可以完成主要学习闭环", async ({ page }) => {
   const demoStatus = await page.request.get("/api/v1/demo-data/status");
   expect(demoStatus.ok()).toBeTruthy();
   const demoBody = await demoStatus.json();
-  expect(demoBody.concept_count).toBe(25);
+  expect(demoBody.concept_count).toBe(24);
   expect(demoBody.document_count).toBeGreaterThanOrEqual(8);
   expect(demoBody.chunk_count).toBeGreaterThanOrEqual(24);
   await page.locator('[role="dialog"]').getByRole("button", { name: "关闭设置与调试" }).click();
@@ -68,4 +68,16 @@ test("学生端界面可以完成主要学习闭环", async ({ page }) => {
   await expect(page.getByTestId("profile-latest-change")).toBeVisible();
   await expect(page.getByTestId("profile-history")).toContainText("quiz");
   await expect(page.getByTestId("profile-history")).toContainText("证据");
+});
+
+test("低置信度目标保留输入并显示中文改写提示", async ({ page }) => {
+  const loaded = await page.request.post("/api/v1/demo-data/load");
+  expect(loaded.ok()).toBeTruthy();
+  await page.goto("/");
+  await page.getByRole("button", { name: "学习路径", exact: true }).click();
+  const goalInput = page.getByLabel("学习目标");
+  await goalInput.fill("把这个再弄扎实一点");
+  await page.getByTestId("create-path-button").click();
+  await expect(page.locator(".error-note")).toContainText("知识点、学习目的或时间要求");
+  await expect(goalInput).toHaveValue("把这个再弄扎实一点");
 });

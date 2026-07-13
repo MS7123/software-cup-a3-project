@@ -4,33 +4,54 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from app.adapters.llm_provider import LLMProviderError, LLMSettings, build_llm_provider
 from app.adapters.protocols import LLMProvider
+from app.domain.exceptions import GoalResolutionError
 from app.services.content_safety_service import ContentSafetyService
 
 
 ResourceType = Literal["guided_note", "practice_questions", "mind_map", "extended_reading", "coding_case"]
-PLANNER_LLM_WINDOW_SIZE = 8
+ActivityType = Literal["explanation", "concept_comparison", "worked_example", "coding", "error_review", "mock_assessment", "visual_map"]
+NodeRole = Literal["target", "prerequisite"]
 FOCUSED_PATH_MAX_NODES = 8
 
-FOCUS_GOAL_ALIASES: dict[str, tuple[str, ...]] = {
-    "binary-tree": ("二叉树",),
-    "binary-tree-traversal": ("二叉树遍历", "树遍历", "前序", "中序", "后序", "层序"),
-    "tree-basics": ("树的基本概念", "树基础"),
-    "graph-representation": ("图的表示", "图表示", "邻接矩阵", "邻接表"),
-    "bfs-dfs": ("bfs", "dfs", "图搜索", "图遍历", "广度优先", "深度优先"),
-    "shortest-path": ("最短路径",),
-}
 
-FOCUS_FOUNDATION_SLUGS: dict[str, tuple[str, ...]] = {
-    "binary-tree": ("tree-basics",),
-    "binary-tree-traversal": ("tree-basics", "binary-tree", "stack", "queue"),
-    "graph-representation": (),
-    "bfs-dfs": ("graph-representation", "stack", "queue"),
-    "shortest-path": ("graph-representation", "bfs-dfs", "queue"),
-}
+class LearningIntent(BaseModel):
+    purpose: Literal["concept_learning", "assessment_preparation", "project_application", "interview_preparation", "skill_consolidation"]
+    action: Literal["learn", "consolidate", "rapid_review", "remediate", "practice"]
+    assessment_type: Literal["course_quiz", "final_exam", "interview", "none"]
+    time_horizon: Literal["immediate", "short_term", "long_term"]
+    preferred_activities: list[ActivityType] = Field(min_length=1, max_length=7)
+    desired_outcome: str = Field(min_length=1, max_length=300)
+
+
+class GoalResolution(BaseModel):
+    course_scope: Literal["focused", "full_course"] = "focused"
+    target_concept_ids: list[int] = Field(min_length=1, max_length=100)
+    optional_support_concept_ids: list[int] = Field(default_factory=list, max_length=2)
+    learning_intent: LearningIntent
+    confidence: float = Field(ge=0, le=1)
+
+
+GOAL_RESOLUTION_SCHEMA = GoalResolution.model_json_schema()
+
+
+class GoalResolutionWire(BaseModel):
+    course_scope: Literal["focused", "full_course"] = "focused"
+    target_concept_ids: list[int] = Field(min_length=1, max_length=100)
+    optional_support_concept_ids: list[int] = Field(default_factory=list, max_length=2)
+    purpose: Literal["concept_learning", "assessment_preparation", "project_application", "interview_preparation", "skill_consolidation"]
+    action: Literal["learn", "consolidate", "rapid_review", "remediate", "practice"]
+    assessment_type: Literal["course_quiz", "final_exam", "interview", "none"]
+    time_horizon: Literal["immediate", "short_term", "long_term"]
+    preferred_activities: list[ActivityType] = Field(min_length=1, max_length=7)
+    desired_outcome: str = Field(min_length=1, max_length=300)
+    confidence: float = Field(ge=0, le=1)
+
+
+GOAL_RESOLUTION_WIRE_SCHEMA = GoalResolutionWire.model_json_schema()
 
 
 @dataclass(frozen=True)
@@ -40,12 +61,14 @@ class PlannerConcept:
     name: str
     chapter: str
     difficulty: str
+    description: str = ""
 
 
 @dataclass(frozen=True)
 class PlannerRelation:
     source_concept_id: int
     target_concept_id: int
+    relation_type: str = "prerequisite"
 
 
 @dataclass(frozen=True)
@@ -60,6 +83,16 @@ class PlannerContext:
     completed_concept_ids: set[int] = field(default_factory=set)
     mastery_scores: dict[int, float] = field(default_factory=dict)
     preserve_candidate_set: bool = False
+    learning_goal: str = ""
+    recent_errors: list[str] = field(default_factory=list)
+    persisted_learning_intent: LearningIntent | None = None
+    persisted_target_concept_ids: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SelectedPlannerConcept:
+    concept: PlannerConcept
+    node_role: NodeRole
 
 
 @dataclass(frozen=True)
@@ -68,6 +101,18 @@ class PlannerRecommendation:
     recommended_resource_type: str
     reason: str
     priority: int
+    node_role: str = "target"
+    activity_type: str = "explanation"
+    objective: str = ""
+    estimated_minutes: int = 20
+    success_criterion: str = "能够独立说明核心概念并完成一道对应练习。"
+
+
+@dataclass(frozen=True)
+class PlannerPhaseTrace:
+    phase: str
+    execution_mode: str
+    fallback_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,152 +126,131 @@ class PlannerResult:
     duration_ms: int
     warning_reason: str | None = None
     provider_metadata: dict[str, Any] = field(default_factory=dict)
+    learning_intent: LearningIntent | None = None
+    target_concept_ids: list[int] = field(default_factory=list)
+    intent_confidence: float = 0
+    phase_traces: list[PlannerPhaseTrace] = field(default_factory=list)
 
 
-class PlannerOutputItem(BaseModel):
+class ActivityOutputItem(BaseModel):
     concept_id: int
+    node_role: NodeRole
+    activity_type: ActivityType
+    objective: str = Field(min_length=1, max_length=300)
+    estimated_minutes: int = Field(ge=5, le=60)
+    success_criterion: str = Field(min_length=1, max_length=300)
     recommended_resource_type: ResourceType
     reason: str = Field(min_length=1, max_length=300)
     priority: int = Field(ge=1)
 
 
-class PlannerOutput(BaseModel):
-    recommendations: list[PlannerOutputItem] = Field(min_length=1, max_length=5)
+class ActivityOutput(BaseModel):
+    activities: list[ActivityOutputItem] = Field(min_length=1, max_length=8)
 
 
-PLANNER_OUTPUT_SCHEMA: dict[str, Any] = PlannerOutput.model_json_schema()
+ACTIVITY_OUTPUT_SCHEMA = ActivityOutput.model_json_schema()
 
 
 class PlannerAgent(Protocol):
-    def plan(
-        self,
-        concepts: list[PlannerConcept],
-        relations: list[PlannerRelation],
-        context: PlannerContext,
-    ) -> PlannerResult:
+    def plan(self, concepts: list[PlannerConcept], relations: list[PlannerRelation], context: PlannerContext) -> PlannerResult:
         raise NotImplementedError
 
 
 class RuleBasedHybridPlannerAgent:
-    def plan(
-        self,
-        concepts: list[PlannerConcept],
-        relations: list[PlannerRelation],
-        context: PlannerContext,
-    ) -> PlannerResult:
+    def plan(self, concepts: list[PlannerConcept], relations: list[PlannerRelation], context: PlannerContext) -> PlannerResult:
         started = time.perf_counter()
-        scoped_concepts, scoped_relations = _planning_scope(concepts, relations, context)
-        ordered = _topological_order(scoped_concepts, scoped_relations, context)
-        resource_type = _resource_type_for_context(context)
-        recommendations = [
-            PlannerRecommendation(
-                concept_id=concept.id,
-                recommended_resource_type=resource_type,
-                reason=_rule_reason(concept, context, resource_type),
-                priority=index,
-            )
-            for index, concept in enumerate(ordered, start=1)
-        ]
+        resolution = _resolution_for_context(concepts, context)
+        selected = select_minimal_path(
+            concepts, relations, resolution.target_concept_ids, resolution.optional_support_concept_ids, context, resolution.learning_intent
+        )
+        recommendations = _fallback_activities(selected, resolution.learning_intent, context)
         return PlannerResult(
-            recommendations=recommendations,
-            execution_mode="rule_based",
-            provider="rule_based",
-            model="",
-            fallback_used=False,
-            fallback_reason=None,
-            duration_ms=_elapsed_ms(started),
+            recommendations, "rule_based", "rule_based", "", False, None, _elapsed_ms(started),
+            learning_intent=resolution.learning_intent,
+            target_concept_ids=resolution.target_concept_ids,
+            intent_confidence=resolution.confidence,
+            phase_traces=[PlannerPhaseTrace("goal_resolution", "rule_based"), PlannerPhaseTrace("constraint_validation", "rule_based"), PlannerPhaseTrace("activity_generation", "rule_based")],
         )
 
 
 class HybridPlannerAgent:
-    def __init__(
-        self,
-        provider: LLMProvider,
-        fallback_agent: PlannerAgent | None = None,
-        fallback_mode: str = "rule_based",
-        provider_name: str = "openai_compatible",
-        model: str = "",
-    ) -> None:
+    def __init__(self, provider: LLMProvider, fallback_agent: PlannerAgent | None = None, fallback_mode: str = "rule_based", provider_name: str = "openai_compatible", model: str = "") -> None:
         self.provider = provider
         self.fallback_agent = fallback_agent or RuleBasedHybridPlannerAgent()
         self.fallback_mode = fallback_mode if fallback_mode in {"rule_based", "error"} else "rule_based"
         self.provider_name = provider_name
         self.model = model
 
-    def plan(
-        self,
-        concepts: list[PlannerConcept],
-        relations: list[PlannerRelation],
-        context: PlannerContext,
-    ) -> PlannerResult:
+    def plan(self, concepts: list[PlannerConcept], relations: list[PlannerRelation], context: PlannerContext) -> PlannerResult:
         started = time.perf_counter()
+        safety = ContentSafetyService().review_input(" ".join([context.goal, context.learning_goal, *context.weak_points, *context.recent_errors]))
+        if not safety.allowed:
+            raise GoalResolutionError("学习目标包含无法安全处理的内容，请改写后重试。")
+        phase_traces: list[PlannerPhaseTrace] = []
+        fallback_reasons: list[str] = []
+        provider_metadata: dict[str, Any] = {}
         try:
-            safety_text = " ".join(
-                [
-                    context.goal,
-                    context.profile_type,
-                    context.foundation_level,
-                    context.learning_preference,
-                    context.available_time,
-                    *context.weak_points,
-                    context.resource_preference,
-                ]
-            )
-            safety = ContentSafetyService().review_input(safety_text)
-            if not safety.allowed:
-                raise ValueError(f"Content safety blocked input: {safety.category}")
-            scoped_concepts, scoped_relations = _planning_scope(concepts, relations, context)
-            eligible = [concept for concept in scoped_concepts if concept.id not in context.completed_concept_ids]
-            if not eligible:
-                return PlannerResult([], "llm", self.provider_name, self.model, False, None, _elapsed_ms(started))
-            planning_window = _topological_order(scoped_concepts, scoped_relations, context)[:PLANNER_LLM_WINDOW_SIZE]
-            result = self.provider.generate(
-                _build_planner_messages(planning_window, scoped_relations, context),
-                response_schema=PLANNER_OUTPUT_SCHEMA,
-            )
-            parsed, structure_repaired = _parse_planner_output(result.content)
-            recommendations, warning_reason = _compose_hybrid_recommendations(
-                parsed.recommendations,
-                scoped_concepts,
-                scoped_relations,
-                context,
-            )
-            if structure_repaired:
-                warning_reason = "; ".join(
-                    part for part in ("structure_repaired=concatenated_objects", warning_reason) if part
+            if context.preserve_candidate_set and context.persisted_learning_intent and context.persisted_target_concept_ids:
+                resolution = GoalResolution(
+                    target_concept_ids=context.persisted_target_concept_ids,
+                    learning_intent=context.persisted_learning_intent,
+                    confidence=1.0,
                 )
-            _validate_recommendations(
-                recommendations,
-                scoped_concepts,
-                scoped_relations,
-                context.completed_concept_ids,
-            )
-            return PlannerResult(
-                recommendations=recommendations,
-                execution_mode="llm",
-                provider=str(result.metadata.get("provider") or self.provider_name),
-                model=str(result.metadata.get("model") or self.model),
-                fallback_used=False,
-                fallback_reason=None,
-                duration_ms=_elapsed_ms(started),
-                warning_reason=warning_reason,
-                provider_metadata=result.metadata,
-            )
+                phase_traces.append(PlannerPhaseTrace("goal_resolution", "rule_based"))
+            else:
+                raw = self.provider.generate(_goal_resolution_messages(concepts, context), response_schema=GOAL_RESOLUTION_WIRE_SCHEMA)
+                provider_metadata.update(raw.metadata)
+                resolution = _parse_goal_resolution(raw.content)
+                _validate_resolution(resolution, concepts, context.goal)
+                if resolution.course_scope == "full_course":
+                    resolution = resolution.model_copy(
+                        update={"target_concept_ids": [concept.id for concept in concepts]}
+                    )
+                phase_traces.append(PlannerPhaseTrace("goal_resolution", "llm"))
+        except GoalResolutionError:
+            raise
+        except Exception as exc:
+            reason = _fallback_reason(exc)
+            try:
+                resolution = resolve_goal_deterministically(context.goal, concepts)
+            except GoalResolutionError:
+                raise GoalResolutionError() from exc
+            fallback_reasons.append(f"goal_resolution: {reason}")
+            phase_traces.append(PlannerPhaseTrace("goal_resolution", "rule_based_fallback", reason))
+
+        selected = select_minimal_path(
+            concepts, relations, resolution.target_concept_ids, resolution.optional_support_concept_ids, context, resolution.learning_intent
+        )
+        phase_traces.append(PlannerPhaseTrace("constraint_validation", "rule_based"))
+        try:
+            raw = self.provider.generate(_activity_messages(selected, resolution.learning_intent, context), response_schema=ACTIVITY_OUTPUT_SCHEMA)
+            provider_metadata.update(raw.metadata)
+            activities = _parse_activity_output(raw.content)
+            recommendations = _validate_and_convert_activities(activities, selected, context)
+            phase_traces.append(PlannerPhaseTrace("activity_generation", "llm"))
         except Exception as exc:
             reason = _fallback_reason(exc)
             if self.fallback_mode == "error":
                 raise LLMProviderError(reason) from exc
-            fallback = self.fallback_agent.plan(concepts, relations, context)
-            return replace(
-                fallback,
-                execution_mode="rule_based_fallback",
-                provider=self.provider_name,
-                model=self.model,
-                fallback_used=True,
-                fallback_reason=reason,
-                duration_ms=_elapsed_ms(started),
-                provider_metadata=getattr(exc, "metadata", {}),
-            )
+            recommendations = _fallback_activities(selected, resolution.learning_intent, context)
+            fallback_reasons.append(f"activity_generation: {reason}")
+            phase_traces.append(PlannerPhaseTrace("activity_generation", "rule_based_fallback", reason))
+
+        fallback_used = bool(fallback_reasons)
+        return PlannerResult(
+            recommendations=recommendations,
+            execution_mode="rule_based_fallback" if fallback_used else "llm",
+            provider=self.provider_name,
+            model=self.model,
+            fallback_used=fallback_used,
+            fallback_reason="; ".join(fallback_reasons) or None,
+            duration_ms=_elapsed_ms(started),
+            provider_metadata=provider_metadata,
+            learning_intent=resolution.learning_intent,
+            target_concept_ids=resolution.target_concept_ids,
+            intent_confidence=resolution.confidence,
+            phase_traces=phase_traces,
+        )
 
 
 def build_planner_agent(settings: LLMSettings | None = None) -> PlannerAgent:
@@ -234,347 +258,232 @@ def build_planner_agent(settings: LLMSettings | None = None) -> PlannerAgent:
     provider = build_llm_provider(resolved, purpose="planner")
     if provider is None:
         return RuleBasedHybridPlannerAgent()
-    return HybridPlannerAgent(
-        provider,
-        fallback_mode=resolved.fallback_mode,
-        provider_name=resolved.provider,
-        model=resolved.model,
-    )
+    return HybridPlannerAgent(provider, fallback_mode=resolved.fallback_mode, provider_name=resolved.provider, model=resolved.model)
 
 
-def _planning_scope(
-    concepts: list[PlannerConcept],
-    relations: list[PlannerRelation],
-    context: PlannerContext,
-) -> tuple[list[PlannerConcept], list[PlannerRelation]]:
-    if context.preserve_candidate_set or _is_broad_course_goal(context.goal):
-        return concepts, relations
-
-    normalized_goal = context.goal.strip().lower()
-    targets = [concept for concept in concepts if _concept_matches_focus_goal(concept, normalized_goal)]
-    if not targets:
-        return concepts, relations
-
-    concept_by_slug = {concept.slug: concept for concept in concepts}
-    concept_by_id = {concept.id: concept for concept in concepts}
-    selected_ids = {concept.id for concept in targets}
-    synthetic_pairs: set[tuple[int, int]] = set()
-
-    for target in targets:
-        foundation_slugs = FOCUS_FOUNDATION_SLUGS.get(target.slug)
-        if foundation_slugs is not None:
-            for slug in foundation_slugs:
-                foundation = concept_by_slug.get(slug)
-                if foundation is None:
-                    continue
-                selected_ids.add(foundation.id)
-                synthetic_pairs.add((foundation.id, target.id))
-            continue
-        for relation in relations:
-            if relation.target_concept_id == target.id and relation.source_concept_id in concept_by_id:
-                selected_ids.add(relation.source_concept_id)
-
-    if len(selected_ids) > FOCUSED_PATH_MAX_NODES:
-        target_ids = {concept.id for concept in targets}
-        ranked = sorted(
-            (concept_by_id[concept_id] for concept_id in selected_ids),
-            key=lambda concept: (
-                0 if concept.id in target_ids else 1,
-                _personalization_key(concept, context),
-            ),
-        )
-        selected_ids = {concept.id for concept in ranked[:FOCUSED_PATH_MAX_NODES]}
-
-    scoped_concepts = [concept for concept in concepts if concept.id in selected_ids]
-    relation_pairs = {
-        (relation.source_concept_id, relation.target_concept_id)
-        for relation in relations
-        if relation.source_concept_id in selected_ids and relation.target_concept_id in selected_ids
-    }
-    relation_pairs.update(
-        (source, target)
-        for source, target in synthetic_pairs
-        if source in selected_ids and target in selected_ids
-    )
-    scoped_relations = [PlannerRelation(source, target) for source, target in sorted(relation_pairs)]
-    return scoped_concepts, scoped_relations
+_ALIASES: dict[str, tuple[str, ...]] = {
+    "bfs-dfs": ("图搜索", "图搜", "bfs/dfs", "bfs", "dfs", "广度搜索", "深度搜索", "广度优先", "深度优先", "广搜", "深搜"),
+    "binary-tree-traversal": ("二叉树遍历", "树遍历", "前序", "中序", "后序", "层序"),
+    "binary-tree": ("二叉树",),
+    "graph-representation": ("图的表示", "图表示", "邻接矩阵", "邻接表"),
+    "shortest-path": ("最短路径",),
+}
 
 
-def _is_broad_course_goal(goal: str) -> bool:
-    normalized = goal.strip().lower()
-    return any(
-        marker in normalized
-        for marker in (
-            "完整课程",
-            "全部课程",
-            "全课程",
-            "系统掌握数据结构",
-            "系统掌握整门课程",
-            "掌握数据结构课程",
-            "掌握课程",
-        )
-    )
+def resolve_goal_deterministically(goal: str, concepts: list[PlannerConcept]) -> GoalResolution:
+    normalized = _normalize(goal)
+    full_course = any(marker in normalized for marker in ("完整课程", "全部课程", "整门课程", "系统掌握整门"))
+    if full_course:
+        target_ids = [item.id for item in concepts]
+        intent = _infer_intent(goal, concepts)
+        return GoalResolution(course_scope="full_course", target_concept_ids=target_ids[:4], learning_intent=intent, confidence=0.9)
+    matched: list[int] = []
+    for concept in concepts:
+        names = (concept.name, concept.slug, *_ALIASES.get(concept.slug, ()))
+        if any(_normalize(name) in normalized for name in names if _normalize(name)):
+            matched.append(concept.id)
+    matched = list(dict.fromkeys(matched))[:4]
+    if not matched:
+        raise GoalResolutionError()
+    return GoalResolution(target_concept_ids=matched, learning_intent=_infer_intent(goal, concepts), confidence=0.75)
 
 
-def _concept_matches_focus_goal(concept: PlannerConcept, normalized_goal: str) -> bool:
-    if concept.name.lower() in normalized_goal or concept.slug.lower() in normalized_goal:
-        return True
-    return any(alias.lower() in normalized_goal for alias in FOCUS_GOAL_ALIASES.get(concept.slug, ()))
+def _infer_intent(goal: str, concepts: list[PlannerConcept]) -> LearningIntent:
+    normalized = _normalize(goal)
+    if any(marker in normalized for marker in ("从零", "零基础")):
+        purpose, action, assessment, activities = "concept_learning", "learn", "none", ["explanation", "worked_example", "coding"]
+    elif any(marker in normalized for marker in ("小测", "测验", "quiz")):
+        purpose, action, assessment, activities = "assessment_preparation", "consolidate", "course_quiz", ["concept_comparison", "worked_example", "error_review", "mock_assessment"]
+    elif any(marker in normalized for marker in ("期末", "考试")):
+        purpose, action, assessment, activities = "assessment_preparation", "rapid_review", "final_exam", ["explanation", "error_review", "mock_assessment"]
+    elif any(marker in normalized for marker in ("面试", "interview")):
+        purpose, action, assessment, activities = "interview_preparation", "practice", "interview", ["concept_comparison", "coding"]
+    elif any(marker in normalized for marker in ("代码", "实现", "python", "项目")):
+        purpose, action, assessment, activities = "project_application", "practice", "none", ["worked_example", "coding"]
+    elif any(marker in normalized for marker in ("巩固", "复习")):
+        purpose, action, assessment, activities = "skill_consolidation", "consolidate", "none", ["explanation", "worked_example", "error_review"]
+    else:
+        purpose, action, assessment, activities = "concept_learning", "learn", "none", ["explanation", "worked_example"]
+    return LearningIntent(purpose=purpose, action=action, assessment_type=assessment, time_horizon="short_term", preferred_activities=activities, desired_outcome=f"完成目标：{goal[:180]}")
 
 
-def _topological_order(
-    concepts: list[PlannerConcept],
-    relations: list[PlannerRelation],
-    context: PlannerContext,
-    preferred_priority: dict[int, tuple[int, int]] | None = None,
-) -> list[PlannerConcept]:
-    concept_by_id = {concept.id: concept for concept in concepts}
-    pending_ids = set(concept_by_id) - context.completed_concept_ids
-    indegree = {concept_id: 0 for concept_id in pending_ids}
-    outgoing = {concept_id: [] for concept_id in pending_ids}
+def _resolution_for_context(concepts: list[PlannerConcept], context: PlannerContext) -> GoalResolution:
+    if context.preserve_candidate_set and context.persisted_learning_intent and context.persisted_target_concept_ids:
+        return GoalResolution(target_concept_ids=context.persisted_target_concept_ids, learning_intent=context.persisted_learning_intent, confidence=1)
+    resolution = resolve_goal_deterministically(context.goal, concepts)
+    if resolution.course_scope == "full_course":
+        return resolution.model_copy(update={"target_concept_ids": [item.id for item in concepts]})
+    return resolution
+
+
+def select_minimal_path(concepts: list[PlannerConcept], relations: list[PlannerRelation], target_concept_ids: list[int], optional_support_concept_ids: list[int], context: PlannerContext, learning_intent: LearningIntent) -> list[SelectedPlannerConcept]:
+    concept_by_id = {item.id: item for item in concepts}
+    unknown = [item for item in target_concept_ids if item not in concept_by_id]
+    if not target_concept_ids or unknown:
+        raise GoalResolutionError("目标知识点不存在于当前课程，请改写为课程内的具体知识点。")
+    target_ids = set(target_concept_ids)
+    selected_ids = set(target_ids)
+    hard_incoming: dict[int, list[int]] = {}
     for relation in relations:
-        source = relation.source_concept_id
-        target = relation.target_concept_id
-        if target not in pending_ids:
-            continue
-        if source in context.completed_concept_ids:
-            continue
-        if source not in pending_ids or target not in concept_by_id:
-            raise ValueError("Prerequisite relation references an unknown concept.")
-        indegree[target] += 1
-        outgoing[source].append(target)
+        if relation.relation_type == "prerequisite":
+            hard_incoming.setdefault(relation.target_concept_id, []).append(relation.source_concept_id)
 
-    ordered: list[PlannerConcept] = []
-    available = [concept_by_id[concept_id] for concept_id, degree in indegree.items() if degree == 0]
-    while available:
-        available.sort(
-            key=lambda concept: (
-                (preferred_priority or {}).get(concept.id, (10_000, 10_000)),
-                _personalization_key(concept, context),
-            )
+    visiting: set[int] = set()
+    def add_prerequisites(concept_id: int) -> None:
+        if concept_id in visiting:
+            raise ValueError("Knowledge graph contains a prerequisite cycle.")
+        visiting.add(concept_id)
+        for prerequisite_id in hard_incoming.get(concept_id, []):
+            if context.mastery_scores.get(prerequisite_id, _default_mastery(context.foundation_level)) >= 0.8:
+                continue
+            add_prerequisites(prerequisite_id)
+            selected_ids.add(prerequisite_id)
+        visiting.remove(concept_id)
+    for target_id in target_ids:
+        add_prerequisites(target_id)
+
+    related_pairs = {(item.source_concept_id, item.target_concept_id) for item in relations if item.relation_type == "related"}
+    target_chapters = {concept_by_id[item].chapter for item in target_ids}
+    for support_id in optional_support_concept_ids[:2]:
+        if support_id not in concept_by_id or support_id in selected_ids:
+            continue
+        weak_same_domain = (
+            concept_by_id[support_id].chapter in target_chapters
+            and any(_normalize(weak) in _normalize(concept_by_id[support_id].name) or _normalize(concept_by_id[support_id].name) in _normalize(weak) for weak in context.weak_points)
         )
-        concept = available.pop(0)
-        ordered.append(concept)
-        for target in outgoing[concept.id]:
-            indegree[target] -= 1
-            if indegree[target] == 0:
-                available.append(concept_by_id[target])
+        if weak_same_domain or any((support_id, target) in related_pairs or (target, support_id) in related_pairs for target in target_ids):
+            selected_ids.add(support_id)
+    if len(selected_ids) > FOCUSED_PATH_MAX_NODES and len(target_ids) <= 4:
+        raise GoalResolutionError("目标所需的硬先修链超过 8 个节点，请缩小学习目标后重试。")
+    scoped = [concept_by_id[item] for item in selected_ids]
+    ordered = _topological_order(scoped, [item for item in relations if item.relation_type == "prerequisite"], context)
+    return [SelectedPlannerConcept(item, "target" if item.id in target_ids else "prerequisite") for item in ordered if item.id not in context.completed_concept_ids]
 
-    if len(ordered) != len(pending_ids):
-        raise ValueError("Prerequisite graph contains a cycle.")
+
+def _topological_order(concepts: list[PlannerConcept], relations: list[PlannerRelation], context: PlannerContext) -> list[PlannerConcept]:
+    by_id = {item.id: item for item in concepts}
+    incoming = {item.id: 0 for item in concepts}
+    outgoing: dict[int, list[int]] = {item.id: [] for item in concepts}
+    for relation in relations:
+        if relation.source_concept_id in by_id and relation.target_concept_id in by_id:
+            incoming[relation.target_concept_id] += 1
+            outgoing[relation.source_concept_id].append(relation.target_concept_id)
+    ready = sorted((item for item, count in incoming.items() if count == 0), key=lambda item: item)
+    ordered: list[PlannerConcept] = []
+    while ready:
+        current = ready.pop(0)
+        ordered.append(by_id[current])
+        for target in outgoing[current]:
+            incoming[target] -= 1
+            if incoming[target] == 0:
+                ready.append(target)
+                ready.sort()
+    if len(ordered) != len(concepts):
+        raise ValueError("Knowledge graph contains a prerequisite cycle.")
     return ordered
 
 
-def _personalization_key(concept: PlannerConcept, context: PlannerContext) -> tuple:
-    text = f"{concept.name} {concept.slug} {concept.chapter}".lower()
-    weak_match = any(point.lower() in text or concept.name in point for point in context.weak_points)
-    mastery = context.mastery_scores.get(concept.id)
-    low_mastery = mastery is not None and mastery < 0.6
-    goal_match = concept.name.lower() in context.goal.lower() or concept.slug.lower() in context.goal.lower()
-    difficulty_rank = {"basic": 0, "medium": 1, "advanced": 2}.get(concept.difficulty, 1)
-    if context.foundation_level in {"advanced", "practice_oriented"}:
-        difficulty_rank = -difficulty_rank
-    return (
-        0 if low_mastery else 1,
-        0 if weak_match else 1,
-        0 if goal_match else 1,
-        difficulty_rank,
-        concept.slug,
+def _fallback_activities(selected: list[SelectedPlannerConcept], intent: LearningIntent, context: PlannerContext) -> list[PlannerRecommendation]:
+    preferred = list(intent.preferred_activities)
+    recommendations = []
+    available = _available_minutes(context.available_time)
+    per_node_minutes = (
+        max(5, min(20, available // len(selected)))
+        if available and selected
+        else 20
     )
+    for index, item in enumerate(selected, start=1):
+        activity = preferred[(index - 1) % len(preferred)]
+        resource = _resource_for_activity(activity, context.resource_preference)
+        recommendations.append(PlannerRecommendation(
+            concept_id=item.concept.id, node_role=item.node_role, activity_type=activity,
+            objective=f"通过{_activity_label(activity)}掌握“{item.concept.name}”。",
+            estimated_minutes=per_node_minutes if item.node_role == "target" else max(5, per_node_minutes - 5),
+            success_criterion=f"能够独立说明“{item.concept.name}”并完成一项对应练习。",
+            recommended_resource_type=resource,
+            reason=f"依据本次学习意图安排{_activity_label(activity)}，且不扩展既定知识点范围。",
+            priority=index,
+        ))
+    return recommendations
 
 
-def _resource_type_for_context(context: PlannerContext) -> str:
-    combined = f"{context.learning_preference} {context.resource_preference} {context.profile_type}".lower()
-    if any(marker in combined for marker in ("code", "代码", "编程", "algorithm_practice")):
-        return "coding_case"
-    if any(marker in combined for marker in ("mind", "思维导图", "visual")):
-        return "mind_map"
-    if any(marker in combined for marker in ("题", "quiz", "exam", "summary_first", "exam_sprint")):
-        return "practice_questions"
-    if any(marker in combined for marker in ("拓展", "extended")):
-        return "extended_reading"
+def _validate_and_convert_activities(output: ActivityOutput, selected: list[SelectedPlannerConcept], context: PlannerContext) -> list[PlannerRecommendation]:
+    expected = {item.concept.id: item for item in selected}
+    if len(output.activities) != len(expected) or {item.concept_id for item in output.activities} != set(expected):
+        raise ValueError("Activity output must contain every selected concept exactly once.")
+    ordered = sorted(output.activities, key=lambda item: item.priority)
+    if [item.priority for item in ordered] != list(range(1, len(ordered) + 1)):
+        raise ValueError("Activity priorities must be continuous.")
+    for item in ordered:
+        if item.node_role != expected[item.concept_id].node_role:
+            raise ValueError("Activity node_role must match the validated path role.")
+    available = _available_minutes(context.available_time)
+    if available and sum(item.estimated_minutes for item in ordered) > available * 1.2:
+        raise ValueError("Activity time clearly exceeds the student's available time.")
+    return [PlannerRecommendation(**item.model_dump()) for item in ordered]
+
+
+def _validate_resolution(resolution: GoalResolution, concepts: list[PlannerConcept], goal: str) -> None:
+    known = {item.id for item in concepts}
+    if resolution.confidence < 0.65 or any(item not in known for item in resolution.target_concept_ids + resolution.optional_support_concept_ids):
+        raise ValueError("Goal resolution confidence or concept IDs are invalid.")
+    if resolution.course_scope == "focused" and len(resolution.target_concept_ids) > 4:
+        raise ValueError("Focused goal resolution may contain at most four target concepts.")
+    if resolution.course_scope == "full_course" and not any(marker in _normalize(goal) for marker in ("完整课程", "全部课程", "整门课程", "系统掌握整门")):
+        raise ValueError("Full-course scope was not explicitly requested.")
+
+
+def _goal_resolution_messages(concepts: list[PlannerConcept], context: PlannerContext) -> list[dict[str, str]]:
+    catalog = [{"id": item.id, "name": item.name, "slug": item.slug, "description": item.description, "chapter": item.chapter} for item in concepts]
+    profile = {"foundation_level": context.foundation_level, "learning_preference": context.learning_preference, "available_time": context.available_time, "weak_points": context.weak_points, "resource_preference": context.resource_preference, "learning_goal": context.learning_goal, "mastery": context.mastery_scores, "recent_errors": context.recent_errors, "completed_concept_ids": sorted(context.completed_concept_ids)}
+    return [{"role": "system", "content": "解析本次学习目标并只返回单个扁平 JSON 对象，不要解释。字段名必须严格使用 course_scope、target_concept_ids、optional_support_concept_ids、purpose、action、assessment_type、time_horizon、preferred_activities、desired_outcome、confidence。格式示例：{\"course_scope\":\"focused\",\"target_concept_ids\":[4],\"optional_support_concept_ids\":[2],\"purpose\":\"assessment_preparation\",\"action\":\"consolidate\",\"assessment_type\":\"course_quiz\",\"time_horizon\":\"short_term\",\"preferred_activities\":[\"concept_comparison\",\"mock_assessment\"],\"desired_outcome\":\"能够区分两种算法\",\"confidence\":0.9}。只选择真实课程 ID；focused 最多 4 个目标和 2 个支持节点。只有用户明确要求完整课程时才用 full_course。画像弱点不得注入目标领域外知识点。"}, {"role": "user", "content": f"用户目标：{context.goal}\n六维画像与学习记录：{json.dumps(profile, ensure_ascii=False)}\n课程概念：{json.dumps(catalog, ensure_ascii=False)}"}]
+
+
+def _activity_messages(selected: list[SelectedPlannerConcept], intent: LearningIntent, context: PlannerContext) -> list[dict[str, str]]:
+    nodes = [{"concept_id": item.concept.id, "name": item.concept.name, "node_role": item.node_role} for item in selected]
+    return [{"role": "system", "content": "为既定节点生成简体中文学习活动，只返回一个 JSON 对象，不要解释。根字段必须是 activities。每项必须完整包含 concept_id、node_role、activity_type、objective、estimated_minutes、success_criterion、recommended_resource_type、reason、priority。格式示例：{\"activities\":[{\"concept_id\":4,\"node_role\":\"target\",\"activity_type\":\"concept_comparison\",\"objective\":\"比较 BFS 与 DFS\",\"estimated_minutes\":20,\"success_criterion\":\"能够独立说出三项差异\",\"recommended_resource_type\":\"practice_questions\",\"reason\":\"匹配小测准备目标\",\"priority\":1}]}。每个节点恰好一次，priority 连续，单项 5-60 分钟，不得增加知识点。资源仅限 guided_note、practice_questions、mind_map、extended_reading、coding_case。"}, {"role": "user", "content": f"learning_intent：{intent.model_dump_json()}\n可用时间：{context.available_time}\n学习偏好：{context.learning_preference}\n资源偏好：{context.resource_preference}\n节点：{json.dumps(nodes, ensure_ascii=False)}"}]
+
+
+def _resource_for_activity(activity: str, preference: str) -> str:
+    if activity == "coding": return "coding_case"
+    if activity in {"error_review", "mock_assessment", "worked_example"}: return "practice_questions"
+    if activity == "visual_map": return "mind_map"
+    if "代码" in preference or "实操" in preference: return "coding_case"
+    if "练习" in preference or "题" in preference: return "practice_questions"
+    if "思维" in preference or "图" in preference: return "mind_map"
+    if "拓展" in preference: return "extended_reading"
     return "guided_note"
 
 
-def _rule_reason(concept: PlannerConcept, context: PlannerContext, resource_type: str) -> str:
-    factors = [f"基础水平={context.foundation_level}", f"学习偏好={context.learning_preference}"]
-    if context.mastery_scores.get(concept.id, 1.0) < 0.6:
-        factors.append("近期测验掌握度偏低")
-    if any(point in concept.name or concept.name in point for point in context.weak_points):
-        factors.append("匹配画像薄弱点")
-    return f"基于{'、'.join(factors)}推荐 {concept.name}，资源类型={resource_type}。"
+def _activity_label(activity: str) -> str:
+    return {"explanation": "概念讲解", "concept_comparison": "概念对比", "worked_example": "典型例题", "coding": "代码实践", "error_review": "易错点复盘", "mock_assessment": "模拟测验", "visual_map": "思维导图"}.get(activity, "学习活动")
 
 
-def _build_planner_messages(
-    concepts: list[PlannerConcept],
-    relations: list[PlannerRelation],
-    context: PlannerContext,
-) -> list[dict[str, str]]:
-    concept_payload = [concept.__dict__ for concept in concepts]
-    pending_ids = {concept.id for concept in concepts}
-    relation_payload = [
-        relation.__dict__
-        for relation in relations
-        if relation.target_concept_id in pending_ids and relation.source_concept_id not in context.completed_concept_ids
-    ]
-    prerequisite_rules = [
-        f"concept_id={relation.source_concept_id} 必须出现在 concept_id={relation.target_concept_id} 之前"
-        for relation in relations
-        if relation.target_concept_id in pending_ids and relation.source_concept_id not in context.completed_concept_ids
-    ]
-    valid_baseline = [concept.id for concept in _topological_order(concepts, relations, context)]
-    context_payload = {
-        "goal": context.goal[:300],
-        "profile_type": context.profile_type,
-        "foundation_level": context.foundation_level,
-        "learning_preference": context.learning_preference,
-        "available_time": context.available_time,
-        "weak_points": context.weak_points[:5],
-        "resource_preference": context.resource_preference,
-        "mastery_scores": context.mastery_scores,
-    }
-    return [
-        {
-            "role": "system",
-            "content": (
-                "你是 Hybrid 学习路径 Planner。只从给定知识点中选择最值得优先关注的个性化信号，"
-                "不要尝试输出完整路径；完整性和 prerequisite 由规则层负责。"
-                "最多返回 5 个不重复节点，只返回 JSON object，不输出 Markdown。"
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"输出 schema：{json.dumps(PLANNER_OUTPUT_SCHEMA, ensure_ascii=False)}\n"
-                f"学生上下文：{json.dumps(context_payload, ensure_ascii=False)}\n"
-                f"LLM 候选窗口：{json.dumps(concept_payload, ensure_ascii=False)}\n"
-                f"先修约束：{json.dumps(relation_payload, ensure_ascii=False)}\n"
-                f"先修约束的自然语言解释：{json.dumps(prerequisite_rules, ensure_ascii=False)}\n"
-                f"合法拓扑基线（仅供理解约束）：{json.dumps(valid_baseline, ensure_ascii=False)}\n"
-                "只返回 1 至 5 个最重要节点；priority 表示个性化优先信号；"
-                "reason 用一句中文解释画像、目标或掌握度依据。"
-            ),
-        },
-    ]
+def _default_mastery(level: str) -> float:
+    normalized = level.casefold()
+    if "advanced" in normalized or "进阶" in normalized: return 0.8
+    if "practice" in normalized or "实践" in normalized: return 0.7
+    if "intermediate" in normalized or "中" in normalized: return 0.6
+    return 0.3
 
 
-def _compose_hybrid_recommendations(
-    signals: list[PlannerOutputItem],
-    concepts: list[PlannerConcept],
-    relations: list[PlannerRelation],
-    context: PlannerContext,
-) -> tuple[list[PlannerRecommendation], str | None]:
-    eligible = {concept.id: concept for concept in concepts if concept.id not in context.completed_concept_ids}
-    signal_by_id: dict[int, PlannerOutputItem] = {}
-    signal_order: dict[int, tuple[int, int]] = {}
-    ignored_unknown: list[int] = []
-    ignored_duplicate: list[int] = []
-    for index, signal in enumerate(signals):
-        if signal.concept_id not in eligible:
-            ignored_unknown.append(signal.concept_id)
-            continue
-        if signal.concept_id in signal_by_id:
-            ignored_duplicate.append(signal.concept_id)
-            continue
-        signal_by_id[signal.concept_id] = signal
-        signal_order[signal.concept_id] = (signal.priority, index)
-
-    ordered = _topological_order(concepts, relations, context, preferred_priority=signal_order)
-    default_resource_type = _resource_type_for_context(context)
-    recommendations: list[PlannerRecommendation] = []
-    for priority, concept in enumerate(ordered, start=1):
-        signal = signal_by_id.get(concept.id)
-        recommendations.append(
-            PlannerRecommendation(
-                concept_id=concept.id,
-                recommended_resource_type=(
-                    signal.recommended_resource_type if signal is not None else default_resource_type
-                ),
-                reason=(
-                    signal.reason if signal is not None else _rule_reason(concept, context, default_resource_type)
-                ),
-                priority=priority,
-            )
-        )
-
-    warnings: list[str] = []
-    if ignored_unknown:
-        warnings.append(f"ignored_unknown_concept_ids={sorted(set(ignored_unknown))}")
-    if ignored_duplicate:
-        warnings.append(f"ignored_duplicate_concept_ids={sorted(set(ignored_duplicate))}")
-    missing_count = len(eligible) - len(signal_by_id)
-    if missing_count > 0:
-        warnings.append(f"rule_completed_missing_nodes={missing_count}")
-    signaled_output_order = [item.concept_id for item in recommendations if item.concept_id in signal_by_id]
-    requested_order = [
-        concept_id
-        for concept_id, _ in sorted(signal_order.items(), key=lambda item: item[1])
-    ]
-    if signaled_output_order != requested_order:
-        warnings.append("rule_repaired_prerequisite_order=true")
-    return recommendations, "; ".join(warnings) or None
+def _available_minutes(value: str) -> int | None:
+    normalized = value.casefold()
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(小时|h|hour)", normalized)
+    if match:
+        return round(float(match.group(1)) * 60)
+    match = re.search(r"(\d+)\s*(分钟|min)", normalized)
+    if match:
+        return int(match.group(1))
+    chinese_hours = {"半": 0.5, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8}
+    for number, hours in chinese_hours.items():
+        if f"{number}小时" in normalized:
+            return round(hours * 60)
+    return None
 
 
-def _parse_planner_output(content: str) -> tuple[PlannerOutput, bool]:
-    try:
-        raw = _extract_json_object(content)
-        payload = json.loads(raw)
-    except (json.JSONDecodeError, ValueError) as exc:
-        items = _extract_concatenated_planner_items(content)
-        if not items:
-            raise ValueError("Planner response contained invalid JSON.") from exc
-        return PlannerOutput.model_validate({"recommendations": items}), True
-    if not isinstance(payload, dict):
-        raise ValueError("Planner response must be a JSON object.")
-    if "recommendations" not in payload and _looks_like_planner_item(payload):
-        return PlannerOutput.model_validate({"recommendations": [payload]}), True
-    return PlannerOutput.model_validate(payload), False
-
-
-def _extract_concatenated_planner_items(content: str) -> list[dict[str, Any]]:
-    decoder = json.JSONDecoder()
-    items: list[dict[str, Any]] = []
-    cursor = 0
-    while len(items) <= 5:
-        start = content.find("{", cursor)
-        if start < 0:
-            break
-        try:
-            payload, consumed = decoder.raw_decode(content[start:])
-        except json.JSONDecodeError:
-            cursor = start + 1
-            continue
-        cursor = start + consumed
-        if isinstance(payload, dict) and _looks_like_planner_item(payload):
-            items.append(payload)
-    return items
-
-
-def _looks_like_planner_item(payload: dict[str, Any]) -> bool:
-    required = {"concept_id", "recommended_resource_type", "reason", "priority"}
-    return required.issubset(payload)
-
-
-def _validate_recommendations(
-    recommendations: list[PlannerRecommendation],
-    concepts: list[PlannerConcept],
-    relations: list[PlannerRelation],
-    completed_ids: set[int],
-) -> None:
-    expected_ids = {concept.id for concept in concepts} - completed_ids
-    actual_ids = [item.concept_id for item in recommendations]
-    if len(actual_ids) != len(set(actual_ids)):
-        raise ValueError("Planner output contains duplicate concepts.")
-    if set(actual_ids) != expected_ids:
-        raise ValueError("Planner output contains unknown or missing concepts.")
-    if [item.priority for item in recommendations] != list(range(1, len(recommendations) + 1)):
-        raise ValueError("Planner priorities must be consecutive and match output order.")
-    positions = {concept_id: index for index, concept_id in enumerate(actual_ids)}
-    for relation in relations:
-        if relation.target_concept_id not in expected_ids or relation.source_concept_id in completed_ids:
-            continue
-        if positions[relation.source_concept_id] >= positions[relation.target_concept_id]:
-            raise ValueError("Planner output violates a prerequisite relation.")
+def _normalize(value: str) -> str:
+    return re.sub(r"[\s，。、“”‘’：:；;（）()/_-]+", "", value.casefold())
 
 
 def _extract_json_object(content: str) -> str:
@@ -584,22 +493,47 @@ def _extract_json_object(content: str) -> str:
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, flags=re.DOTALL | re.IGNORECASE)
     if fenced:
         return fenced.group(1)
-    start = stripped.find("{")
-    end = stripped.rfind("}")
+    start, end = stripped.find("{"), stripped.rfind("}")
     if start != -1 and end > start:
         return stripped[start : end + 1]
     raise ValueError("Planner response did not contain a JSON object.")
 
 
+def _parse_goal_resolution(content: str) -> GoalResolution:
+    payload = json.loads(_extract_json_object(content))
+    if isinstance(payload, dict) and "learning_intent" in payload:
+        return GoalResolution.model_validate(payload)
+    wire = GoalResolutionWire.model_validate(payload)
+    return GoalResolution(
+        course_scope=wire.course_scope,
+        target_concept_ids=wire.target_concept_ids,
+        optional_support_concept_ids=wire.optional_support_concept_ids,
+        learning_intent=LearningIntent(
+            purpose=wire.purpose,
+            action=wire.action,
+            assessment_type=wire.assessment_type,
+            time_horizon=wire.time_horizon,
+            preferred_activities=wire.preferred_activities,
+            desired_outcome=wire.desired_outcome,
+        ),
+        confidence=wire.confidence,
+    )
+
+
+def _parse_activity_output(content: str) -> ActivityOutput:
+    payload = json.loads(_extract_json_object(content))
+    if isinstance(payload, dict) and "activities" not in payload:
+        for alias in ("node", "nodes"):
+            if isinstance(payload.get(alias), list):
+                payload = {"activities": payload[alias]}
+                break
+    return ActivityOutput.model_validate(payload)
+
+
 def _fallback_reason(exc: Exception) -> str:
-    if isinstance(exc, ValidationError):
-        return "ValidationError: planner response schema validation failed"
-    if isinstance(exc, LLMProviderError):
-        return str(exc)[:240]
-    if isinstance(exc, ValueError):
-        return f"ValueError: {str(exc)[:200]}"
-    return f"{type(exc).__name__}: planner request failed"
+    if isinstance(exc, LLMProviderError): return str(exc)
+    return f"{type(exc).__name__}: {str(exc)[:240]}" if str(exc) else type(exc).__name__
 
 
 def _elapsed_ms(started: float) -> int:
-    return max(0, int((time.perf_counter() - started) * 1000))
+    return max(0, round((time.perf_counter() - started) * 1000))

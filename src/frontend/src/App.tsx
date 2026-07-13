@@ -639,6 +639,7 @@ export function App() {
       >
         {busy === "create-path" ? "正在规划学习路径" : "生成个性化学习路径"}
       </button>
+      {error ? <p className="error-note" role="alert">{error}</p> : null}
       {busy === "create-path" ? <AgentLoading testId="planner-loading" title="学习规划师正在编排路径" detail="系统正在结合画像、课程图谱和学习目标排序。" /> : null}
       <InlineAgentTrace action="path" busy={busy === "create-path"} runs={runs} visible={retainedTraces.includes("path")} />
       <div className="path-grid">
@@ -1376,10 +1377,13 @@ function MultiAgentOverview({ activeStep }: { activeStep: StepKey }) {
 function PathItemCard({ item, concept, selected, onSelect }: { item: LearningPathItem; concept: Concept | null; selected: boolean; onSelect: () => void }) {
   return (
     <button className={`path-card ${selected ? "path-card-active" : ""}`} data-testid="path-item-card" onClick={onSelect}>
-      <span>第 {item.order_index} 步</span>
+      <span>第 {item.order_index} 步 · {item.node_role === "target" ? "目标节点" : "基础节点"}</span>
       <strong>{item.title}</strong>
       <p>{item.objective}</p>
+      <small>活动：{activityTypeLabel(item.activity_type)} · 预计 {item.estimated_minutes} 分钟</small>
+      <small>完成标准：{item.success_criterion}</small>
       {item.recommended_resource_type ? <small>推荐资源：{resourceTypeLabel(item.recommended_resource_type)}</small> : null}
+      {item.recommendation_reason ? <small>推荐理由：{item.recommendation_reason}</small> : null}
       {item.priority ? <small>优先级：{item.priority}</small> : null}
       <small>{concept?.name ?? `概念 ${item.concept_id}`}</small>
     </button>
@@ -1393,6 +1397,8 @@ function NodeSummary({ item, concept }: { item: LearningPathItem | null; concept
       <p className="eyebrow">当前节点</p>
       <strong>{item.title}</strong>
       <span>{item.objective}</span>
+      <span>{item.node_role === "target" ? "目标节点" : "基础节点"} · {activityTypeLabel(item.activity_type)} · {item.estimated_minutes} 分钟</span>
+      <small>完成标准：{item.success_criterion}</small>
       {item.recommended_resource_type ? <span>推荐资源：{resourceTypeLabel(item.recommended_resource_type)}</span> : null}
       {item.recommendation_reason ? <small>{item.recommendation_reason}</small> : null}
       <small>{concept?.name ?? `概念 ${item.concept_id}`}</small>
@@ -1438,6 +1444,19 @@ function resourceTypeLabel(resourceType: string) {
     coding_case: "代码实操案例",
   };
   return labels[resourceType] ?? resourceType;
+}
+
+function activityTypeLabel(activityType: string) {
+  const labels: Record<string, string> = {
+    explanation: "概念讲解",
+    concept_comparison: "概念对比",
+    worked_example: "典型例题",
+    coding: "代码实践",
+    error_review: "易错点复盘",
+    mock_assessment: "模拟测验",
+    visual_map: "思维导图",
+  };
+  return labels[activityType] ?? activityType;
 }
 
 function quizQuestionTypeLabel(questionType?: string | null) {

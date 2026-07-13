@@ -1,6 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile, status
 
-from app.domain.exceptions import ConflictError, NotFoundError, ProtectedResourceError
+from app.domain.exceptions import ConflictError, GoalResolutionError, NotFoundError, ProtectedResourceError
 from app.schemas import (
     ConceptGraphResponse,
     AgentRunResponse,
@@ -222,6 +222,8 @@ def create_learning_path(payload: LearningPathCreate) -> LearningFlowResponse:
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except GoalResolutionError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @api_router.get("/learning-paths/{path_id}", response_model=LearningPathResponse)

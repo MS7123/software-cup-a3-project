@@ -82,33 +82,35 @@ class SparkNewAgentsPerformanceOnlineTests(unittest.TestCase):
     def _planner_samples(self, settings: LLMSettings) -> list[int]:
         agent = build_planner_agent(settings)
         concepts = [
-            PlannerConcept(
-                id=index,
-                slug=f"concept-{index}",
-                name=f"数据结构知识点 {index}",
-                chapter=f"第 {(index - 1) // 5 + 1} 章",
-                difficulty="basic" if index <= 8 else "medium",
-            )
-            for index in range(1, 26)
+            PlannerConcept(1, "stack", "栈", "线性结构", "basic", "后进先出结构"),
+            PlannerConcept(2, "queue", "队列", "线性结构", "basic", "先进先出结构"),
+            PlannerConcept(3, "graph-representation", "图的表示", "图", "basic", "邻接表和邻接矩阵"),
+            PlannerConcept(4, "bfs-dfs", "BFS/DFS", "图", "medium", "广度优先与深度优先搜索"),
+            PlannerConcept(5, "shortest-path", "最短路径", "图", "medium", "无权图最短路径"),
         ]
-        relations = [PlannerRelation(source_concept_id=index, target_concept_id=index + 1) for index in range(1, 25)]
+        relations = [
+            PlannerRelation(3, 4, "prerequisite"),
+            PlannerRelation(4, 5, "prerequisite"),
+            PlannerRelation(1, 4, "related"),
+            PlannerRelation(2, 4, "related"),
+        ]
         contexts = [
             PlannerContext(
-                goal="系统掌握数据结构",
+                goal="巩固广搜和深搜，为课程小测做准备",
                 profile_type="weak_foundation",
                 foundation_level="beginner",
                 learning_preference="step_by_step",
-                available_time="每天半小时",
-                weak_points=["数据结构知识点 2"],
-                resource_preference="讲解文档",
+                available_time="一小时",
+                weak_points=["队列和栈"],
+                resource_preference="练习题",
             ),
             PlannerContext(
-                goal="通过代码训练掌握图算法",
+                goal="从零学习 BFS/DFS 并用 Python 实现",
                 profile_type="algorithm_practice",
                 foundation_level="intermediate",
                 learning_preference="code_driven",
-                available_time="每周六小时",
-                weak_points=["数据结构知识点 6"],
+                available_time="两小时",
+                weak_points=["访问标记"],
                 resource_preference="代码实操案例",
             ),
         ]
@@ -117,7 +119,8 @@ class SparkNewAgentsPerformanceOnlineTests(unittest.TestCase):
             result = agent.plan(concepts, relations, context)
             self.assertEqual(result.execution_mode, "llm", result.fallback_reason)
             self.assertFalse(result.fallback_used)
-            self.assertEqual(len(result.recommendations), 25)
+            self.assertLessEqual(len(result.recommendations), 8)
+            self.assertIn(4, result.target_concept_ids)
             durations.append(int(result.provider_metadata.get("provider_duration_ms") or 0))
         return durations
 

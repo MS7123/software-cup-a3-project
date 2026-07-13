@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from app.agents.router_agent import RuleBasedRouterAgent
+from app.domain.exceptions import GoalResolutionError
 
 
 @dataclass(frozen=True)
@@ -39,31 +40,36 @@ class AgentOrchestrator:
             decision_basis=f"Router Agent dispatches path planning with constraints: {route.constraints}",
             status="completed",
         )
-        path = path_service.create_path(profile_id, course_id, goal)
-        run_service.record_step(
-            run.id,
-            "planner",
-            input_summary=f"基于学生画像 {profile_id}、课程 {course_id} 和目标生成学习路径。",
-            output_summary=f"生成 {len(path.items)} 个阶段化学习步骤，覆盖数据结构 MVP 知识点。",
-            decision_basis=(
-                f"execution_mode={path.execution_mode}; provider={path.provider}; model={path.model or 'none'}; "
-                f"fallback_used={str(path.fallback_used).lower()}; fallback_reason={path.fallback_reason or 'none'}; "
-                f"{path.rationale or '依据学生画像、课程知识点顺序和先修关系规划路径。'}"
-            ),
-            status="completed",
-            duration_ms=path.planner_duration_ms,
-            execution_metadata=build_execution_metadata(
-                execution_mode=path.execution_mode,
-                provider=path.provider,
-                model=path.model,
-                fallback_used=path.fallback_used,
-                fallback_reason=path.fallback_reason,
-                duration_ms=path.planner_duration_ms,
-                provider_duration_ms=path.provider_duration_ms,
-                retry_count=path.retry_count,
-                token_usage=path.token_usage,
-            ),
-        )
+        try:
+            path = path_service.create_path(profile_id, course_id, goal)
+        except GoalResolutionError as exc:
+            run_service.record_step(
+                run.id, "planner", "解析本次学习目标。", "未创建学习路径。",
+                "phase=goal_resolution; 目标无法可靠映射到课程知识点。", "failed", error=str(exc),
+            )
+            run_service.fail_run(run.id, str(exc))
+            raise
+        phases = path.planner_phases or [{"phase": "activity_generation", "execution_mode": path.execution_mode}]
+        for phase in phases:
+            run_service.record_step(
+                run.id,
+                "planner",
+                input_summary=f"Planner phase={phase['phase']}；profile_id={profile_id}；course_id={course_id}。",
+                output_summary=(f"生成 {len(path.items)} 个学习节点。" if phase["phase"] == "activity_generation" else "完成该阶段校验。"),
+                decision_basis=(
+                    f"phase={phase['phase']}; execution_mode={phase['execution_mode']}; "
+                    f"provider={path.provider}; model={path.model or 'none'}; "
+                    f"fallback_reason={phase.get('fallback_reason') or 'none'}"
+                ),
+                status="completed",
+                duration_ms=path.planner_duration_ms if phase["phase"] == "activity_generation" else 0,
+                execution_metadata=build_execution_metadata(
+                    execution_mode=phase["execution_mode"], provider=path.provider, model=path.model,
+                    fallback_used="fallback" in phase["execution_mode"],
+                    fallback_reason=phase.get("fallback_reason"),
+                    duration_ms=path.planner_duration_ms if phase["phase"] == "activity_generation" else 0,
+                ),
+            )
         final_summary = f"Planner Agent 已生成学习路径 {path.id}，包含 {len(path.items)} 个步骤。"
         run_service.complete_run(run.id, final_summary)
         return LearningFlowResult(

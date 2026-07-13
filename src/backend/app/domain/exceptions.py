@@ -17,3 +17,11 @@ class ProtectedResourceError(DomainError):
 class ConflictError(DomainError):
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+
+class GoalResolutionError(DomainError):
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            message
+            or "无法从当前描述中确定学习目标，请补充具体知识点、学习目的或时间要求。"
+        )
