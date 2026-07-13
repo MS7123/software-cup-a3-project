@@ -5,6 +5,7 @@ from app.models import Course, StudentProfile
 from app.db.session import session_scope
 from app.schemas import TutorAskResponse
 from app.services.agent_run_service import AgentRunService
+from app.services.agent_execution_metadata import build_execution_metadata
 from app.services.citation_service import source_ref_summary, validate_citations
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.profile_updater_service import ProfileUpdaterService
@@ -50,6 +51,9 @@ class TutorService:
             output_summary=f"Retriever Agent returned {len(chunks)} chunks for Tutor Agent.",
             decision_basis="Only Retriever Agent can call KnowledgeBaseService.search before Tutor Agent answers.",
             status="completed",
+            execution_metadata=build_execution_metadata(
+                source_refs=[chunk.source_ref for chunk in chunks if chunk.source_ref]
+            ),
         )
         profile_summary = f"type={profile.profile_type}; level={profile.level}; goal={profile.goal}; time_budget={profile.time_budget}"
         result = self.agent.answer(question, chunks, profile_summary, course.title)
@@ -63,6 +67,7 @@ class TutorService:
             f"{result.output_summary} {source_summary}{citation_note}",
             f"{result.decision_basis} {source_summary}{citation_note}",
             "completed",
+            execution_metadata=build_execution_metadata(result),
         )
         run_service.complete_run(run.id, f"Tutor Agent 已回答 profile {profile_id} 的问题。")
         ProfileUpdaterService(database_url=self.database_url).update_from_trace(

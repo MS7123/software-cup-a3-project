@@ -15,6 +15,7 @@ from app.domain.exceptions import NotFoundError
 from app.models import Attempt, Concept, MasteryRecord, Quiz, QuizItem, QuizItemGenerationMetadata, StudentProfile
 from app.schemas import EvaluationResult, QuizItemResponse, QuizResponse
 from app.services.agent_run_service import AgentRunService
+from app.services.agent_execution_metadata import build_execution_metadata
 from app.services.demo_data_service import DemoDataService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.learning_path_service import LearningPathService
@@ -112,6 +113,9 @@ class AssessmentService:
             output_summary=f"Retriever Agent returned {len(chunks)} chunks for Quiz Agent.",
             decision_basis="Only Retriever Agent can call KnowledgeBaseService.search for quiz grounding.",
             status="completed",
+            execution_metadata=build_execution_metadata(
+                source_refs=[chunk.source_ref for chunk in chunks if chunk.source_ref]
+            ),
         )
         result = self.quiz_agent.generate(concept_name, effective_difficulty, chunks, quiz_context)
         run_service.record_step(
@@ -122,6 +126,7 @@ class AssessmentService:
             result.decision_basis,
             "completed",
             duration_ms=result.duration_ms,
+            execution_metadata=build_execution_metadata(result),
         )
         available_source_refs = {str(chunk.source_ref) for chunk in chunks if chunk.source_ref}
         critic = self.critic_agent.review_quiz(
@@ -149,6 +154,7 @@ class AssessmentService:
                 f"Revision instruction: {critic.revision_instruction}. {result.decision_basis}",
                 "completed",
                 duration_ms=result.duration_ms,
+                execution_metadata=build_execution_metadata(result),
             )
             second_critic = self.critic_agent.review_quiz(
                 result,
@@ -191,6 +197,7 @@ class AssessmentService:
                     result.decision_basis,
                     "completed",
                     duration_ms=result.duration_ms,
+                    execution_metadata=build_execution_metadata(result),
                 )
                 final_critic = self.critic_agent.review_quiz(
                     result,
@@ -325,6 +332,7 @@ class AssessmentService:
             result.output_summary,
             result.decision_basis,
             "completed",
+            execution_metadata=build_execution_metadata(result),
         )
         run_service.complete_run(run.id, f"Evaluator Agent evaluated attempt {attempt_id}.")
         ProfileUpdaterService(database_url=self.database_url).update_from_trace(

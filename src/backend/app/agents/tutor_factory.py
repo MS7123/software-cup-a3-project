@@ -12,4 +12,6 @@ def build_tutor_agent(settings: LLMSettings | None = None) -> TutorAgent:
         provider,
         fallback_agent=RuleBasedTutorAgent(),
         fallback_mode=resolved.fallback_mode,
+        provider_name=resolved.provider,
+        model=resolved.model,
     )

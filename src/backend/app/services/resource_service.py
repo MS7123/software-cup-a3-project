@@ -8,6 +8,7 @@ from app.domain.exceptions import NotFoundError
 from app.models import Concept, GeneratedResource, LearningPath, LearningPathItem, StudentProfile
 from app.schemas import GeneratedResourceResponse
 from app.services.agent_run_service import AgentRunService
+from app.services.agent_execution_metadata import build_execution_metadata
 from app.services.citation_service import source_ref_summary
 from app.services.demo_data_service import DemoDataService
 from app.services.knowledge_base_service import KnowledgeBaseService
@@ -84,6 +85,9 @@ class ResourceService:
             output_summary=f"Retriever Agent returned {len(chunks)} chunks for Resource Agent.",
             decision_basis="Only Retriever Agent can call KnowledgeBaseService.search and expose source_refs.",
             status="completed",
+            execution_metadata=build_execution_metadata(
+                source_refs=[chunk.source_ref for chunk in chunks if chunk.source_ref]
+            ),
         )
         result = self.agent.generate(concept_name, objective, resource_type, chunks, profile_preferences)
         run_service.record_step(
@@ -93,6 +97,7 @@ class ResourceService:
             f"{result.output_summary} {source_ref_summary(result.source_refs)}",
             f"{result.decision_basis} {source_ref_summary(result.source_refs)}",
             "completed",
+            execution_metadata=build_execution_metadata(result),
         )
         critic = self.critic_agent.review_resource(result, resource_type, profile_preferences)
         run_service.record_step(
@@ -113,6 +118,7 @@ class ResourceService:
                 f"Resource Agent regenerated after Critic feedback. {result.output_summary} {source_ref_summary(result.source_refs)}",
                 f"Revision instruction: {critic.revision_instruction}. {result.decision_basis}",
                 "completed",
+                execution_metadata=build_execution_metadata(result),
             )
             second_critic = self.critic_agent.review_resource(result, resource_type, profile_preferences)
             run_service.record_step(

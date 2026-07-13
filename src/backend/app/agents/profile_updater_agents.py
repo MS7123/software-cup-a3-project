@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,18 +33,34 @@ class ProfileTraceAnalysis:
     learning_preference: str | None
     foundation_level: str | None
     reason: str
+    provider: str = "openai_compatible"
+    model: str = ""
+    duration_ms: int = 0
 
 
 class LLMBackedProfileUpdaterAgent:
-    def __init__(self, provider: LLMProvider) -> None:
+    def __init__(self, provider: LLMProvider, provider_name: str = "openai_compatible", model: str = "") -> None:
         self.provider = provider
+        self.provider_name = provider_name
+        self.model = model
 
     def analyze(self, trace_steps: list[dict[str, str | int]]) -> ProfileTraceAnalysis:
+        started = time.perf_counter()
         result = self.provider.generate(
             _build_profile_update_messages(trace_steps),
             response_schema=PROFILE_TRACE_ANALYSIS_SCHEMA,
         )
-        return _parse_profile_trace_analysis(result.content)
+        parsed = _parse_profile_trace_analysis(result.content)
+        return ProfileTraceAnalysis(
+            weak_points=parsed.weak_points,
+            resource_preference=parsed.resource_preference,
+            learning_preference=parsed.learning_preference,
+            foundation_level=parsed.foundation_level,
+            reason=parsed.reason,
+            provider=str(result.metadata.get("provider") or self.provider_name),
+            model=str(result.metadata.get("model") or self.model),
+            duration_ms=max(0, round((time.perf_counter() - started) * 1000)),
+        )
 
 
 def _build_profile_update_messages(trace_steps: list[dict[str, str | int]]) -> list[dict[str, str]]:

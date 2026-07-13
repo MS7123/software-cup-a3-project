@@ -5,13 +5,13 @@
 
 ## 当前批准执行
 
-### COMP-007: 统一 LLM 配置与运行证据
+### COMP-008: 建立防幻觉与内容安全验证闭环
 
 - 状态：Current
 - 依据：`docs/plans/competition/16-a3-requirements-gap-roadmap.md`
-- 前置依赖：`COMP-006` 已完成四项既有 LLM 能力的星火联机验收、Tutor 引用白名单补强、远端断连重试兼容和无证据安全降级验证。
-- 执行边界：统一所有核心 Agent run 的 execution mode、provider、model、fallback、source refs 和耗时证据；禁止记录 API key、完整 prompt、完整上下文或 chain-of-thought，优先复用现有 Agent run 数据结构。
-- Done 条件：满足路线图 COMP-007 的全部自动化、数据安全和联机 trace 验收标准后，才能移入 Done。
+- 前置依赖：`COMP-007` 已完成所有核心 Agent 的结构化运行证据、旧库兼容、前端折叠展示、密钥脱敏和真实星火 trace 验收。
+- 执行边界：固化资料不足不编造、引用白名单、Prompt injection、敏感内容和危险代码的确定性底线；模型审核不得替代硬规则，Router、schema、Critic 和引用校验继续保持 rule-based。
+- Done 条件：满足路线图 COMP-008 的全部无检索、假引用、越界输入、安全拒答、降级提示和自动化验收标准后，才能移入 Done。
 
 ### PLAN-002: 编写测试计划
 

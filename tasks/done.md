@@ -1,6 +1,6 @@
 # Done Tasks
 
-最后更新：2026-06-05
+最后更新：2026-07-13
 维护角色：State Manager Agent / Task Manager
 
 规则：实现任务只有在 Review & Test Agent 明确给出“通过”结论后，才能由 Task Manager 移入本文件。State Manager Agent / Task Manager 不执行测试任务，不自行产生测试结论。
@@ -28,6 +28,13 @@
   - 维护来源：State Manager Agent / Task Manager 文档治理更新。
 
 ## 已通过 Review 的实现任务
+
+- [x] `COMP-007`：统一 LLM 配置与运行证据。
+  - 完成范围：新增 additive `agent_run_steps.execution_metadata`、旧 SQLite 自动补列、统一 metadata 白名单与 trace 文本脱敏；ProfileBuilder、Planner、Resource、Tutor、Quiz、Evaluator、ProfileUpdater 均落库实际执行模式、provider/model、fallback、来源和耗时，确定性 Agent 继续标记为 rule-based。
+  - 前端证据：真实 Inline Agent Trace 使用当前后端 `run_type` 映射，并以折叠区展示运行模式、provider、model、耗时、fallback 和来源；业务结果保持默认可见。
+  - 自动化证据：全量后端 148 项通过（7 项默认跳过联机测试），独立 clean `npm ci` 与 production build 通过，真实 Playwright 页面验证显示 2 个可展开运行证据且无 console error。
+  - 联机证据：星火 MaaS 7/7 通过；TutorService trace 为 `llm/openai_compatible/xop3qwen1b7`，包含 5 个真实来源且 `secret_absent=true`。
+  - 保留边界：不记录 API key、完整 prompt、完整检索上下文或 chain-of-thought；Router、Retriever、Critic、schema、引用校验和客观题评分继续由确定性规则承担。
 
 - [x] `COMP-006`：启用并验证已经接入的 LLM 能力。
   - 完成范围：不重复实现 Tutor、Resource、Evaluator 或 ProfileUpdater；新增可重复执行的真实星火验收入口，补齐 Tutor 引用白名单、无检索资料安全限制和 OpenAI-compatible adapter 的 `RemoteDisconnected` 重试兼容。

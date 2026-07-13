@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -316,6 +316,18 @@ class TaskResponse(BaseModel):
     created_at: datetime | None = None
 
 
+class AgentExecutionMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    execution_mode: Literal["llm", "rule_based", "rule_based_fallback"] = "rule_based"
+    provider: str = "rule_based"
+    model: str = ""
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    source_refs: list[str] = Field(default_factory=list)
+    duration_ms: int = Field(default=0, ge=0)
+
+
 class AgentRunStepResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -329,6 +341,7 @@ class AgentRunStepResponse(BaseModel):
     decision_basis: str
     duration_ms: int | None = None
     error: str | None = None
+    execution_metadata: AgentExecutionMetadata = Field(default_factory=AgentExecutionMetadata)
 
 
 class AgentRunResponse(BaseModel):

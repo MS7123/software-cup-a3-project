@@ -1,3 +1,4 @@
+import time
 from typing import Protocol
 
 from app.adapters.protocols import LLMProvider
@@ -25,10 +26,14 @@ class LLMBackedTutorAgent:
         provider: LLMProvider,
         fallback_agent: RuleBasedTutorAgent | None = None,
         fallback_mode: str = "rule_based",
+        provider_name: str = "openai_compatible",
+        model: str = "",
     ) -> None:
         self.provider = provider
         self.fallback_agent = fallback_agent or RuleBasedTutorAgent()
         self.fallback_mode = fallback_mode if fallback_mode in {"rule_based", "error"} else "rule_based"
+        self.provider_name = provider_name
+        self.model = model
 
     def answer(
         self,
@@ -37,6 +42,7 @@ class LLMBackedTutorAgent:
         profile_summary: str = "",
         course_title: str = "",
     ) -> TutorAgentResult:
+        started = time.perf_counter()
         source_refs = [source_ref_payload(chunk) for chunk in chunks]
         if not chunks:
             fallback = self.fallback_agent.answer(question, chunks, profile_summary, course_title)
@@ -49,6 +55,12 @@ class LLMBackedTutorAgent:
                     f"{fallback.decision_basis} "
                     "Fallback reason: No retrieved course chunks are available."
                 ),
+                execution_mode="rule_based_fallback",
+                provider=self.provider_name,
+                model=self.model,
+                fallback_used=True,
+                fallback_reason="No retrieved course chunks are available.",
+                duration_ms=_elapsed_ms(started),
             )
         try:
             result = self.provider.generate(
@@ -65,8 +77,16 @@ class LLMBackedTutorAgent:
                         f"{fallback.decision_basis} "
                         "Fallback reason: LLM answer contradicted non-empty retrieved chunks."
                     ),
+                    execution_mode="rule_based_fallback",
+                    provider=self.provider_name,
+                    model=self.model,
+                    fallback_used=True,
+                    fallback_reason="LLM answer contradicted non-empty retrieved chunks.",
+                    duration_ms=_elapsed_ms(started),
                 )
             grounded_answer = _ensure_grounded_citations(result.content, source_refs)
+            provider = str(result.metadata.get("provider") or self.provider_name)
+            model = str(result.metadata.get("model") or self.model)
             return TutorAgentResult(
                 answer=grounded_answer,
                 source_refs=source_refs,
@@ -76,6 +96,10 @@ class LLMBackedTutorAgent:
                     "通过 LLMProvider adapter 调用 OpenAI-compatible provider，并使用 KnowledgeBaseService "
                     "返回的 chunk 作为回答依据；缺失的内联引用仅从 Retriever source_ref 白名单补充。"
                 ),
+                execution_mode="llm",
+                provider=provider,
+                model=model,
+                duration_ms=_elapsed_ms(started),
             )
         except Exception as exc:
             reason = _fallback_reason(exc)
@@ -88,6 +112,12 @@ class LLMBackedTutorAgent:
                 input_summary=fallback.input_summary,
                 output_summary="LLM provider 不可用，已回退到 rule-based tutor answer。",
                 decision_basis=f"{fallback.decision_basis} Fallback reason: {reason}.",
+                execution_mode="rule_based_fallback",
+                provider=self.provider_name,
+                model=self.model,
+                fallback_used=True,
+                fallback_reason=reason,
+                duration_ms=_elapsed_ms(started),
             )
 
 
@@ -126,3 +156,7 @@ def _ensure_grounded_citations(answer: str, source_refs: list[dict]) -> str:
     verified_refs = citation_check["allowed_source_refs"]
     citations = " ".join(f"[{source_ref}]" for source_ref in verified_refs)
     return f"{answer.rstrip()}\n\n资料依据：{citations}"
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, round((time.perf_counter() - started) * 1000))

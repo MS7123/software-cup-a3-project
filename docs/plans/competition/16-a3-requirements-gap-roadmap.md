@@ -259,10 +259,12 @@ LLM_ENABLE_FOR_QUIZ=true
 
 **验收标准：**
 
-- [ ] 每个核心 Agent run 能区分 `llm`、`rule_based` 和 `rule_based_fallback`。
-- [ ] provider/model 与实际启动配置一致。
-- [ ] fallback reason 能定位 timeout、HTTP、解析、检索为空或安全拦截。
-- [ ] 数据库、API、日志和前端均不包含密钥。
+- [x] 每个核心 Agent run 能区分 `llm`、`rule_based` 和 `rule_based_fallback`。
+- [x] provider/model 与实际启动配置一致。
+- [x] fallback reason 能定位 timeout、HTTP、解析、检索为空或安全拦截。
+- [x] 数据库、API、日志和前端均不包含密钥。
+
+**完成证据（2026-07-13）：** 在 `agent_run_steps` 上增加最小 additive `execution_metadata` JSON 字段及旧 SQLite 自动补列兼容，统一白名单记录 `execution_mode`、`provider`、`model`、`fallback_used`、`fallback_reason`、`source_refs` 和 `duration_ms`。ProfileBuilder、Planner、Resource、Tutor、Quiz、Evaluator、ProfileUpdater 均把实际 AgentResult 写入该字段；Router、Retriever、Critic 和客观题评分继续明确记录为 `rule_based`。`AgentRunService` 对输入/输出摘要、决策依据、错误和完成摘要统一执行密钥脱敏与长度限制，metadata 只保留来源标识符，不保存完整 prompt、检索正文或 chain-of-thought。前端修正旧 `run_type` 映射，并在真实 Inline Agent Trace 中默认折叠展示结构化证据。自动化测试覆盖三种执行模式、provider/model、timeout/HTTP/JSON/无检索/Critic/远端失败原因、旧库迁移、API contract、source refs、密钥脱敏和折叠 UI；全量后端 148 项通过（7 项默认跳过的真实星火测试除外），独立 clean `npm ci`、TypeScript/Vite build 和真实 Playwright 浏览器验证通过。真实星火联机验收 7/7 通过，其中 TutorService 落库/API trace 明确为 `execution_mode=llm`、`provider=openai_compatible`、`model=xop3qwen1b7`、5 个来源、`secret_absent=true`，未把 fallback 误判为远程成功。
 
 ### COMP-008：建立防幻觉与内容安全验证闭环
 

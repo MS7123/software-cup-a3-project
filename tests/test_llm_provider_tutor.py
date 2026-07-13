@@ -341,6 +341,12 @@ class LLMProviderTutorTests(unittest.TestCase):
                 self.assertIn("回退到 rule-based", tutor_step["output_summary"])
                 self.assertIn("Fallback reason", tutor_step["decision_basis"])
                 self.assertIn("HTTP 404", tutor_step["decision_basis"])
+                self.assertEqual(tutor_step["execution_metadata"]["execution_mode"], "rule_based_fallback")
+                self.assertEqual(tutor_step["execution_metadata"]["provider"], "openai_compatible")
+                self.assertEqual(tutor_step["execution_metadata"]["model"], "deepseek-v4-flash")
+                self.assertTrue(tutor_step["execution_metadata"]["fallback_used"])
+                self.assertIn("HTTP 404", tutor_step["execution_metadata"]["fallback_reason"])
+                self.assertTrue(tutor_step["execution_metadata"]["source_refs"])
                 self.assertNotIn("integration-secret", json.dumps(run_body, ensure_ascii=False))
         finally:
             get_engine().dispose()

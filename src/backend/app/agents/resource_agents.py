@@ -1,3 +1,4 @@
+import time
 from typing import Any, Protocol
 
 from app.adapters.llm_provider import LLMProviderError
@@ -24,10 +25,14 @@ class LLMBackedResourceAgent:
         provider: LLMProvider,
         fallback_agent: RuleBasedResourceAgent | None = None,
         fallback_mode: str = "rule_based",
+        provider_name: str = "openai_compatible",
+        model: str = "",
     ) -> None:
         self.provider = provider
         self.fallback_agent = fallback_agent or RuleBasedResourceAgent()
         self.fallback_mode = fallback_mode if fallback_mode in {"rule_based", "error"} else "rule_based"
+        self.provider_name = provider_name
+        self.model = model
 
     def generate(
         self,
@@ -37,6 +42,7 @@ class LLMBackedResourceAgent:
         chunks: list[KnowledgeSearchResult],
         profile_preferences: dict[str, Any] | None = None,
     ) -> ResourceAgentResult:
+        started = time.perf_counter()
         source_refs = self.fallback_agent._source_refs(chunks)
         try:
             if not chunks:
@@ -44,12 +50,18 @@ class LLMBackedResourceAgent:
             result = self.provider.generate(
                 _build_resource_messages(concept_name, objective, resource_type, chunks, profile_preferences or {}),
             )
+            provider = str(result.metadata.get("provider") or self.provider_name)
+            model = str(result.metadata.get("model") or self.model)
             return ResourceAgentResult(
                 content=result.content,
                 source_refs=source_refs,
                 input_summary=f"使用真实 LLM 为知识点 {concept_name} 生成 {resource_type} 资源。",
                 output_summary="LLM provider 返回个性化学习资源，包含资料引用和防幻觉提示。",
                 decision_basis="通过 LLMProvider adapter 调用 OpenAI-compatible provider，并要求仅基于 KnowledgeBaseService 返回的 chunk 生成资源。",
+                execution_mode="llm",
+                provider=provider,
+                model=model,
+                duration_ms=_elapsed_ms(started),
             )
         except Exception as exc:
             reason = _fallback_reason(exc)
@@ -62,6 +74,12 @@ class LLMBackedResourceAgent:
                 input_summary=fallback.input_summary,
                 output_summary="LLM provider 不可用，已回退到 rule-based resource generation。",
                 decision_basis=f"{fallback.decision_basis} Fallback reason: {reason}.",
+                execution_mode="rule_based_fallback",
+                provider=self.provider_name,
+                model=self.model,
+                fallback_used=True,
+                fallback_reason=reason,
+                duration_ms=_elapsed_ms(started),
             )
 
 
@@ -143,3 +161,7 @@ def _fallback_reason(exc: Exception) -> str:
     if str(exc):
         return f"{type(exc).__name__}: {str(exc)[:240]}"
     return type(exc).__name__
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, round((time.perf_counter() - started) * 1000))

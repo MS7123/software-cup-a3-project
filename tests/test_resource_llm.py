@@ -44,6 +44,10 @@ class ResourceLLMTests(unittest.TestCase):
         self.assertTrue(result.source_refs)
         self.assertIn("LLMProvider adapter", result.decision_basis)
         self.assertIn("LLM provider", result.output_summary)
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertEqual(result.provider, "fake")
+        self.assertEqual(result.source_refs[0]["source_ref"], "demo.md#linked-list")
+        self.assertGreaterEqual(result.duration_ms, 0)
 
     def test_llm_resource_agent_falls_back_when_provider_fails(self) -> None:
         agent = LLMBackedResourceAgent(FakeResourceProvider(fail=True))
@@ -53,6 +57,9 @@ class ResourceLLMTests(unittest.TestCase):
         self.assertIn("Fallback reason", result.decision_basis)
         self.assertIn("resource provider unavailable", result.decision_basis)
         self.assertIn("rule-based", result.output_summary)
+        self.assertEqual(result.execution_mode, "rule_based_fallback")
+        self.assertTrue(result.fallback_used)
+        self.assertIn("provider unavailable", result.fallback_reason)
 
     def test_llm_resource_prompt_requires_type_specific_outputs(self) -> None:
         provider = CapturingResourceProvider()

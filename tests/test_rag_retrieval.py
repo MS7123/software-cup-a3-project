@@ -135,6 +135,8 @@ class RagRetrievalTests(unittest.TestCase):
             tutor_step = next(step for step in tutor_run["steps"] if step["agent_type"] == "tutor")
             self.assertIn(expected_source_ref, tutor_step["output_summary"])
             self.assertIn(expected_source_ref, tutor_step["decision_basis"])
+            self.assertEqual(tutor_step["execution_metadata"]["execution_mode"], "rule_based")
+            self.assertEqual(tutor_step["execution_metadata"]["source_refs"], [expected_source_ref])
 
             resource = client.post(
                 "/api/v1/resources/generate",
@@ -148,6 +150,8 @@ class RagRetrievalTests(unittest.TestCase):
             resource_step = next(step for step in resource_run["steps"] if step["agent_type"] == "resource")
             self.assertIn(expected_source_ref, resource_step["output_summary"])
             self.assertIn(expected_source_ref, resource_step["decision_basis"])
+            self.assertEqual(resource_step["execution_metadata"]["execution_mode"], "rule_based")
+            self.assertEqual(resource_step["execution_metadata"]["source_refs"], [expected_source_ref])
 
     def test_search_returns_empty_results_without_matching_chunks_or_demo_seed(self) -> None:
         with TestClient(create_app()) as client:

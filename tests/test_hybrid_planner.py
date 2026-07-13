@@ -256,6 +256,9 @@ class HybridPlannerApiTests(unittest.TestCase):
 
             planner_step = next(step for step in flow["agent_run"]["steps"] if step["agent_type"] == "planner")
             self.assertIn("execution_mode=", planner_step["decision_basis"])
+            self.assertEqual(planner_step["execution_metadata"]["execution_mode"], path["execution_mode"])
+            self.assertEqual(planner_step["execution_metadata"]["provider"], path["provider"])
+            self.assertEqual(planner_step["execution_metadata"]["model"], path["model"])
 
     def test_different_demo_profiles_produce_different_resource_plans(self) -> None:
         with TestClient(create_app()) as client:

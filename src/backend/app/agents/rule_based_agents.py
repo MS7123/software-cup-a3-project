@@ -12,6 +12,12 @@ class ResourceAgentResult:
     input_summary: str
     output_summary: str
     decision_basis: str
+    execution_mode: str = "rule_based"
+    provider: str = "rule_based"
+    model: str = ""
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    duration_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -21,6 +27,12 @@ class TutorAgentResult:
     input_summary: str
     output_summary: str
     decision_basis: str
+    execution_mode: str = "rule_based"
+    provider: str = "rule_based"
+    model: str = ""
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    duration_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -51,6 +63,12 @@ class EvaluatorAgentResult:
     input_summary: str
     output_summary: str
     decision_basis: str
+    execution_mode: str = "rule_based"
+    provider: str = "rule_based"
+    model: str = ""
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    duration_ms: int = 0
 
 
 class RuleBasedResourceAgent:

@@ -1,4 +1,5 @@
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -7,11 +8,13 @@ from sqlalchemy import select
 from app.adapters.llm_provider import LLMSettings, build_llm_provider
 from app.agents.profile_updater_agents import LLMBackedProfileUpdaterAgent
 from app.db.base import Base
+from app.db.schema_compat import ensure_agent_run_step_columns
 from app.db.session import get_engine, session_scope
 from app.domain.exceptions import NotFoundError
 from app.models import AgentRun, AgentRunStep, StudentProfile, StudentProfileHistory
 from app.schemas import StudentProfileHistoryResponse, StudentProfileResponse
 from app.services.demo_data_service import DemoDataService
+from app.services.agent_execution_metadata import build_execution_metadata, sanitize_trace_text
 from app.services.profile_builder import normalize_profile_dimensions
 from app.schemas import StudentProfileCreate
 
@@ -36,6 +39,11 @@ class TraceEvidence:
     analysis_method: str = "rule_based"
     reason: str | None = None
     fallback_reason: str | None = None
+    execution_mode: str = "rule_based"
+    provider: str = "rule_based"
+    model: str = ""
+    fallback_used: bool = False
+    duration_ms: int = 0
 
 
 class ProfileUpdaterService:
@@ -140,6 +148,16 @@ class ProfileUpdaterService:
                     input_summary=f"steps={len(steps)}; sources={len(evidence.sources)}; method={evidence.analysis_method}",
                     output_summary=self._profile_update_summary(evidence),
                     decision_basis=next_preferences["last_profile_update_reason"],
+                    duration_ms=evidence.duration_ms,
+                    execution_metadata=build_execution_metadata(
+                        execution_mode=evidence.execution_mode,
+                        provider=evidence.provider,
+                        model=evidence.model,
+                        fallback_used=evidence.fallback_used,
+                        fallback_reason=evidence.fallback_reason,
+                        source_refs=self._evidence_source_refs(evidence.sources),
+                        duration_ms=evidence.duration_ms,
+                    ),
                 )
             )
             next_preferences["last_profile_update_agent_run_id"] = run.id
@@ -174,6 +192,8 @@ class ProfileUpdaterService:
         duration_ms: int = 0,
     ) -> StudentProfileHistoryResponse:
         Base.metadata.create_all(get_engine(self.database_url))
+        ensure_agent_run_step_columns(self.database_url)
+        safe_fallback_reason = sanitize_trace_text(fallback_reason, 500) or None
         with session_scope(self.database_url) as session:
             profile = session.get(StudentProfile, profile_id)
             if profile is None:
@@ -207,10 +227,18 @@ class ProfileUpdaterService:
                     output_summary="Initial six profile dimensions extracted.",
                     decision_basis=(
                         f"execution_mode={execution_mode}; provider={provider}; model={model or 'none'}; "
-                        f"fallback_used={str(bool(fallback_reason)).lower()}; "
-                        f"fallback_reason={fallback_reason or 'none'}"
+                        f"fallback_used={str(bool(safe_fallback_reason)).lower()}; "
+                        f"fallback_reason={safe_fallback_reason or 'none'}"
                     ),
                     duration_ms=duration_ms,
+                    execution_metadata=build_execution_metadata(
+                        execution_mode=execution_mode,
+                        provider=provider,
+                        model=model,
+                        fallback_used=bool(safe_fallback_reason),
+                        fallback_reason=safe_fallback_reason,
+                        duration_ms=duration_ms,
+                    ),
                 )
             )
             history = StudentProfileHistory(
@@ -222,7 +250,7 @@ class ProfileUpdaterService:
                 changed_dimensions=list(PROFILE_DIMENSION_KEYS),
                 reason=(
                     f"画像由对话建档结果创建，已初始化六个画像维度；execution_mode={execution_mode}。"
-                    + (f" LLM 不可用，已回退：{fallback_reason}。" if fallback_reason else "")
+                    + (f" LLM 不可用，已回退：{safe_fallback_reason}。" if safe_fallback_reason else "")
                 ),
                 evidence_refs=[
                     {
@@ -312,6 +340,7 @@ class ProfileUpdaterService:
                 sources.append(
                     {
                         "agent_run_id": step.agent_run_id,
+                        "agent_step_id": step.id,
                         "agent_type": step.agent_type,
                         "summary": step.output_summary[:120],
                     }
@@ -332,8 +361,13 @@ class ProfileUpdaterService:
         if provider is None or not steps:
             return rule_based
 
+        started = time.perf_counter()
         try:
-            analysis = LLMBackedProfileUpdaterAgent(provider).analyze(self._trace_payload(steps))
+            analysis = LLMBackedProfileUpdaterAgent(
+                provider,
+                provider_name=settings.provider,
+                model=settings.model,
+            ).analyze(self._trace_payload(steps))
         except Exception as exc:
             return TraceEvidence(
                 weak_points=rule_based.weak_points,
@@ -341,8 +375,13 @@ class ProfileUpdaterService:
                 learning_preference=rule_based.learning_preference,
                 foundation_level=rule_based.foundation_level,
                 sources=rule_based.sources,
-                analysis_method="rule_based",
+                analysis_method="rule_based_fallback",
                 fallback_reason=self._fallback_reason(exc),
+                execution_mode="rule_based_fallback",
+                provider=settings.provider,
+                model=settings.model,
+                fallback_used=True,
+                duration_ms=max(0, round((time.perf_counter() - started) * 1000)),
             )
 
         return TraceEvidence(
@@ -353,7 +392,26 @@ class ProfileUpdaterService:
             sources=rule_based.sources,
             analysis_method="llm",
             reason=analysis.reason,
+            execution_mode="llm",
+            provider=analysis.provider,
+            model=analysis.model,
+            duration_ms=analysis.duration_ms,
         )
+
+    @staticmethod
+    def _evidence_source_refs(sources: list[dict[str, str | int]]) -> list[str]:
+        refs: list[str] = []
+        for source in sources:
+            run_id = source.get("agent_run_id")
+            step_id = source.get("agent_step_id")
+            if run_id is None:
+                continue
+            ref = f"agent-run:{run_id}"
+            if step_id is not None:
+                ref += f"#step:{step_id}"
+            if ref not in refs:
+                refs.append(ref)
+        return refs[:8]
 
     def _trace_payload(self, steps: list[AgentRunStep]) -> list[dict[str, str | int]]:
         payload = []
@@ -445,5 +503,5 @@ class ProfileUpdaterService:
 
     def _fallback_reason(self, exc: Exception) -> str:
         if str(exc):
-            return f"{type(exc).__name__}: {str(exc)[:160]}"
+            return sanitize_trace_text(f"{type(exc).__name__}: {str(exc)}", 500)
         return type(exc).__name__

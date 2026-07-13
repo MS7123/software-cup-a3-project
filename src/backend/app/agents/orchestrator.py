@@ -17,6 +17,7 @@ class AgentOrchestrator:
 
     def run_learning_flow(self, profile_id: int, course_id: int, goal: str) -> LearningFlowResult:
         from app.services.agent_run_service import AgentRunService
+        from app.services.agent_execution_metadata import build_execution_metadata
         from app.services.learning_path_service import LearningPathService
 
         run_service = AgentRunService(database_url=self.database_url)
@@ -51,6 +52,14 @@ class AgentOrchestrator:
             ),
             status="completed",
             duration_ms=path.planner_duration_ms,
+            execution_metadata=build_execution_metadata(
+                execution_mode=path.execution_mode,
+                provider=path.provider,
+                model=path.model,
+                fallback_used=path.fallback_used,
+                fallback_reason=path.fallback_reason,
+                duration_ms=path.planner_duration_ms,
+            ),
         )
         final_summary = f"Planner Agent 已生成学习路径 {path.id}，包含 {len(path.items)} 个步骤。"
         run_service.complete_run(run.id, final_summary)

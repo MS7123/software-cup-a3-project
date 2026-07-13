@@ -282,6 +282,10 @@ class QuizLLMApiTests(unittest.TestCase):
                 quiz_step = next(step for step in run["steps"] if step["agent_type"] == "quiz")
                 self.assertIn("execution_mode=llm", quiz_step["decision_basis"])
                 self.assertIn("source_refs=", quiz_step["decision_basis"])
+                self.assertEqual(quiz_step["execution_metadata"]["execution_mode"], "llm")
+                self.assertEqual(quiz_step["execution_metadata"]["provider"], "openai_compatible")
+                self.assertEqual(quiz_step["execution_metadata"]["model"], "quiz-test-model")
+                self.assertTrue(quiz_step["execution_metadata"]["source_refs"])
 
                 correct = client.post(
                     f"/api/v1/quizzes/{body['id']}/attempts",
@@ -296,6 +300,8 @@ class QuizLLMApiTests(unittest.TestCase):
                 objective_run = client.get(f"/api/v1/agent-runs/{correct['agent_run_id']}").json()
                 evaluator_step = next(step for step in objective_run["steps"] if step["agent_type"] == "evaluator")
                 self.assertIn("evaluation_mode=deterministic", evaluator_step["decision_basis"])
+                self.assertEqual(evaluator_step["execution_metadata"]["execution_mode"], "rule_based")
+                self.assertEqual(evaluator_step["execution_metadata"]["provider"], "rule_based")
 
     def test_provider_failure_returns_grounded_fallback_that_completes_evaluation_loop(self) -> None:
         agent = LLMQuizAgent(

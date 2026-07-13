@@ -8,6 +8,7 @@ import "katex/dist/katex.min.css";
 import { api } from "./api/client";
 import type {
   AgentRun,
+  AgentRunStep,
   Concept,
   ConceptGraph,
   DemoDataStatus,
@@ -1469,11 +1470,37 @@ function RunCard({ run }: { run: AgentRun }) {
             <p>{step.output_summary}</p>
             <span>决策依据</span>
             <p>{step.decision_basis}</p>
+            <ExecutionEvidence step={step} />
           </div>
         ))}
       </div>
     </article>
   );
+}
+
+function ExecutionEvidence({ step }: { step: AgentRunStep }) {
+  return (
+    <details className="execution-evidence">
+      <summary>运行证据 · {executionModeLabel(step.execution_metadata.execution_mode)}</summary>
+      <dl>
+        <div><dt>执行模式</dt><dd>{executionModeLabel(step.execution_metadata.execution_mode)}</dd></div>
+        <div><dt>Provider</dt><dd>{step.execution_metadata.provider || "rule_based"}</dd></div>
+        <div><dt>Model</dt><dd>{step.execution_metadata.model || "无"}</dd></div>
+        <div><dt>耗时</dt><dd>{step.execution_metadata.duration_ms} ms</dd></div>
+        <div><dt>Fallback</dt><dd>{step.execution_metadata.fallback_used ? "是" : "否"}</dd></div>
+      </dl>
+      {step.execution_metadata.fallback_reason ? <p>降级原因：{step.execution_metadata.fallback_reason}</p> : null}
+      {step.execution_metadata.source_refs.length > 0 ? (
+        <p>来源：{step.execution_metadata.source_refs.join("、")}</p>
+      ) : null}
+    </details>
+  );
+}
+
+function executionModeLabel(mode: string) {
+  if (mode === "llm") return "星火 LLM";
+  if (mode === "rule_based_fallback") return "规则降级";
+  return "规则执行";
 }
 
 function ResourceOutputBlock({ resource }: { resource: GeneratedResource }) {
@@ -1665,12 +1692,12 @@ function SourcePanel({ sourceRefs }: { sourceRefs: Array<Record<string, unknown>
 }
 
 const traceRunTypes: Record<TraceAction, string[]> = {
-  profile: ["profile_updater", "profile"],
-  path: ["planner", "learning_path", "path"],
-  resource: ["resource", "generator"],
-  tutor: ["tutor"],
-  quiz: ["quiz", "evaluator"],
-  assessment: ["evaluator", "profile_updater"]
+  profile: ["profile_build", "profile_update"],
+  path: ["learning_path_planning", "learning_path_replanning"],
+  resource: ["resource_generation"],
+  tutor: ["tutor_answer"],
+  quiz: ["quiz_generation"],
+  assessment: ["attempt_evaluation"]
 };
 
 const tracePresets: Record<TraceAction, Array<{ agent_type: string; output_summary: string; decision_basis: string }>> = {
@@ -1728,6 +1755,11 @@ function InlineAgentTrace({ action, busy, runs, visible = false }: { action: Tra
           </p>
         ))}
       </div>
+      {run ? (
+        <div className="terminal-evidence-list">
+          {run.steps.map((step) => <ExecutionEvidence key={step.id} step={step} />)}
+        </div>
+      ) : null}
     </section>
   );
 }

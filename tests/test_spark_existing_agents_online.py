@@ -17,9 +17,11 @@ from app.db.session import get_engine, session_scope
 from app.models import AgentRun, AgentRunStep, StudentProfileHistory
 from app.schemas import KnowledgeSearchResult
 from app.services.citation_service import validate_citations
+from app.services.agent_run_service import AgentRunService
 from app.services.demo_data_service import DemoDataService
 from app.services.profile_service import ProfileService
 from app.services.profile_updater_service import ProfileUpdaterService
+from app.services.tutor_service import TutorService
 
 
 RUN_ONLINE = os.getenv("RUN_SPARK_ONLINE_TESTS", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -172,6 +174,56 @@ class SparkExistingAgentsOnlineTests(unittest.TestCase):
             execution_mode="rule_based_fallback",
             fallback_reason="no_retrieved_course_chunks",
         )
+
+    def test_real_tutor_service_persists_safe_structured_execution_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_url = f"sqlite:///{(Path(temp_dir) / 'comp007-online.sqlite3').as_posix()}"
+            demo = DemoDataService(database_url=database_url).load_demo_data().demo_data
+            profile = ProfileService(database_url=database_url).list_demo_profiles()[0]
+            tutor_service = TutorService(database_url=database_url)
+            previous_updater_flag = os.environ.get("LLM_ENABLE_FOR_PROFILE_UPDATER")
+            os.environ["LLM_ENABLE_FOR_PROFILE_UPDATER"] = "false"
+            try:
+                answer = tutor_service.ask(
+                    profile.id,
+                    demo.course_id,
+                    "BFS 为什么使用队列，并且在邻接表下复杂度是多少？",
+                )
+            finally:
+                if previous_updater_flag is None:
+                    os.environ.pop("LLM_ENABLE_FOR_PROFILE_UPDATER", None)
+                else:
+                    os.environ["LLM_ENABLE_FOR_PROFILE_UPDATER"] = previous_updater_flag
+
+            run = AgentRunService(database_url=database_url).get_run(answer.agent_run_id)
+            tutor_step = next(step for step in run.steps if str(step.agent_type) == "tutor")
+            metadata = tutor_step.execution_metadata
+            serialized = json.dumps(run.model_dump(mode="json"), ensure_ascii=False)
+
+            self.assertEqual(metadata.execution_mode, "llm")
+            self.assertEqual(metadata.provider, self.settings.provider)
+            self.assertEqual(metadata.model, self.settings.model)
+            self.assertFalse(metadata.fallback_used)
+            self.assertTrue(metadata.source_refs)
+            self.assertNotIn(self.settings.api_key, serialized)
+            print(
+                "COMP007_EVIDENCE "
+                + json.dumps(
+                    {
+                        "capability": "agent_trace:tutor",
+                        "execution_mode": metadata.execution_mode,
+                        "provider": metadata.provider,
+                        "model": metadata.model,
+                        "source_ref_count": len(metadata.source_refs),
+                        "duration_ms": metadata.duration_ms,
+                        "secret_absent": True,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+            get_engine(database_url).dispose()
 
     def test_evaluator_returns_real_llm_structured_assessment(self) -> None:
         started = time.perf_counter()

@@ -253,6 +253,10 @@ class ProfileBuilderHistoryIntegrationTests(unittest.TestCase):
         self.assertIn("execution_mode=llm", run["steps"][0]["decision_basis"])
         self.assertIn("provider=openai_compatible", run["steps"][0]["decision_basis"])
         self.assertEqual(run["steps"][0]["duration_ms"], 25)
+        self.assertEqual(run["steps"][0]["execution_metadata"]["execution_mode"], "llm")
+        self.assertEqual(run["steps"][0]["execution_metadata"]["provider"], "openai_compatible")
+        self.assertEqual(run["steps"][0]["execution_metadata"]["model"], "profile-test-model")
+        self.assertFalse(run["steps"][0]["execution_metadata"]["fallback_used"])
 
         with get_session_factory(self.database_url)() as session:
             step = session.scalar(select(AgentRunStep).where(AgentRunStep.agent_run_id == history["agent_run_id"]))
@@ -299,6 +303,9 @@ class ProfileBuilderHistoryIntegrationTests(unittest.TestCase):
         self.assertIn("rule_based_fallback", history["reason"])
         self.assertIn("fallback_used=true", run["steps"][0]["decision_basis"])
         self.assertIn("ValidationError", run["steps"][0]["decision_basis"])
+        self.assertEqual(run["steps"][0]["execution_metadata"]["execution_mode"], "rule_based_fallback")
+        self.assertTrue(run["steps"][0]["execution_metadata"]["fallback_used"])
+        self.assertIn("ValidationError", run["steps"][0]["execution_metadata"]["fallback_reason"])
 
 
 if __name__ == "__main__":

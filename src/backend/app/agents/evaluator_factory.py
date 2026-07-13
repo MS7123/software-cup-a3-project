@@ -12,4 +12,6 @@ def build_evaluator_agent(settings: LLMSettings | None = None) -> EvaluatorAgent
         provider,
         fallback_agent=RuleBasedEvaluatorAgent(),
         fallback_mode=resolved.fallback_mode,
+        provider_name=resolved.provider,
+        model=resolved.model,
     )

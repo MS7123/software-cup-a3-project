@@ -2266,6 +2266,48 @@ button:disabled {
   }
 }
 
+.execution-evidence {
+  margin-top: 0.7rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(74, 108, 247, 0.2);
+  border-radius: 0.75rem;
+  background: rgba(74, 108, 247, 0.04);
+}
+
+.execution-evidence summary {
+  cursor: pointer;
+  color: #3554c7;
+  font-weight: 700;
+}
+
+.execution-evidence dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem 0.8rem;
+  margin: 0.7rem 0 0;
+}
+
+.execution-evidence dl div {
+  min-width: 0;
+}
+
+.execution-evidence dt {
+  color: #6a7184;
+  font-size: 0.76rem;
+}
+
+.execution-evidence dd {
+  margin: 0.12rem 0 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.terminal-evidence-list {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.9rem 0.9rem;
+}
+
 @media (max-width: 720px) {
   .agent-grid,
   .quick-actions,

@@ -12,4 +12,6 @@ def build_resource_agent(settings: LLMSettings | None = None) -> ResourceAgent:
         provider,
         fallback_agent=RuleBasedResourceAgent(),
         fallback_mode=resolved.fallback_mode,
+        provider_name=resolved.provider,
+        model=resolved.model,
     )

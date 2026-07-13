@@ -1601,3 +1601,45 @@ Allowed to commit: Yes
 ## Final Recommendation
 
 建议提交本轮增量。Resource/Evaluator 的真实 LLM 路径保持在 Agent factory 和 `LLMProvider` 边界内，默认离线演示、fallback 和现有 API contract 均未被破坏。最重要的后端、前端构建和 Playwright 主流程均已由 Reviewer 复跑通过。通过范围不包括真实远端 provider 可用性、真实生图能力或生产级长期 mastery 建模。
+## 2026-07-13 Review & Test Agent Review: COMP-007 Unified LLM Execution Evidence
+
+## Review Conclusion
+
+Result: Pass
+
+Allowed to commit: Yes
+
+## Scope Reviewed
+
+- Additive `agent_run_steps.execution_metadata` schema and old SQLite compatibility.
+- Structured evidence propagation across ProfileBuilder, Planner, Resource, Tutor, Quiz, Evaluator and ProfileUpdater.
+- Central trace redaction, source identifier filtering and bounded summaries.
+- Frontend typed contract, current `run_type` matching and folded evidence display.
+- Unit, integration, browser and real Spark MaaS acceptance coverage.
+
+## Findings
+
+### Blocking
+
+- None.
+
+### Fix Before Merge
+
+- None.
+
+### Residual Environment Risk
+
+- The repository-standard `scripts/verify.ps1` completed Python compile, 147 backend tests, dependency check and wheel build, but its later workspace `npm ci` hit Windows `EPERM` because an existing user Vite process (PID 4136 with esbuild child PID 7416) holds `node_modules/@esbuild/.../esbuild.exe`; the final post-change backend rerun completed 148 tests.
+- Equivalent clean frontend verification was rerun in an isolated temporary directory: `npm ci`, `tsc --noEmit` and Vite production build passed. The existing user process was not terminated.
+
+## Test Assessment
+
+- `python -m unittest discover -s tests`: 148 passed, 7 opt-in Spark tests skipped by default.
+- Clean frontend `npm ci` and `npm run build`: passed.
+- Real Playwright browser check: path flow rendered 2 folded evidence blocks; opening one showed execution mode/provider/duration; no browser console error.
+- `scripts/verify-spark-existing-agents.ps1`: 7/7 passed against MaaS `xop3qwen1b7`; the persisted TutorService trace reported `llm`, `openai_compatible`, the configured model, 5 source refs and no API key.
+- `git diff --check`: passed apart from expected Windows line-ending notices.
+
+## Final Recommendation
+
+允许提交 COMP-007。本轮只增加可审计运行证据和安全展示，不把 Router、Retriever、Critic、schema、引用校验或客观题评分改造成 LLM，也不记录 prompt、完整上下文或模型隐式推理。

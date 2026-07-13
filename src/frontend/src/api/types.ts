@@ -172,6 +172,16 @@ export interface LearningPath {
   planner_duration_ms?: number | null;
 }
 
+export interface AgentExecutionMetadata {
+  execution_mode: "llm" | "rule_based" | "rule_based_fallback";
+  provider: string;
+  model: string;
+  fallback_used: boolean;
+  fallback_reason: string | null;
+  source_refs: string[];
+  duration_ms: number;
+}
+
 export interface AgentRunStep {
   id: number;
   agent_run_id: number;
@@ -183,6 +193,7 @@ export interface AgentRunStep {
   decision_basis: string;
   duration_ms: number | null;
   error: string | null;
+  execution_metadata: AgentExecutionMetadata;
 }
 
 export interface AgentRun {

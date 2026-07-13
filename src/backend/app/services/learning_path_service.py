@@ -21,6 +21,7 @@ from app.models import (
 )
 from app.schemas import LearningPathItemResponse, LearningPathResponse
 from app.services.demo_data_service import DemoDataService
+from app.services.agent_execution_metadata import build_execution_metadata
 from app.services.profile_updater_service import ProfileUpdaterService
 
 
@@ -340,6 +341,7 @@ class LearningPathService:
             ),
             status="completed",
             duration_ms=result.duration_ms,
+            execution_metadata=build_execution_metadata(result),
         )
         run_service.complete_run(run.id, f"Planner refreshed path {path_id} after {trigger}.")
 
