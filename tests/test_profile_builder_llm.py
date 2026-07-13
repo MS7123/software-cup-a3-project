@@ -192,6 +192,29 @@ class ProfileBuilderLLMTests(unittest.TestCase):
         self.assertEqual(result.execution_mode, "llm")
         self.assertEqual(result.profile.profile_type, "exam_sprint")
 
+    def test_llm_builder_normalizes_english_resource_type_without_fallback(self) -> None:
+        provider = FakeLLMProvider(
+            json.dumps(
+                {
+                    "profile_type": "algorithm_practice",
+                    "learning_goal": "master graph algorithms",
+                    "foundation_level": "intermediate",
+                    "learning_preference": "code_driven",
+                    "available_time": "six hours weekly",
+                    "weak_points": ["shortest paths"],
+                    "resource_preference": "coding_exercises",
+                }
+            )
+        )
+
+        result = LLMProfileBuilderAgent(provider).build(
+            StudentProfileDialogueCreate(dialogue="I prefer coding exercises for graph algorithms.")
+        )
+
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertFalse(result.fallback_used)
+        self.assertEqual(result.profile.preferences["resource_preference"], "代码实操案例")
+
 
 class ProfileBuilderHistoryIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:

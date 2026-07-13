@@ -262,7 +262,7 @@ $env:EMBEDDING_BYPASS_PROXY='false'
 | `LLM_TIMEOUT_SECONDS` | `20` | 单次请求超时。 |
 | `LLM_MAX_RETRIES` | `0` | 最小 retry 次数，避免演示卡死。 |
 | `LLM_MAX_TOKENS` | `1024` | 未配置 purpose-specific budget 时的输出 token 上限。 |
-| `LLM_<PURPOSE>_TIMEOUT_SECONDS` | 按 purpose | Planner/ProfileUpdater 默认 12 秒，Tutor/Quiz 20 秒，Resource 30 秒。 |
+| `LLM_<PURPOSE>_TIMEOUT_SECONDS` | 按 purpose | Planner 默认 18 秒、ProfileUpdater 12 秒、Tutor/Quiz 20 秒、Resource 30 秒。 |
 | `LLM_<PURPOSE>_MAX_RETRIES` | `0` | 仅快速瞬态连接错误和 HTTP `429/5xx` 可使用有限重试；timeout、非法 JSON 和普通 `4xx` 不重试。 |
 | `LLM_<PURPOSE>_MAX_TOKENS` | 按 purpose | 为 Planner、画像、Tutor、Quiz、Resource 等限制输出长度；比赛脚本已提供默认值。 |
 | `LLM_FALLBACK_MODE` | `rule_based` | LLM 未配置、timeout 或失败时回退到 rule-based。 |

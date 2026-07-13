@@ -62,13 +62,13 @@ class SparkCompetitionScriptTests(unittest.TestCase):
         script = SCRIPT_PATH.read_text(encoding="utf-8")
 
         expected = {
-            "PLANNER": (12, 0, 600),
+            "PLANNER": (18, 0, 600),
             "PROFILE_UPDATER": (12, 0, 700),
             "PROFILE_BUILDER": (15, 0, 900),
             "EVALUATOR": (15, 0, 900),
             "TUTOR": (20, 0, 1200),
             "QUIZ": (20, 0, 1400),
-            "RESOURCE": (30, 0, 2000),
+            "RESOURCE": (30, 0, 1200),
         }
         for purpose, (timeout, retries, max_tokens) in expected.items():
             self.assertIn(f'$env:LLM_{purpose}_TIMEOUT_SECONDS = "{timeout}"', script)

@@ -281,7 +281,7 @@ cd ../..
 比赛和评审演示默认使用科大讯飞星辰 MaaS，并启用 ProfileBuilder、Planner、Resource、Tutor、Quiz、Evaluator 和 ProfileUpdater 七项 LLM 能力：
 
 ```powershell
-$env:XFYUN_SPARK_API_PASSWORD='<your-api-key>'
+[Environment]::SetEnvironmentVariable('XFYUN_SPARK_API_KEY', '<your-api-key>', 'User')
 ./scripts/run-competition-spark.ps1
 ```
 
@@ -312,7 +312,7 @@ $env:XFYUN_SPARK_API_PASSWORD='<your-api-key>'
 1. 在仓库根目录启动比赛入口，并打开控制台打印的 frontend 地址：
 
    ```powershell
-   $env:XFYUN_SPARK_API_PASSWORD='<your-api-key>'
+   [Environment]::SetEnvironmentVariable('XFYUN_SPARK_API_KEY', '<your-api-key>', 'User')
    ./scripts/run-competition-spark.ps1
    ```
 

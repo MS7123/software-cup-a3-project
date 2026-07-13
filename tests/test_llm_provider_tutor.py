@@ -151,7 +151,11 @@ class LLMProviderTutorTests(unittest.TestCase):
                 enable_for_tutor=True,
                 bypass_proxy=True,
             )
-            result = OpenAICompatibleLLMProvider(settings).generate([{"role": "user", "content": "hello"}])
+            provider = OpenAICompatibleLLMProvider(settings)
+            result = provider.generate([{"role": "user", "content": "hello"}])
+            unstructured_payload = dict(OpenAICompatibleHandler.request_payload or {})
+            provider.generate([{"role": "user", "content": "structured"}], response_schema=dict)
+            structured_payload = dict(OpenAICompatibleHandler.request_payload or {})
         finally:
             server.shutdown()
             server.server_close()
@@ -162,11 +166,13 @@ class LLMProviderTutorTests(unittest.TestCase):
         self.assertEqual(result.metadata["model"], "deepseek-v4-flash")
         self.assertNotIn("test-secret", str(result.metadata))
         self.assertEqual(OpenAICompatibleHandler.auth_header, "Bearer test-secret")
-        self.assertEqual(OpenAICompatibleHandler.request_payload["model"], "deepseek-v4-flash")
-        self.assertEqual(OpenAICompatibleHandler.request_payload["max_tokens"], 321)
+        self.assertEqual(unstructured_payload["model"], "deepseek-v4-flash")
+        self.assertEqual(unstructured_payload["max_tokens"], 321)
+        self.assertEqual(unstructured_payload["temperature"], 0.2)
         self.assertEqual(result.metadata["retry_count"], 0)
         self.assertGreaterEqual(result.metadata["provider_duration_ms"], 0)
         self.assertEqual(result.metadata["usage"]["total_tokens"], 20)
+        self.assertEqual(structured_payload["temperature"], 0.0)
 
     def test_settings_resolve_a_purpose_specific_budget(self) -> None:
         keys = (

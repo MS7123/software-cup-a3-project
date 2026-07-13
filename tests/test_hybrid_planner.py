@@ -39,6 +39,17 @@ class RaisingPlannerProvider:
         raise TimeoutError("planner timeout")
 
 
+class RawPlannerProvider:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+    def generate(self, messages, response_schema=None) -> LLMResult:
+        return LLMResult(
+            content=self.content,
+            metadata={"provider": "openai_compatible", "model": "planner-test-model"},
+        )
+
+
 class HybridPlannerAgentTests(unittest.TestCase):
     def setUp(self) -> None:
         self.concepts = [
@@ -163,6 +174,42 @@ class HybridPlannerAgentTests(unittest.TestCase):
         self.assertEqual([item.priority for item in result.recommendations], [1, 2, 3])
         self.assertEqual(result.execution_mode, "llm")
         self.assertFalse(result.fallback_used)
+
+    def test_concatenated_valid_signal_objects_are_repaired_without_remote_retry(self) -> None:
+        items = [
+            {
+                "concept_id": 20,
+                "recommended_resource_type": "coding_case",
+                "reason": "prioritize practice",
+                "priority": 1,
+            },
+            {
+                "concept_id": 30,
+                "recommended_resource_type": "guided_note",
+                "reason": "review foundation",
+                "priority": 2,
+            },
+        ]
+        content = "\n,\n".join(json.dumps(item) for item in items)
+
+        result = HybridPlannerAgent(RawPlannerProvider(content)).plan(
+            self.concepts,
+            self.relations,
+            PlannerContext(
+                goal="master the course",
+                profile_type="algorithm_practice",
+                foundation_level="intermediate",
+                learning_preference="code_driven",
+                available_time="one hour daily",
+                weak_points=["practice"],
+                resource_preference="coding_case",
+            ),
+        )
+
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertFalse(result.fallback_used)
+        self.assertEqual([item.concept_id for item in result.recommendations], [20, 30, 10])
+        self.assertIn("structure_repaired=concatenated_objects", result.warning_reason or "")
 
     def test_llm_prompt_uses_an_eight_node_rolling_window(self) -> None:
         concepts = [

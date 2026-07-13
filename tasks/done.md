@@ -30,10 +30,10 @@
 ## 已通过 Review 的实现任务
 
 - [x] `PERF-002`～`PERF-005`：LLM 运行时性能与可靠性增量。
-  - 完成范围：Planner 改为少量 LLM 信号加规则补全，保留 25 节点课程图并限制为 8 节点滚动窗口；七类 purpose 使用独立 timeout、max tokens 和选择性重试；Resource/Tutor 画像更新移入后台；新增 API/provider/retry/token/fallback 性能证据和 p50/p95 报告脚本。
-  - 自动化证据：后端全量 181 项通过、7 项真实星火测试按 opt-in 配置跳过；前端 production build 和真实 Playwright 学习闭环 1 项通过。
-  - 性能证据：Quiz 的 6000 ms 模拟后处理下 HTTP 响应为 97 ms；Tutor 的 500 ms 模拟画像更新不计入 `X-Process-Time-Ms`；Planner timeout 默认收敛为 12 秒且不重试。
-  - 保留边界：课程图不缩减为 7～8 个节点，LLM 单次候选窗口限制为 8；当前机器无星火密钥，修改后真实 p50/p95 属于外部复测待办，不包含在“代码开发完成”结论中。
+  - 完成范围：Planner 改为少量 LLM 信号加规则补全，保留 25 节点课程图并限制为 8 节点滚动窗口；七类 purpose 使用独立 timeout、max tokens 和选择性重试；Resource/Tutor 画像更新移入后台；新增 API/provider/retry/token/fallback 性能证据和 p50/p95 报告脚本；补充 MaaS Qwen 的 Planner envelope 修复与 ProfileBuilder 资源枚举归一化。
+  - 自动化证据：后端全量 186 项通过、10 项真实星火测试按 opt-in 配置跳过；前端 production build 和真实 Playwright 学习闭环 1 项通过。
+  - 性能证据：Quiz 的 6000 ms 模拟后处理下 HTTP 响应为 97 ms；Tutor 的 500 ms 模拟画像更新不计入 `X-Process-Time-Ms`；真实星火最终样本中 ProfileBuilder、Planner、Quiz 与 7 次 Resource 调用均为 LLM 且 0 fallback，Planner p95 为 13.270 秒，Resource p95 为 21.911 秒。
+  - 保留边界：课程图不缩减为 7～8 个节点，LLM 单次候选窗口限制为 8；结构修复后仍执行 Pydantic、节点真实性和完整先修拓扑校验；凭据仅从 `XFYUN_SPARK_API_KEY` 注入进程。
 
 - [x] `PERF-001`：评测立即返回与单路径后台后处理。
   - 完成范围：复用现有 `tasks` 表与 FastAPI background task；评分响应增加 additive task 状态；画像更新和最多一条相关路径重规划移出同步评分链路；前端轮询并展示后台成功或失败。

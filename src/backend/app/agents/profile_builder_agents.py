@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Annotated, Any, Literal, Protocol
 
-from pydantic import AliasChoices, BaseModel, Field, ValidationError
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
 
 from app.adapters.llm_provider import LLMProviderError, LLMSettings, build_llm_provider
 from app.adapters.protocols import LLMProvider
@@ -28,6 +28,26 @@ class ProfileDimensions(BaseModel):
     available_time: str = Field(min_length=1, max_length=120)
     weak_points: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(default_factory=list, max_length=5)
     resource_preference: Literal["讲解文档", "练习题", "思维导图", "拓展阅读", "代码实操案例"]
+
+    @field_validator("resource_preference", mode="before")
+    @classmethod
+    def normalize_resource_preference(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "guided_note": "讲解文档",
+            "guided_notes": "讲解文档",
+            "practice_question": "练习题",
+            "practice_questions": "练习题",
+            "mind_map": "思维导图",
+            "extended_reading": "拓展阅读",
+            "coding_case": "代码实操案例",
+            "coding_cases": "代码实操案例",
+            "coding_exercise": "代码实操案例",
+            "coding_exercises": "代码实操案例",
+        }
+        return aliases.get(normalized, value.strip())
 
 
 PROFILE_BUILD_SCHEMA: dict[str, Any] = ProfileDimensions.model_json_schema()
@@ -225,7 +245,14 @@ def _extract_json_object(content: str) -> str:
 
 def _fallback_reason(exc: Exception) -> str:
     if isinstance(exc, ValidationError):
-        return "ValidationError: response schema validation failed"
+        fields = sorted(
+            {
+                f"{'.'.join(str(part) for part in error['loc'])}:{error['type']}"
+                for error in exc.errors()
+            }
+        )
+        detail = ",".join(fields[:4])
+        return f"ValidationError: response schema validation failed ({detail})"
     if isinstance(exc, LLMProviderError):
         return str(exc)[:240]
     if isinstance(exc, ValueError):

@@ -1,7 +1,7 @@
 ---
 title: LLM 运行时性能与可靠性开发计划
 date: 2026-07-13
-status: development-complete-online-rebenchmark-pending
+status: complete
 tags:
   - competition/a3
   - llm/performance
@@ -13,7 +13,7 @@ tags:
 最后更新：2026-07-13
 
 > [!success] 开发状态
-> **PERF-001～PERF-005 的代码开发已完成**。后端全量 **181 项测试通过**，**7 项真实星火测试按 opt-in 配置跳过**；前端 production build 与 Playwright 学习闭环通过。当前机器未配置 `XFYUN_SPARK_API_PASSWORD`，因此修改后的真实星火 p50/p95 复测仍是外部验收项，不能把历史数据冒充为修改后结果。
+> **PERF-001～PERF-005 的代码开发与真实星火复测均已完成**。后端全量 **186 项测试通过**，**10 项真实星火测试按 opt-in 配置跳过**；前端 production build 与 Playwright 学习闭环通过。真实凭据由 Windows User scope 的 `XFYUN_SPARK_API_KEY` 提供，未写入仓库或测试输出。
 
 ## 1. 历史真实基线
 
@@ -43,7 +43,9 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 | 同步后处理 | Quiz、Resource、Tutor 等待画像或路径更新 | 业务结果先返回，后处理进入 `Task` + FastAPI background task | 成绩、资源、回答不再等待后处理 |
 | Planner 合同脆弱 | LLM 必须返回完整节点集合 | LLM 只返回少量排序信号，规则层补全、去重、修复先修关系 | 漏节点不再导致整条路径 fallback |
 | Planner prompt 过大 | 一次发送完整 25 节点图 | 完整图保留，每轮最多发送 8 个合法候选 | 降低 prompt、输出长度和超时概率 |
-| 统一调用预算 | 全部 purpose 使用 45 秒、1 次 retry | 每个 purpose 独立 timeout、max tokens、retry | Planner 最坏等待由约 90 秒降为单次 12 秒后 fallback |
+| 统一调用预算 | 全部 purpose 使用 45 秒、1 次 retry | 每个 purpose 独立 timeout、max tokens、retry | Planner 最坏等待由约 90 秒降为单次 18 秒后 fallback |
+| 结构化输出波动 | MaaS Qwen 会返回字段合法但缺少外层 envelope 的对象序列 | 仅修复字段完整的 Planner signal object，随后继续执行 Pydantic 与拓扑校验 | 避免对可恢复输出进行远程重试或整条路径 fallback |
+| 枚举表达差异 | ProfileBuilder 偶尔返回英文资源类型 | 确定性映射到既有中文 API contract | 画像构建不因同义枚举波动降级 |
 | 性能不可解释 | 只有粗粒度 `duration_ms` | 增加 API、provider、retry、token 与 fallback 证据 | 可定位时间花费和降级原因 |
 
 ## 3. Planner 的 25 节点决策
@@ -78,13 +80,13 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 
 | Purpose | Timeout | Retry | Max tokens | 设计意图 |
 |---|---:|---:|---:|---|
-| Planner | 12 秒 | 0 | 600 | 快速结构化排序，失败立即拓扑 fallback |
+| Planner | 18 秒 | 0 | 600 | 覆盖真实星火约 11～14 秒尾延迟，并为结构化信号保留输出空间 |
 | ProfileUpdater | 12 秒 | 0 | 700 | 后台短分析，不重复占用远端时间 |
 | ProfileBuilder | 15 秒 | 0 | 900 | 六维画像结构化输出 |
 | Evaluator | 15 秒 | 0 | 900 | 开放题结构化评分 |
 | Tutor | 20 秒 | 0 | 1200 | 中等长度 grounded answer |
 | Quiz | 20 秒 | 0 | 1400 | 结构化多题型输出 |
-| Resource | 30 秒 | 0 | 2000 | 五类资源中最长的文本生成 |
+| Resource | 30 秒 | 0 | 1200 | 五类资源采用紧凑输出，降低尾延迟与 timeout fallback |
 
 默认不对 timeout、普通 HTTP 4xx、非法 JSON 重试；只允许对连接重置、`RemoteDisconnected`、HTTP 429/5xx 等明确瞬态故障执行配置允许的有限重试。
 
@@ -129,7 +131,7 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 - [x] 不记录 API key、完整 prompt、完整模型输出或 chain-of-thought。
 - [x] `report-llm-performance.py` 可从 SQLite trace 生成各 Agent 的 p50/p95 与 fallback 汇总。
 - [x] 自动化回归证明 Tutor 的模拟慢画像后处理不计入主响应处理时间。
-- [ ] 使用修改后代码和真实星火密钥重新采样 p50/p95；当前机器未配置外部密钥。
+- [x] 使用修改后代码和真实星火密钥重新采样 p50/p95，并记录样本数与 fallback 数量。
 
 ## 6. 验证证据
 
@@ -137,8 +139,8 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 
 | 验证项 | 结果 | 说明 |
 |---|---|---|
-| 后端全量 | **181 passed** | 7 项真实星火测试按 opt-in 配置跳过 |
-| Planner 专项 | **11 passed** | 含稀疏信号、未知/重复项、先修修复和 8 节点窗口 |
+| 后端全量 | **186 passed** | 10 项真实星火测试按 opt-in 配置跳过 |
+| Planner 专项 | **12 passed** | 含稀疏信号、未知/重复项、先修修复、结构 envelope 修复和 8 节点窗口 |
 | Resource/Tutor 后处理 | **5 passed** | 含慢后处理与 API timing 边界 |
 | Provider/预算专项 | **15 passed** | 含 max tokens、timeout 不重试、瞬态断连重试 |
 | 前端 production build | **passed** | TypeScript 与 Vite 构建通过 |
@@ -149,19 +151,33 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 
 - PERF-001 的真实 Uvicorn socket 探针注入 **6000 ms** 后处理延迟，评分 HTTP 响应为 **97 ms**，task 随后从 `running` 转为 `completed`。
 - PERF-004 的自动化测试向 Tutor ProfileUpdater 注入 **500 ms** 延迟，API `X-Process-Time-Ms` 明确不包含该后台时间。
-- Provider 测试证明 Planner timeout 预算为 **12 秒、0 次 retry**，不会再次形成历史上的两次 45 秒等待。
+- Provider 测试证明 Planner timeout 预算为 **18 秒、0 次 retry**，不会再次形成历史上的两次 45 秒等待。
 
-### 6.3 修改后真实联机复测命令
+### 6.3 修改后真实星火性能证据
 
-外部密钥可用后执行：
+2026-07-13 使用 MaaS `xop3qwen1b7`、`temperature=0.0`（结构化请求）和比赛入口的 purpose budget 采样。p95 按 nearest-rank 计算；单样本 Agent 只作为成功延迟证据，不作为稳定分位数结论。
+
+| Agent | 样本数 | p50 | p95 | Fallback | 验收结果 |
+|---|---:|---:|---:|---:|---|
+| ProfileBuilder | 2 | 6.481 秒 | 8.810 秒 | 0 | 六维画像 schema 合法 |
+| Planner | 2 | 11.497 秒 | 13.270 秒 | 0 | 25 节点路径完整，LLM 窗口最多 8 节点 |
+| Quiz | 2 | 8.586 秒 | 13.856 秒 | 0 | grounded 结构化 Quiz 合法 |
+| Resource | 7 | 12.355 秒 | 21.911 秒 | 0 | 五类资源及两画像差异均通过 |
+| Tutor | 2 | 10.295 秒 | 10.604 秒 | 0 | 引用白名单通过 |
+| Evaluator | 1 | 11.610 秒 | 11.610 秒 | 0 | 结构化评分合法 |
+| ProfileUpdater | 1 | 5.610 秒 | 5.610 秒 | 0 | 使用真实学习 trace 更新 |
+
+调优前的受控复测中，Resource 的 `guided_note`、`coding_case` 曾在 30 秒 timeout，Planner 曾在约 12～15 秒返回 5 个合法 signal object 但缺少 `recommendations` 外壳。将 Resource 限制为 **1200 tokens / 900 中文字符**，并增加 Planner 的受控 envelope 修复后，上表的最终样本全部走 LLM，未触发 fallback。
+
+### 6.4 修改后真实联机复测命令
+
+已有 Agent 的完整联机验收：
 
 ```powershell
-$env:RUN_SPARK_ONLINE_TESTS = "true"
-./scripts/verify-spark-existing-agents.ps1
-python scripts/report-llm-performance.py data/demo.sqlite3
+./scripts/verify-spark-existing-agents.ps1 -BypassProxy
 ```
 
-验收时必须区分新旧 trace，并至少记录 Planner、Resource、Tutor、Quiz、ProfileUpdater 的样本数、p50、p95 和 fallback reason。
+新 Agent 的 p50/p95 复测使用 `tests/test_spark_new_agents_performance_online.py`。该测试需要把 User scope 的 `XFYUN_SPARK_API_KEY` 映射为进程内 `LLM_API_KEY`，并启用对应 purpose；普通全量测试不会调用外部服务。
 
 ## 7. 完成判定
 
@@ -174,10 +190,10 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 - [x] API 与 Agent trace 能解释总耗时、远端耗时、重试和降级原因。
 - [x] 25 节点课程图保留，LLM 单次工作集收敛到 8 节点。
 
-### 7.2 尚未完成的外部验收
+### 7.2 真实联机完成证据
 
-> [!warning] 真实联机复测待办
-> 当前开发增量已完成，但“修改后真实星火 p50/p95”没有密钥就无法产生。本项完成前，可以标记为“性能开发完成”，不能声称“修改后真实联机性能验收完成”。
+> [!success] 真实联机复测完成
+> Planner、ProfileBuilder、Quiz、五类 Resource、画像差异、Tutor、Evaluator 与 ProfileUpdater 均有真实星火成功样本。最终验收样本 fallback 数为 0；客观题同步评分仍保持确定性执行，远端画像与路径更新不阻塞成绩响应。
 
 ## 8. 中断恢复检查点
 
@@ -191,7 +207,8 @@ python scripts/report-llm-performance.py data/demo.sqlite3
   - `bbecd19`：分用途 timeout、max tokens 与选择性重试。
   - `2688171`：Resource/Tutor 画像后台后处理。
   - `c4d61d6`：API/LLM 安全性能证据与 p50/p95 报告。
-- 后端全量：`python -m unittest discover -s tests -q`，结果 181 passed、7 skipped。
+- 本轮收口增量已提交至当前分支最新提交：Planner 结构 envelope 修复、ProfileBuilder 资源枚举归一化、Resource 输出预算调优、真实星火性能测试与证据回填。
+- 后端全量：`python -m unittest discover -s tests -q`，结果 186 passed、10 skipped。
 - 前端构建：在 `src/frontend` 执行 `npm run build`，结果通过。
 - 浏览器闭环：真实本地服务下 `npm run test:smoke`，结果 1 passed。
-- 唯一外部待办：配置 `XFYUN_SPARK_API_PASSWORD` 后执行修改后真实联机复测并回填 p50/p95。
+- 真实星火：ProfileBuilder、Planner、Quiz、Resource、Tutor、Evaluator、ProfileUpdater 均已复测；最终验收样本 fallback 数为 0。

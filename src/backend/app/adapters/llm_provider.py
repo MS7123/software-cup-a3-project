@@ -24,13 +24,13 @@ class LLMCallBudget:
 
 
 DEFAULT_PURPOSE_BUDGETS: dict[str, LLMCallBudget] = {
-    "planner": LLMCallBudget(12.0, 0, 600),
+    "planner": LLMCallBudget(18.0, 0, 600),
     "profile_updater": LLMCallBudget(12.0, 0, 700),
     "profile_builder": LLMCallBudget(15.0, 0, 900),
     "evaluator": LLMCallBudget(15.0, 0, 900),
     "tutor": LLMCallBudget(20.0, 0, 1200),
     "quiz": LLMCallBudget(20.0, 0, 1400),
-    "resource": LLMCallBudget(30.0, 0, 2000),
+    "resource": LLMCallBudget(30.0, 0, 1200),
 }
 
 
@@ -148,7 +148,7 @@ class OpenAICompatibleLLMProvider:
         payload = {
             "model": self.settings.model,
             "messages": messages,
-            "temperature": 0.2,
+            "temperature": 0.0 if response_schema is not None else 0.2,
             "max_tokens": self.budget.max_tokens,
         }
         body = json.dumps(payload).encode("utf-8")

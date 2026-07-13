@@ -163,13 +163,17 @@ class HybridPlannerAgent:
                 _build_planner_messages(planning_window, relations, context),
                 response_schema=PLANNER_OUTPUT_SCHEMA,
             )
-            parsed = _parse_planner_output(result.content)
+            parsed, structure_repaired = _parse_planner_output(result.content)
             recommendations, warning_reason = _compose_hybrid_recommendations(
                 parsed.recommendations,
                 concepts,
                 relations,
                 context,
             )
+            if structure_repaired:
+                warning_reason = "; ".join(
+                    part for part in ("structure_repaired=concatenated_objects", warning_reason) if part
+                )
             _validate_recommendations(recommendations, concepts, relations, context.completed_concept_ids)
             return PlannerResult(
                 recommendations=recommendations,
@@ -405,15 +409,44 @@ def _compose_hybrid_recommendations(
     return recommendations, "; ".join(warnings) or None
 
 
-def _parse_planner_output(content: str) -> PlannerOutput:
-    raw = _extract_json_object(content)
+def _parse_planner_output(content: str) -> tuple[PlannerOutput, bool]:
     try:
+        raw = _extract_json_object(content)
         payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError("Planner response contained invalid JSON.") from exc
+    except (json.JSONDecodeError, ValueError) as exc:
+        items = _extract_concatenated_planner_items(content)
+        if not items:
+            raise ValueError("Planner response contained invalid JSON.") from exc
+        return PlannerOutput.model_validate({"recommendations": items}), True
     if not isinstance(payload, dict):
         raise ValueError("Planner response must be a JSON object.")
-    return PlannerOutput.model_validate(payload)
+    if "recommendations" not in payload and _looks_like_planner_item(payload):
+        return PlannerOutput.model_validate({"recommendations": [payload]}), True
+    return PlannerOutput.model_validate(payload), False
+
+
+def _extract_concatenated_planner_items(content: str) -> list[dict[str, Any]]:
+    decoder = json.JSONDecoder()
+    items: list[dict[str, Any]] = []
+    cursor = 0
+    while len(items) <= 5:
+        start = content.find("{", cursor)
+        if start < 0:
+            break
+        try:
+            payload, consumed = decoder.raw_decode(content[start:])
+        except json.JSONDecodeError:
+            cursor = start + 1
+            continue
+        cursor = start + consumed
+        if isinstance(payload, dict) and _looks_like_planner_item(payload):
+            items.append(payload)
+    return items
+
+
+def _looks_like_planner_item(payload: dict[str, Any]) -> bool:
+    required = {"concept_id", "recommended_resource_type", "reason", "priority"}
+    return required.issubset(payload)
 
 
 def _validate_recommendations(

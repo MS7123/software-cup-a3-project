@@ -74,7 +74,7 @@ try {
     $env:LLM_TIMEOUT_SECONDS = [string]$TimeoutSeconds
     $env:LLM_MAX_RETRIES = [string]$MaxRetries
     $env:LLM_MAX_TOKENS = "1024"
-    $env:LLM_PLANNER_TIMEOUT_SECONDS = "12"
+    $env:LLM_PLANNER_TIMEOUT_SECONDS = "18"
     $env:LLM_PLANNER_MAX_RETRIES = "0"
     $env:LLM_PLANNER_MAX_TOKENS = "600"
     $env:LLM_PROFILE_UPDATER_TIMEOUT_SECONDS = "12"
@@ -94,7 +94,7 @@ try {
     $env:LLM_QUIZ_MAX_TOKENS = "1400"
     $env:LLM_RESOURCE_TIMEOUT_SECONDS = "30"
     $env:LLM_RESOURCE_MAX_RETRIES = "0"
-    $env:LLM_RESOURCE_MAX_TOKENS = "2000"
+    $env:LLM_RESOURCE_MAX_TOKENS = "1200"
     $env:LLM_FALLBACK_MODE = "rule_based"
     $env:LLM_BYPASS_PROXY = if ($BypassProxy) { "true" } else { "false" }
     $env:LLM_ENABLE_FOR_TUTOR = "true"

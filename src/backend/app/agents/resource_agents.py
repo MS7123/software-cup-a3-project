@@ -118,6 +118,7 @@ def _build_resource_messages(
                 "Only cite source refs listed in the retrieved chunks. "
                 "Use citations after key claims, for example [document:4#chunk:3]. "
                 "Do not invent source refs. "
+                "Keep the complete response within 900 Chinese characters; prefer compact sections and avoid repetition. "
                 "你是数据结构课程的 Resource Agent。请用中文生成个性化学习资源。"
                 "只能使用给定课程资料作为事实依据；资料不足时必须明确说明缺少什么，不要编造。"
                 "必须严格体现资源类型差异，不要把所有资源都写成普通讲义。"
