@@ -29,11 +29,17 @@
 
 ## 已通过 Review 的实现任务
 
+- [x] `PERF-002`～`PERF-005`：LLM 运行时性能与可靠性增量。
+  - 完成范围：Planner 改为少量 LLM 信号加规则补全，保留 25 节点课程图并限制为 8 节点滚动窗口；七类 purpose 使用独立 timeout、max tokens 和选择性重试；Resource/Tutor 画像更新移入后台；新增 API/provider/retry/token/fallback 性能证据和 p50/p95 报告脚本。
+  - 自动化证据：后端全量 181 项通过、7 项真实星火测试按 opt-in 配置跳过；前端 production build 和真实 Playwright 学习闭环 1 项通过。
+  - 性能证据：Quiz 的 6000 ms 模拟后处理下 HTTP 响应为 97 ms；Tutor 的 500 ms 模拟画像更新不计入 `X-Process-Time-Ms`；Planner timeout 默认收敛为 12 秒且不重试。
+  - 保留边界：课程图不缩减为 7～8 个节点，LLM 单次候选窗口限制为 8；当前机器无星火密钥，修改后真实 p50/p95 属于外部复测待办，不包含在“代码开发完成”结论中。
+
 - [x] `PERF-001`：评测立即返回与单路径后台后处理。
   - 完成范围：复用现有 `tasks` 表与 FastAPI background task；评分响应增加 additive task 状态；画像更新和最多一条相关路径重规划移出同步评分链路；前端轮询并展示后台成功或失败。
   - 自动化证据：`tests/test_quiz_postprocessing.py` 6 项、后端全量 169 项、前端 production build 和 Playwright 学习闭环 1 项均通过，7 项真实星火联机测试按 opt-in 配置跳过。
   - 运行时证据：真实 Uvicorn socket 下人为注入 6000 ms 后处理延迟，评分 HTTP 响应为 97 ms，task 从 `running` 转为 `completed`，成绩为 1.0。
-  - 保留边界：SQLite + in-process background task 仅用于比赛和本地演示；正式持久化队列仍属于 `COMP-015`；`PERF-002` 至 `PERF-005` 仍未完成。
+  - 保留边界：SQLite + in-process background task 仅用于比赛和本地演示；正式持久化队列仍属于 `COMP-015`。
 
 - [x] `COMP-008`：建立防幻觉与内容安全验证闭环。
   - 完成范围：新增统一确定性内容安全服务，为全部 LLM Agent 增加 Prompt injection 输入边界；Tutor、Resource 和 Quiz 增加 RAG 污染过滤、当前请求引用白名单、危险代码/敏感内容输出检查，以及明确的 `passed`、`blocked`、`degraded` 状态。

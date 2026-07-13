@@ -1736,3 +1736,48 @@ Allowed to commit: Yes
 ## Final Recommendation
 
 允许提交 PERF-001。该增量消除客观题评分链路中的远端等待，并把 Planner 限定到当前相关路径；不得将此结论扩大为 PERF-002 至 PERF-005 已完成。
+
+## 2026-07-13 Review & Test Agent Review: PERF-002～PERF-005 Runtime Performance
+
+## Review Conclusion
+
+Result: Pass for development scope; post-change real Spark benchmark pending
+
+Allowed to commit: Yes
+
+## Scope Reviewed
+
+- Hybrid Planner sparse signal contract, deterministic completion and eight-node LLM window.
+- Purpose-specific timeout, max token and selective retry policy.
+- Resource/Tutor background profile postprocessing and safe visible progress.
+- API/provider duration, retry, token and fallback observability.
+- 25-node course graph decision and stale Playwright concept-count assertion.
+
+## Findings
+
+### Blocking
+
+- None for code development and offline regression.
+
+### Fix Before Merge
+
+- None.
+
+### Residual Environment Risk
+
+- The current process and User scope do not contain `XFYUN_SPARK_API_PASSWORD`; therefore no post-change real Spark p50/p95 sample was generated in this review.
+- Historical real traces remain useful as the before-baseline but must not be represented as post-change measurements.
+- FastAPI in-process background tasks remain a competition/demo mechanism and do not replace the persistent queue planned under `COMP-015`.
+
+## Test Assessment
+
+- `python -m unittest discover -s tests -q`: 181 passed, 7 opt-in Spark tests skipped.
+- `npm run build`: passed.
+- Real local Playwright learning loop: 1 passed after correcting the stale 24-node assertion to the actual 25-node course graph.
+- Controlled runtime checks: 6000 ms Quiz postprocessing returned the score in 97 ms; 500 ms Tutor profile postprocessing was excluded from `X-Process-Time-Ms`.
+- `python scripts/report-llm-performance.py data/demo.sqlite3`: reproduced the historical p50/p95 and fallback reasons without exposing prompt, output or credentials.
+- `git diff --check`: passed apart from expected Windows line-ending notices.
+
+## Final Recommendation
+
+允许提交 PERF-002～PERF-005 的开发实现。课程图继续保留 25 个节点，LLM 单次候选窗口限制为 8 个节点；真实星火密钥可用后必须补做修改后 p50/p95 复测，完成前不得声称真实联机性能验收已完成。

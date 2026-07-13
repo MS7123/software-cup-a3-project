@@ -10,7 +10,7 @@ test("学生端界面可以完成主要学习闭环", async ({ page }) => {
   const demoStatus = await page.request.get("/api/v1/demo-data/status");
   expect(demoStatus.ok()).toBeTruthy();
   const demoBody = await demoStatus.json();
-  expect(demoBody.concept_count).toBe(24);
+  expect(demoBody.concept_count).toBe(25);
   expect(demoBody.document_count).toBeGreaterThanOrEqual(8);
   expect(demoBody.chunk_count).toBeGreaterThanOrEqual(24);
   await page.locator('[role="dialog"]').getByRole("button", { name: "关闭设置与调试" }).click();
