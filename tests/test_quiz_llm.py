@@ -127,6 +127,20 @@ class QuizLLMAgentTests(unittest.TestCase):
         self.assertIn("混淆队列与栈", prompt)
         self.assertNotIn("test-only-key", prompt)
 
+    def test_multiple_choice_answer_text_is_normalized_to_unique_option_label(self) -> None:
+        payload = {**_multiple_choice_payload(), "answer": "队列"}
+
+        result = LLMQuizAgent(FakeQuizProvider(payload)).generate(
+            "广度优先搜索",
+            "medium",
+            [_chunk()],
+            QuizContext(profile_preferences={}),
+        )
+
+        self.assertEqual(result.execution_mode, "llm")
+        self.assertEqual(result.answer, "B")
+        self.assertFalse(result.fallback_used)
+
     def test_different_profiles_produce_different_question_types(self) -> None:
         provider = AdaptiveQuizProvider()
         agent = LLMQuizAgent(provider)
@@ -185,6 +199,31 @@ class QuizLLMAgentTests(unittest.TestCase):
         self.assertEqual(no_evidence.source_refs, [])
         self.assertIn("retrieval", no_evidence.fallback_reason.lower())
 
+    def test_english_quiz_is_rejected_and_falls_back_to_chinese(self) -> None:
+        english_payload = {
+            "question_type": "multiple_choice",
+            "question": "Which statement about queues is correct?",
+            "options": ["A. Queue is used by DFS", "B. Queue is used by BFS"],
+            "answer": "B",
+            "explanation": "BFS expands nodes level by level with a queue.",
+            "difficulty": "medium",
+            "concept_tags": ["queue", "BFS"],
+            "source_refs": ["document:1#chunk:0"],
+        }
+
+        result = LLMQuizAgent(FakeQuizProvider(english_payload)).generate(
+            "队列",
+            "medium",
+            [_chunk()],
+            QuizContext(profile_preferences={}),
+        )
+
+        self.assertEqual(result.execution_mode, "rule_based_fallback")
+        self.assertTrue(result.fallback_used)
+        self.assertIn("Chinese", result.fallback_reason)
+        self.assertRegex(result.question, r"[\u4e00-\u9fff]")
+        self.assertTrue(all(re.search(r"[\u4e00-\u9fff]", option) for option in result.options))
+
     def test_schema_supports_all_five_required_question_types(self) -> None:
         payloads = {
             "multiple_choice": _multiple_choice_payload(),
@@ -207,7 +246,7 @@ class QuizLLMAgentTests(unittest.TestCase):
                 self.assertEqual(result.execution_mode, "llm")
                 self.assertEqual(result.question_type, question_type)
 
-    def test_critic_rejects_fake_references_incomplete_choices_and_code_without_fence(self) -> None:
+    def test_critic_rejects_fake_references_incomplete_choices_code_without_fence_and_english(self) -> None:
         critic = RuleBasedCriticAgent()
         base = dict(
             question="题目",
@@ -234,11 +273,22 @@ class QuizLLMAgentTests(unittest.TestCase):
             question_type="code_analysis",
             source_refs=[{"source_ref": "document:1#chunk:0"}],
         )
+        english_quiz = QuizAgentResult(
+            **{
+                **base,
+                "question": "Which queue statement is correct?",
+                "explanation": "BFS uses a queue.",
+            },
+            question_type="multiple_choice",
+            options=["A. Stack", "B. Queue"],
+            source_refs=[{"source_ref": "document:1#chunk:0"}],
+        )
 
         allowed = {"document:1#chunk:0"}
         self.assertFalse(critic.review_quiz(fake_reference, "medium", {}, allowed).approved)
         self.assertFalse(critic.review_quiz(incomplete_choice, "medium", {}, allowed).approved)
         self.assertFalse(critic.review_quiz(code_without_fence, "medium", {}, allowed).approved)
+        self.assertFalse(critic.review_quiz(english_quiz, "medium", {}, allowed).approved)
 
 
 class QuizLLMApiTests(unittest.TestCase):

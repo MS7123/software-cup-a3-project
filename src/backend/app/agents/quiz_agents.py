@@ -99,7 +99,7 @@ class LLMQuizAgent:
                 _build_quiz_messages(concept_name, difficulty, chunks, context),
                 response_schema=QUIZ_OUTPUT_SCHEMA,
             )
-            parsed = _parse_quiz_output(result.content)
+            parsed = _normalize_multiple_choice_answer(_parse_quiz_output(result.content))
             _validate_quiz_output(parsed, difficulty, set(allowed_sources))
             source_refs = [source_ref_payload(allowed_sources[source_ref]) for source_ref in parsed.source_refs]
             provider = str(result.metadata.get("provider") or self.provider_name)
@@ -195,7 +195,9 @@ def _build_quiz_messages(
             "content": (
                 "你是数据结构课程的 Quiz Agent。只能依据给定课程证据出题，不得使用或编造其他 source_ref。"
                 "根据学生画像、掌握度和最近错误选择 multiple_choice、fill_blank、short_answer、application、"
-                "code_analysis 之一。只返回 JSON object，不输出 Markdown。"
+                "code_analysis 之一。所有面向学生的自然语言必须使用简体中文，包括 question、options、"
+                "answer 和 explanation；BFS、DFS、Queue、复杂度记号及代码等专业符号可以保留英文。"
+                "只返回 JSON object，不输出 Markdown。"
             ),
         },
         {
@@ -207,6 +209,7 @@ def _build_quiz_messages(
                 f"学生上下文：{json.dumps(student_context, ensure_ascii=False)}\n"
                 f"课程证据：{json.dumps(evidence, ensure_ascii=False)}\n"
                 "multiple_choice 必须提供 2 至 8 个带 A./B. 前缀的选项，answer 返回正确选项字母；其他题型 options=[]。"
+                "选择题每个选项的说明文字必须包含中文，不得生成全英文题干、选项或解析。"
                 "code_analysis 的 question 必须包含 fenced code block。"
                 "explanation 必须解释答案并对应课程证据；source_refs 只能从课程证据原样选择，至少一个。"
             ),
@@ -226,7 +229,35 @@ def _parse_quiz_output(content: str) -> QuizOutput:
         raise ValueError(f"Quiz response failed schema validation: {exc.errors()[0]['type']}") from exc
 
 
+def _normalize_multiple_choice_answer(output: QuizOutput) -> QuizOutput:
+    if output.question_type != "multiple_choice":
+        return output
+    answer = output.answer.strip()
+    direct_label = re.fullmatch(r"([A-Ha-h])(?:[.、。:]?)", answer)
+    if direct_label:
+        return output.model_copy(update={"answer": direct_label.group(1).upper()})
+
+    normalized_answer = re.sub(r"\s+", "", answer).casefold()
+    matching_labels: list[str] = []
+    for option in output.options:
+        match = re.match(r"\s*([A-Ha-h])[.、。:]?\s*(.*)", option, flags=re.DOTALL)
+        if not match:
+            continue
+        label, option_text = match.group(1).upper(), match.group(2)
+        normalized_option = re.sub(r"\s+", "", option).casefold()
+        normalized_text = re.sub(r"\s+", "", option_text).casefold()
+        if normalized_answer in {normalized_option, normalized_text}:
+            matching_labels.append(label)
+    if len(matching_labels) == 1:
+        return output.model_copy(update={"answer": matching_labels[0]})
+    return output
+
+
 def _validate_quiz_output(output: QuizOutput, difficulty: str, allowed_source_refs: set[str]) -> None:
+    if not _contains_chinese_natural_language(output.question):
+        raise ValueError("Quiz question must use Chinese natural language.")
+    if not _contains_chinese_natural_language(output.explanation):
+        raise ValueError("Quiz explanation must use Chinese natural language.")
     if output.difficulty != difficulty:
         raise ValueError("Quiz output difficulty does not match the requested difficulty.")
     if len(output.source_refs) != len(set(output.source_refs)):
@@ -242,10 +273,17 @@ def _validate_quiz_output(output: QuizOutput, difficulty: str, allowed_source_re
         labels = {option.strip()[:1].upper() for option in output.options if option.strip()}
         if output.answer.strip().upper() not in labels:
             raise ValueError("Multiple-choice answer must match an option label.")
+        if any(not _contains_chinese_natural_language(option) for option in output.options):
+            raise ValueError("Multiple-choice options must use Chinese natural language.")
     elif output.options:
         raise ValueError("Only multiple-choice quizzes may contain options.")
     if output.question_type == "code_analysis" and "```" not in output.question:
         raise ValueError("Code-analysis quiz must contain a fenced code block in the question.")
+
+
+def _contains_chinese_natural_language(value: str) -> bool:
+    without_code = re.sub(r"```.*?```", "", value, flags=re.DOTALL)
+    return re.search(r"[\u4e00-\u9fff]", without_code) is not None
 
 
 def _extract_json_object(content: str) -> str:

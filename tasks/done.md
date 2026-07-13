@@ -29,6 +29,11 @@
 
 ## 已通过 Review 的实现任务
 
+- [x] `PERF-FOLLOWUP-001`：修复目标路径过宽、Tutor 超时和 Quiz 英文输出。
+  - 完成范围：Planner 将具体学习目标映射到最多 8 个相关节点及必要基础，不再把完整知识图机械补入每条路径；Tutor 输入 chunk 与回答长度设定上限，并将比赛预算调整为 25 秒/800 tokens；Quiz prompt、schema 后校验和 Critic 统一要求中文自然语言字段。
+  - 回退边界：Tutor 单次调用仍不重试并保留 rule-based fallback；Quiz 返回英文时直接使用既有中文 rule-based Quiz，不增加第二次远端调用；旧学习路径保持原范围，新建路径使用聚焦规则。
+  - 验收证据：后端全量 **190 项通过**、10 项联机测试默认跳过；前端 production build 通过；真实星火下默认 Planner 返回 7 个相关节点且无 fallback，Tutor 6.469 秒返回 415 字中文回答，Quiz 两个中文样本 p50 8.300 秒、p95 9.682 秒且 0 fallback。
+
 - [x] `PERF-002`～`PERF-005`：LLM 运行时性能与可靠性增量。
   - 完成范围：Planner 改为少量 LLM 信号加规则补全，保留 25 节点课程图并限制为 8 节点滚动窗口；七类 purpose 使用独立 timeout、max tokens 和选择性重试；Resource/Tutor 画像更新移入后台；新增 API/provider/retry/token/fallback 性能证据和 p50/p95 报告脚本；补充 MaaS Qwen 的 Planner envelope 修复与 ProfileBuilder 资源枚举归一化。
   - 自动化证据：后端全量 186 项通过、10 项真实星火测试按 opt-in 配置跳过；前端 production build 和真实 Playwright 学习闭环 1 项通过。

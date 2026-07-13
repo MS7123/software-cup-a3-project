@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import re
 import unittest
 
 from app.adapters.llm_provider import LLMSettings
@@ -148,6 +149,11 @@ class SparkNewAgentsPerformanceOnlineTests(unittest.TestCase):
             self.assertEqual(result.execution_mode, "llm", result.fallback_reason)
             self.assertFalse(result.fallback_used)
             self.assertTrue(result.source_refs)
+            self.assertRegex(result.question, r"[\u4e00-\u9fff]")
+            self.assertRegex(result.explanation, r"[\u4e00-\u9fff]")
+            if result.question_type == "multiple_choice":
+                self.assertTrue(result.options)
+                self.assertTrue(all(re.search(r"[\u4e00-\u9fff]", option) for option in result.options))
             durations.append(int(result.provider_metadata.get("provider_duration_ms") or 0))
         return durations
 

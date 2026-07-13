@@ -149,8 +149,22 @@ class LearningPathService:
                 items = self._path_items(session, path.id)
                 completed_items = [item for item in items if item.status == "completed"]
                 completed_ids = {item.concept_id for item in completed_items}
-                context = self._planner_context(session, profile, path.goal, completed_ids)
-                result = build_planner_agent().plan(concepts, relations, context)
+                path_concept_ids = {item.concept_id for item in items}
+                path_concepts = [concept for concept in concepts if concept.id in path_concept_ids]
+                path_relations = [
+                    relation
+                    for relation in relations
+                    if relation.source_concept_id in path_concept_ids
+                    and relation.target_concept_id in path_concept_ids
+                ]
+                context = self._planner_context(
+                    session,
+                    profile,
+                    path.goal,
+                    completed_ids,
+                    preserve_candidate_set=True,
+                )
+                result = build_planner_agent().plan(path_concepts, path_relations, context)
                 pending_by_concept = {item.concept_id: item for item in items if item.status != "completed"}
                 if set(pending_by_concept) != {item.concept_id for item in result.recommendations}:
                     raise ValueError("Planner refresh did not preserve the pending concept set.")
@@ -210,6 +224,7 @@ class LearningPathService:
         profile: StudentProfile,
         goal: str,
         completed_ids: set[int] | None = None,
+        preserve_candidate_set: bool = False,
     ) -> PlannerContext:
         preferences = profile.preferences if isinstance(profile.preferences, dict) else {}
         mastery: dict[int, float] = {}
@@ -235,6 +250,7 @@ class LearningPathService:
             resource_preference=str(preferences.get("resource_preference") or preferences.get("resource") or "讲解文档"),
             completed_concept_ids=completed_ids or set(),
             mastery_scores=mastery,
+            preserve_candidate_set=preserve_candidate_set,
         )
 
     def _path_items(self, session, path_id: int) -> list[LearningPathItem]:

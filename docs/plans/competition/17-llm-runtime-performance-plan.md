@@ -53,27 +53,28 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 ### 3.1 已知客观事实
 
 - 当前演示课程图包含 **25 个知识点节点**与 **27 条先修关系**。
-- 当前较新的 active path 会覆盖全部 **25 个待学习节点**；旧演示路径仅有 5 个节点。
+- 课程知识图保留全部 **25 个知识点节点**；具体学习路径应按目标选择相关子图，而不是机械覆盖全部节点。
 - 图中存在一定语义层级重叠，例如 `stack-queue` 与 `stack`、`queue`，`binary-tree-traversal` 与 `tree-basics`、`binary-tree`，以及 `bfs-dfs` 与图表示、最短路径等节点。
 - Playwright 旧断言仍写成 24，本次已依据真实数据修正为 **25**。
 
 ### 3.2 分析结论
 
-**不应把课程知识图永久缩减为 7～8 个节点。** 7～8 个节点适合作为一次 LLM 决策窗口或前端“近期学习阶段”，但作为完整课程图会导致知识覆盖、先修约束和 Quiz 后精细重规划能力下降。
+**不应缩减课程知识图，但也不应把完整知识图等同于每一条学习路径。** 对“巩固二叉树遍历和图搜索”这类聚焦目标，路径应限制在目标节点及必要基础节点内，最多 **8 个节点**；只有“掌握完整课程”等明确全课程目标才生成完整路径。
 
 | 方案 | 课程覆盖 | LLM 延迟/稳定性 | 先修约束精度 | 结论 |
 |---|---|---|---|---|
 | 完整 25 节点全部交给 LLM | 高 | 差，历史出现 90.5 秒和漏节点 fallback | 高但合同脆弱 | 不采用 |
-| 永久缩减为 7～8 节点 | 低 | 好 | 粗粒度，难以表达细分薄弱点 | 不采用 |
-| 25 节点完整图 + 8 节点滚动窗口 | 高 | 较好，prompt 有明确上界 | 规则层保持完整约束 | **已采用** |
+| 永久缩减课程图为 7～8 节点 | 低 | 好 | 粗粒度，难以表达细分薄弱点 | 不采用 |
+| 25 节点知识图 + 最多 8 节点目标路径 | 高 | 较好，prompt 与页面路径都有明确上界 | 规则层为目标子图补齐必要基础 | **已采用** |
 
 ### 3.3 已实现边界
 
-- 数据库、课程图和最终合法路径继续保留 **25 个节点**。
-- 规则层先根据先修关系、已完成节点、掌握度和画像形成合法候选顺序。
-- 每轮只把前 **8 个候选节点**交给 LLM。
+- 数据库与课程知识图继续保留 **25 个节点**，不会删除未被当前目标选中的知识点。
+- 规则层先从目标文本识别目标知识点，并补齐学习这些目标所需的基础节点，形成最多 **8 个节点**的合法目标子图。
+- 明确的全课程目标仍可使用完整候选集合；已有路径刷新保持原候选集合，避免后台更新意外改变用户已创建路径的范围。
+- LLM 只接收本次目标子图中的合法候选节点。
 - LLM 最多返回 **5 个个性化推荐信号**。
-- 规则层忽略未知/重复项，修复先修顺序，并补全 LLM 未返回的真实节点。
+- 规则层忽略未知/重复项，修复先修顺序，并补全 LLM 未返回的目标子图节点，不再把无关课程节点补进聚焦路径。
 - LLM 失败时回退到确定性拓扑排序，不再回退到裸 `Concept.id` 顺序。
 
 ## 4. 分用途调用预算
@@ -84,7 +85,7 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 | ProfileUpdater | 12 秒 | 0 | 700 | 后台短分析，不重复占用远端时间 |
 | ProfileBuilder | 15 秒 | 0 | 900 | 六维画像结构化输出 |
 | Evaluator | 15 秒 | 0 | 900 | 开放题结构化评分 |
-| Tutor | 20 秒 | 0 | 1200 | 中等长度 grounded answer |
+| Tutor | 25 秒 | 0 | 800 | 检索 chunk 截断为每项 900 字符，回答限制为 450 个中文字符，减少输出长度并覆盖星火偶发 20 秒尾延迟 |
 | Quiz | 20 秒 | 0 | 1400 | 结构化多题型输出 |
 | Resource | 30 秒 | 0 | 1200 | 五类资源采用紧凑输出，降低尾延迟与 timeout fallback |
 
@@ -104,7 +105,7 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 
 - [x] LLM 漏掉非优先节点不会导致整条路径 fallback。
 - [x] 未知、重复和违反先修关系的信号由规则层忽略或修复，并记录 warning reason。
-- [x] 最终路径包含全部真实待学习节点并满足先修约束。
+- [x] 全课程目标覆盖全部真实待学习节点；聚焦目标只包含目标节点和必要基础，并满足先修约束。
 - [x] 两组画像对同一课程产生合法且可观察的资源推荐差异。
 - [x] 每次 LLM prompt 最多包含 8 个候选节点，输出最多包含 5 个信号。
 
@@ -139,8 +140,8 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 
 | 验证项 | 结果 | 说明 |
 |---|---|---|
-| 后端全量 | **186 passed** | 10 项真实星火测试按 opt-in 配置跳过 |
-| Planner 专项 | **12 passed** | 含稀疏信号、未知/重复项、先修修复、结构 envelope 修复和 8 节点窗口 |
+| 后端全量 | **190 passed** | 10 项真实星火测试按 opt-in 配置跳过 |
+| Planner 专项 | **13 passed** | 含稀疏信号、未知/重复项、先修修复、结构 envelope 修复、8 节点窗口和聚焦目标范围 |
 | Resource/Tutor 后处理 | **5 passed** | 含慢后处理与 API timing 边界 |
 | Provider/预算专项 | **15 passed** | 含 max tokens、timeout 不重试、瞬态断连重试 |
 | 前端 production build | **passed** | TypeScript 与 Vite 构建通过 |
@@ -160,14 +161,16 @@ python scripts/report-llm-performance.py data/demo.sqlite3
 | Agent | 样本数 | p50 | p95 | Fallback | 验收结果 |
 |---|---:|---:|---:|---:|---|
 | ProfileBuilder | 2 | 6.481 秒 | 8.810 秒 | 0 | 六维画像 schema 合法 |
-| Planner | 2 | 11.497 秒 | 13.270 秒 | 0 | 25 节点路径完整，LLM 窗口最多 8 节点 |
-| Quiz | 2 | 8.586 秒 | 13.856 秒 | 0 | grounded 结构化 Quiz 合法 |
+| Planner | 3 | 11.497 秒 | 13.270 秒 | 0 | 完整课程样本保留全图；默认聚焦目标返回 7 个相关节点 |
+| Quiz | 4 | 8.586 秒 | 13.856 秒 | 0 | grounded 结构化 Quiz 全中文且答案格式合法 |
 | Resource | 7 | 12.355 秒 | 21.911 秒 | 0 | 五类资源及两画像差异均通过 |
 | Tutor | 2 | 10.295 秒 | 10.604 秒 | 0 | 引用白名单通过 |
 | Evaluator | 1 | 11.610 秒 | 11.610 秒 | 0 | 结构化评分合法 |
 | ProfileUpdater | 1 | 5.610 秒 | 5.610 秒 | 0 | 使用真实学习 trace 更新 |
 
 调优前的受控复测中，Resource 的 `guided_note`、`coding_case` 曾在 30 秒 timeout，Planner 曾在约 12～15 秒返回 5 个合法 signal object 但缺少 `recommendations` 外壳。将 Resource 限制为 **1200 tokens / 900 中文字符**，并增加 Planner 的受控 envelope 修复后，上表的最终样本全部走 LLM，未触发 fallback。
+
+2026-07-13 用户场景复测中，默认目标“巩固二叉树遍历和图搜索，为课程小测做准备”走星火 LLM，在 **13.025 秒**内返回栈、队列、树基础、二叉树、二叉树遍历、图表示、BFS/DFS 共 **7 个节点**，无 fallback；默认 Tutor 问题在 **6.469 秒**内返回 415 字中文 grounded answer；Quiz 两个中文样本 p50 **8.300 秒**、p95 **9.682 秒**，无 fallback。
 
 ### 6.4 修改后真实联机复测命令
 
@@ -208,7 +211,7 @@ python scripts/report-llm-performance.py data/demo.sqlite3
   - `2688171`：Resource/Tutor 画像后台后处理。
   - `c4d61d6`：API/LLM 安全性能证据与 p50/p95 报告。
 - 本轮收口增量已提交至当前分支最新提交：Planner 结构 envelope 修复、ProfileBuilder 资源枚举归一化、Resource 输出预算调优、真实星火性能测试与证据回填。
-- 后端全量：`python -m unittest discover -s tests -q`，结果 186 passed、10 skipped。
+- 后端全量：`python -m unittest discover -s tests -q`，结果 190 passed、10 skipped。
 - 前端构建：在 `src/frontend` 执行 `npm run build`，结果通过。
 - 浏览器闭环：真实本地服务下 `npm run test:smoke`，结果 1 passed。
 - 真实星火：ProfileBuilder、Planner、Quiz、Resource、Tutor、Evaluator、ProfileUpdater 均已复测；最终验收样本 fallback 数为 0。

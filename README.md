@@ -107,10 +107,10 @@
 当前七项核心 Agent 已通过统一 `LLMProvider` adapter 接入 OpenAI-compatible 模型，并保留 rule-based fallback：
 
 - ProfileBuilder：自然语言构建六维初始画像。
-- Planner：规则约束合法候选，LLM 排序并生成主动资源推荐。
+- Planner：完整知识图保持不变；规则层按学习目标选择最多 8 个相关节点并补齐必要基础，LLM 排序并生成主动资源推荐。
 - Resource：生成五类差异化、有来源的学习资源。
-- Tutor：仅基于当前 RAG 证据回答课程问题。
-- Quiz：生成结构化、多题型、有引用的测验。
+- Tutor：仅基于当前 RAG 证据生成不超过 450 个中文字符的回答。
+- Quiz：生成全中文的结构化、多题型、有引用测验；代码和通用技术缩写可以保留英文。
 - Evaluator：输出结构化评分、反馈、薄弱点和下一步建议。
 - ProfileUpdater：根据真实学习 trace 动态更新画像。
 

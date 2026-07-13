@@ -13,6 +13,24 @@ from app.services.content_safety_service import ContentSafetyService
 
 ResourceType = Literal["guided_note", "practice_questions", "mind_map", "extended_reading", "coding_case"]
 PLANNER_LLM_WINDOW_SIZE = 8
+FOCUSED_PATH_MAX_NODES = 8
+
+FOCUS_GOAL_ALIASES: dict[str, tuple[str, ...]] = {
+    "binary-tree": ("二叉树",),
+    "binary-tree-traversal": ("二叉树遍历", "树遍历", "前序", "中序", "后序", "层序"),
+    "tree-basics": ("树的基本概念", "树基础"),
+    "graph-representation": ("图的表示", "图表示", "邻接矩阵", "邻接表"),
+    "bfs-dfs": ("bfs", "dfs", "图搜索", "图遍历", "广度优先", "深度优先"),
+    "shortest-path": ("最短路径",),
+}
+
+FOCUS_FOUNDATION_SLUGS: dict[str, tuple[str, ...]] = {
+    "binary-tree": ("tree-basics",),
+    "binary-tree-traversal": ("tree-basics", "binary-tree", "stack", "queue"),
+    "graph-representation": (),
+    "bfs-dfs": ("graph-representation", "stack", "queue"),
+    "shortest-path": ("graph-representation", "bfs-dfs", "queue"),
+}
 
 
 @dataclass(frozen=True)
@@ -41,6 +59,7 @@ class PlannerContext:
     resource_preference: str
     completed_concept_ids: set[int] = field(default_factory=set)
     mastery_scores: dict[int, float] = field(default_factory=dict)
+    preserve_candidate_set: bool = False
 
 
 @dataclass(frozen=True)
@@ -96,7 +115,8 @@ class RuleBasedHybridPlannerAgent:
         context: PlannerContext,
     ) -> PlannerResult:
         started = time.perf_counter()
-        ordered = _topological_order(concepts, relations, context)
+        scoped_concepts, scoped_relations = _planning_scope(concepts, relations, context)
+        ordered = _topological_order(scoped_concepts, scoped_relations, context)
         resource_type = _resource_type_for_context(context)
         recommendations = [
             PlannerRecommendation(
@@ -155,26 +175,32 @@ class HybridPlannerAgent:
             safety = ContentSafetyService().review_input(safety_text)
             if not safety.allowed:
                 raise ValueError(f"Content safety blocked input: {safety.category}")
-            eligible = [concept for concept in concepts if concept.id not in context.completed_concept_ids]
+            scoped_concepts, scoped_relations = _planning_scope(concepts, relations, context)
+            eligible = [concept for concept in scoped_concepts if concept.id not in context.completed_concept_ids]
             if not eligible:
                 return PlannerResult([], "llm", self.provider_name, self.model, False, None, _elapsed_ms(started))
-            planning_window = _topological_order(concepts, relations, context)[:PLANNER_LLM_WINDOW_SIZE]
+            planning_window = _topological_order(scoped_concepts, scoped_relations, context)[:PLANNER_LLM_WINDOW_SIZE]
             result = self.provider.generate(
-                _build_planner_messages(planning_window, relations, context),
+                _build_planner_messages(planning_window, scoped_relations, context),
                 response_schema=PLANNER_OUTPUT_SCHEMA,
             )
             parsed, structure_repaired = _parse_planner_output(result.content)
             recommendations, warning_reason = _compose_hybrid_recommendations(
                 parsed.recommendations,
-                concepts,
-                relations,
+                scoped_concepts,
+                scoped_relations,
                 context,
             )
             if structure_repaired:
                 warning_reason = "; ".join(
                     part for part in ("structure_repaired=concatenated_objects", warning_reason) if part
                 )
-            _validate_recommendations(recommendations, concepts, relations, context.completed_concept_ids)
+            _validate_recommendations(
+                recommendations,
+                scoped_concepts,
+                scoped_relations,
+                context.completed_concept_ids,
+            )
             return PlannerResult(
                 recommendations=recommendations,
                 execution_mode="llm",
@@ -214,6 +240,86 @@ def build_planner_agent(settings: LLMSettings | None = None) -> PlannerAgent:
         provider_name=resolved.provider,
         model=resolved.model,
     )
+
+
+def _planning_scope(
+    concepts: list[PlannerConcept],
+    relations: list[PlannerRelation],
+    context: PlannerContext,
+) -> tuple[list[PlannerConcept], list[PlannerRelation]]:
+    if context.preserve_candidate_set or _is_broad_course_goal(context.goal):
+        return concepts, relations
+
+    normalized_goal = context.goal.strip().lower()
+    targets = [concept for concept in concepts if _concept_matches_focus_goal(concept, normalized_goal)]
+    if not targets:
+        return concepts, relations
+
+    concept_by_slug = {concept.slug: concept for concept in concepts}
+    concept_by_id = {concept.id: concept for concept in concepts}
+    selected_ids = {concept.id for concept in targets}
+    synthetic_pairs: set[tuple[int, int]] = set()
+
+    for target in targets:
+        foundation_slugs = FOCUS_FOUNDATION_SLUGS.get(target.slug)
+        if foundation_slugs is not None:
+            for slug in foundation_slugs:
+                foundation = concept_by_slug.get(slug)
+                if foundation is None:
+                    continue
+                selected_ids.add(foundation.id)
+                synthetic_pairs.add((foundation.id, target.id))
+            continue
+        for relation in relations:
+            if relation.target_concept_id == target.id and relation.source_concept_id in concept_by_id:
+                selected_ids.add(relation.source_concept_id)
+
+    if len(selected_ids) > FOCUSED_PATH_MAX_NODES:
+        target_ids = {concept.id for concept in targets}
+        ranked = sorted(
+            (concept_by_id[concept_id] for concept_id in selected_ids),
+            key=lambda concept: (
+                0 if concept.id in target_ids else 1,
+                _personalization_key(concept, context),
+            ),
+        )
+        selected_ids = {concept.id for concept in ranked[:FOCUSED_PATH_MAX_NODES]}
+
+    scoped_concepts = [concept for concept in concepts if concept.id in selected_ids]
+    relation_pairs = {
+        (relation.source_concept_id, relation.target_concept_id)
+        for relation in relations
+        if relation.source_concept_id in selected_ids and relation.target_concept_id in selected_ids
+    }
+    relation_pairs.update(
+        (source, target)
+        for source, target in synthetic_pairs
+        if source in selected_ids and target in selected_ids
+    )
+    scoped_relations = [PlannerRelation(source, target) for source, target in sorted(relation_pairs)]
+    return scoped_concepts, scoped_relations
+
+
+def _is_broad_course_goal(goal: str) -> bool:
+    normalized = goal.strip().lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "完整课程",
+            "全部课程",
+            "全课程",
+            "系统掌握数据结构",
+            "系统掌握整门课程",
+            "掌握数据结构课程",
+            "掌握课程",
+        )
+    )
+
+
+def _concept_matches_focus_goal(concept: PlannerConcept, normalized_goal: str) -> bool:
+    if concept.name.lower() in normalized_goal or concept.slug.lower() in normalized_goal:
+        return True
+    return any(alias.lower() in normalized_goal for alias in FOCUS_GOAL_ALIASES.get(concept.slug, ()))
 
 
 def _topological_order(

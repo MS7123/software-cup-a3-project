@@ -8,7 +8,7 @@ def build_tutor_messages(
     course_title: str,
 ) -> list[dict[str, str]]:
     context = "\n".join(
-        f"[{index}] source={chunk.source_ref or chunk.chunk_id or 'unknown'} content={chunk.content}"
+        f"[{index}] source={chunk.source_ref or chunk.chunk_id or 'unknown'} content={chunk.content[:900]}"
         for index, chunk in enumerate(chunks, start=1)
     )
     if not context:
@@ -29,6 +29,7 @@ def build_tutor_messages(
                 "Use the student profile to adapt difficulty, practice style, and time-budget advice. "
                 "Return exactly three Markdown sections: "
                 "1. Direct answer; 2. Based on your current profile; 3. Grounded next step. "
+                "Keep the entire answer within 450 Chinese characters, including citations. "
                 "Keep the answer concise and avoid a generic opening."
             ),
         },

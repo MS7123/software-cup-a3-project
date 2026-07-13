@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 
 from app.db.session import get_engine
 from app.main import create_app
-from app.seed.demo_data import DEMO_CONCEPTS
 
 
 class LearningPathApiTests(unittest.TestCase):
@@ -45,11 +44,16 @@ class LearningPathApiTests(unittest.TestCase):
             self.assertEqual(path["goal"], payload["goal"])
             self.assertEqual(path["status"], "active")
             self.assertIn("Planner Agent", path["rationale"])
-            self.assertEqual(len(path["items"]), len(DEMO_CONCEPTS))
+            self.assertLessEqual(len(path["items"]), 8)
+            self.assertGreaterEqual(len(path["items"]), 2)
 
             concept_ids = [item["concept_id"] for item in path["items"]]
             self.assertEqual(len(concept_ids), len(set(concept_ids)))
-            self.assertEqual([item["order_index"] for item in path["items"]], list(range(1, len(DEMO_CONCEPTS) + 1)))
+            self.assertEqual([item["order_index"] for item in path["items"]], list(range(1, len(path["items"]) + 1)))
+            titles = " ".join(item["title"] for item in path["items"])
+            self.assertIn("树", titles)
+            self.assertIn("二叉树", titles)
+            self.assertNotIn("排序", titles)
             for item in path["items"]:
                 self.assertTrue(item["title"])
                 self.assertTrue(item["objective"])

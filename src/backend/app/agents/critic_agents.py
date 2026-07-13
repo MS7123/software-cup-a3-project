@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import re
 from typing import Any
 
 from app.agents.rule_based_agents import QuizAgentResult, ResourceAgentResult
@@ -96,6 +97,22 @@ class RuleBasedCriticAgent:
                 decision_basis=f"确定性内容安全规则拒绝输出：{safety.reason}",
                 revision_instruction="删除危险或违规内容，仅生成课程范围内且有真实依据的题目。",
             )
+        if not self._contains_chinese(result.question) or not self._contains_chinese(result.explanation):
+            return CriticResult(
+                approved=False,
+                output_summary="测验审查未通过：题干或解析不是中文。",
+                decision_basis="学生端测验的自然语言必须使用简体中文。",
+                revision_instruction="使用简体中文重写 question、options、answer 和 explanation，专业缩写可保留。",
+            )
+        if result.question_type == "multiple_choice" and any(
+            not self._contains_chinese(option) for option in result.options
+        ):
+            return CriticResult(
+                approved=False,
+                output_summary="测验审查未通过：选择题包含全英文选项。",
+                decision_basis="选择题每个选项的说明文字必须包含中文。",
+                revision_instruction="将所有选项改写为中文，BFS、DFS 等专业缩写可以保留。",
+            )
         if available_source_refs is not None and (
             not cited_source_refs or not cited_source_refs.issubset(available_source_refs)
         ):
@@ -138,6 +155,11 @@ class RuleBasedCriticAgent:
             output_summary="测验审查通过：题目难度、答案和解析满足当前画像约束。",
             decision_basis="Evaluator/Critic Agent 基于学生画像、难度约束和题目完整性完成审查。",
         )
+
+    @staticmethod
+    def _contains_chinese(value: str) -> bool:
+        without_code = re.sub(r"```.*?```", "", value, flags=re.DOTALL)
+        return re.search(r"[\u4e00-\u9fff]", without_code) is not None
 
     def _is_weak_foundation(self, preferences: dict[str, Any]) -> bool:
         text = " ".join(str(value) for value in preferences.values()).lower()

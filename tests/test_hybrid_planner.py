@@ -254,6 +254,65 @@ class HybridPlannerAgentTests(unittest.TestCase):
         self.assertEqual(len(json.loads(window_payload)), 8)
         self.assertEqual(len(result.recommendations), 25)
 
+    def test_focused_goal_returns_at_most_eight_relevant_nodes_instead_of_full_course(self) -> None:
+        concepts = [
+            PlannerConcept(1, "stack", "栈", "第 3 章", "basic"),
+            PlannerConcept(2, "queue", "队列", "第 3 章", "basic"),
+            PlannerConcept(3, "tree-basics", "树的基本概念", "第 4 章", "basic"),
+            PlannerConcept(4, "binary-tree", "二叉树", "第 4 章", "basic"),
+            PlannerConcept(5, "binary-tree-traversal", "二叉树遍历", "第 4 章", "medium"),
+            PlannerConcept(6, "graph-representation", "图的表示", "第 5 章", "basic"),
+            PlannerConcept(7, "bfs-dfs", "BFS/DFS", "第 5 章", "medium"),
+            PlannerConcept(8, "sorting-basics", "排序基础", "第 7 章", "basic"),
+            PlannerConcept(9, "simple-sorts", "简单排序", "第 7 章", "basic"),
+        ]
+        relations = [
+            PlannerRelation(3, 4),
+            PlannerRelation(4, 5),
+            PlannerRelation(2, 5),
+            PlannerRelation(5, 6),
+            PlannerRelation(6, 7),
+            PlannerRelation(8, 9),
+        ]
+        provider = FakePlannerProvider(
+            {
+                "recommendations": [
+                    {
+                        "concept_id": 5,
+                        "recommended_resource_type": "practice_questions",
+                        "reason": "小测前优先复习二叉树遍历",
+                        "priority": 1,
+                    },
+                    {
+                        "concept_id": 7,
+                        "recommended_resource_type": "practice_questions",
+                        "reason": "随后巩固图搜索",
+                        "priority": 2,
+                    },
+                ]
+            }
+        )
+
+        result = HybridPlannerAgent(provider).plan(
+            concepts,
+            relations,
+            PlannerContext(
+                goal="巩固二叉树遍历和图搜索，为课程小测做准备",
+                profile_type="exam_sprint",
+                foundation_level="intermediate",
+                learning_preference="summary_first",
+                available_time="每天两小时",
+                weak_points=["二叉树遍历", "BFS/DFS"],
+                resource_preference="练习题",
+            ),
+        )
+
+        selected = {item.concept_id for item in result.recommendations}
+        self.assertLessEqual(len(selected), 8)
+        self.assertTrue({5, 7}.issubset(selected))
+        self.assertTrue({3, 4, 6}.issubset(selected))
+        self.assertTrue(selected.isdisjoint({8, 9}))
+
     def test_unknown_duplicate_and_prerequisite_violating_signals_are_repaired(self) -> None:
         for recommendations in (
             [

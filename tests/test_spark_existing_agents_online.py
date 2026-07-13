@@ -143,7 +143,7 @@ class SparkExistingAgentsOnlineTests(unittest.TestCase):
     def test_tutor_is_real_llm_and_citations_are_whitelisted(self) -> None:
         started = time.perf_counter()
         result = build_tutor_agent(self.settings).answer(
-            "BFS 和 DFS 分别使用什么数据结构，复杂度如何？",
+            "我应该如何区分广度优先搜索和深度优先搜索？",
             self.chunks,
             "中等基础，偏好代码示例",
             "数据结构",
@@ -154,6 +154,8 @@ class SparkExistingAgentsOnlineTests(unittest.TestCase):
         self.assertFalse(citation_check["missing_citation"])
         self.assertEqual(citation_check["fake_source_refs"], [])
         self.assertGreaterEqual(len(citation_check["cited_source_refs"]), 1)
+        self.assertLessEqual(len(result.answer), 450)
+        self.assertRegex(result.answer, r"[\u4e00-\u9fff]")
         self._print_evidence(
             capability="tutor",
             execution_mode="llm",

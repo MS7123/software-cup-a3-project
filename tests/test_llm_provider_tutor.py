@@ -349,8 +349,25 @@ class LLMProviderTutorTests(unittest.TestCase):
         self.assertIn("Grounded next step", system_prompt)
         self.assertIn("student profile", system_prompt.lower())
         self.assertIn("source refs", system_prompt.lower())
+        self.assertIn("450 Chinese characters", system_prompt)
         self.assertIn("level=beginner", user_prompt)
         self.assertIn("source=demo.md#graph-search", user_prompt)
+
+    def test_tutor_prompt_caps_each_retrieved_chunk_to_keep_latency_bounded(self) -> None:
+        provider = PromptCaptureProvider()
+        long_marker = "不应完整进入提示词"
+        chunk = KnowledgeSearchResult(
+            chunk_id=2,
+            content="BFS 使用队列。" + ("图搜索证据" * 300) + long_marker,
+            score=1.0,
+            source_ref="document:2#chunk:0",
+        )
+
+        LLMBackedTutorAgent(provider).answer("如何区分 BFS 和 DFS？", [chunk])
+
+        user_prompt = provider.messages[1]["content"]
+        self.assertNotIn(long_marker, user_prompt)
+        self.assertLess(len(user_prompt), 1800)
 
     def test_llm_tutor_agent_falls_back_when_provider_fails(self) -> None:
         agent = LLMBackedTutorAgent(FakeProvider(fail=True))

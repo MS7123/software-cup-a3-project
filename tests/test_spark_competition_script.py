@@ -66,7 +66,7 @@ class SparkCompetitionScriptTests(unittest.TestCase):
             "PROFILE_UPDATER": (12, 0, 700),
             "PROFILE_BUILDER": (15, 0, 900),
             "EVALUATOR": (15, 0, 900),
-            "TUTOR": (20, 0, 1200),
+            "TUTOR": (25, 0, 800),
             "QUIZ": (20, 0, 1400),
             "RESOURCE": (30, 0, 1200),
         }

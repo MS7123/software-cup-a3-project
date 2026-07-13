@@ -28,7 +28,7 @@ DEFAULT_PURPOSE_BUDGETS: dict[str, LLMCallBudget] = {
     "profile_updater": LLMCallBudget(12.0, 0, 700),
     "profile_builder": LLMCallBudget(15.0, 0, 900),
     "evaluator": LLMCallBudget(15.0, 0, 900),
-    "tutor": LLMCallBudget(20.0, 0, 1200),
+    "tutor": LLMCallBudget(25.0, 0, 800),
     "quiz": LLMCallBudget(20.0, 0, 1400),
     "resource": LLMCallBudget(30.0, 0, 1200),
 }
