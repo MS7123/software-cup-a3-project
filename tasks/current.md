@@ -5,6 +5,14 @@
 
 ## 当前批准执行
 
+### COMP-003: 完成 Hybrid 学习路径与主动资源推荐
+
+- 状态：Current
+- 依据：`docs/plans/competition/16-a3-requirements-gap-roadmap.md`
+- 前置依赖：`COMP-002` 已完成自动化、星火联机与端到端历史证据验证。
+- 执行边界：规则层负责先修约束、候选真实性、去重和无环校验；LLM 仅负责合法候选排序与推荐理由。
+- Done 条件：满足路线图 COMP-003 的全部自动化和联机验收标准后，才能移入 Done。
+
 ### PLAN-002: 编写测试计划
 
 - 状态：Current

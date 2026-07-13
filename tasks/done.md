@@ -29,6 +29,12 @@
 
 ## 已通过 Review 的实现任务
 
+- [x] `COMP-002`：完成初始对话画像 LLM 接入。
+  - 完成范围：新增 `LLMProfileBuilderAgent`、独立 factory、六维 Pydantic schema、`LLM_ENABLE_FOR_PROFILE_BUILDER`、规则 fallback，以及画像 history/Agent run 的 execution mode、provider、model、耗时和 fallback reason 证据。
+  - 自动化证据：`tests/test_profile_builder_llm.py` 覆盖配置开关、六维合法输出、否定表达输入、字段别名、非法 JSON、timeout、HTTP error、API contract、LLM history 和 fallback history。
+  - 联机证据：科大讯飞星火 MaaS `xop3qwen1b7` 返回 6 个合法维度，`execution_mode=llm`、`fallback_used=false`；真实 API 建档后 Agent run 记录与运行配置一致。
+  - 保留边界：`build_profile_from_dialogue()` 继续作为离线 rule-based fallback，REST 请求和响应 contract 未发生破坏性变化。
+
 - [x] `IMPL-001`：初始化后端基础结构、数据模型和 API schema 骨架。
   - Review 结论：通过，仅限 `IMPL-001` 的任务范围。
   - Review 来源：`reviews/review-log.md` 的 `2026-06-03 Review & Test Agent Review: IMPL-001`。

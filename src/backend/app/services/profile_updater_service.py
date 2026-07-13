@@ -162,7 +162,17 @@ class ProfileUpdaterService:
             session.flush()
             return StudentProfileResponse.model_validate(profile)
 
-    def create_initial_history(self, profile_id: int, dialogue_summary: str) -> StudentProfileHistoryResponse:
+    def create_initial_history(
+        self,
+        profile_id: int,
+        evidence_summary: str,
+        *,
+        execution_mode: str = "rule_based",
+        provider: str = "rule_based",
+        model: str = "",
+        fallback_reason: str | None = None,
+        duration_ms: int = 0,
+    ) -> StudentProfileHistoryResponse:
         Base.metadata.create_all(get_engine(self.database_url))
         with session_scope(self.database_url) as session:
             profile = session.get(StudentProfile, profile_id)
@@ -182,6 +192,7 @@ class ProfileUpdaterService:
                 input_summary="Build six-dimension profile from dialogue summary.",
                 output_summary="Profile Builder Agent created the initial six-dimension profile.",
                 final_summary="Initial profile snapshot recorded.",
+                duration_ms=duration_ms,
                 completed_at=datetime.utcnow(),
             )
             session.add(run)
@@ -189,12 +200,17 @@ class ProfileUpdaterService:
             session.add(
                 AgentRunStep(
                     agent_run_id=run.id,
-                    agent_type="profile_updater",
+                    agent_type="profile_builder",
                     step_order=1,
                     status="completed",
                     input_summary="dialogue_summary_received=true",
                     output_summary="Initial six profile dimensions extracted.",
-                    decision_basis="Only the normalized dialogue-derived profile dimensions are persisted as evidence.",
+                    decision_basis=(
+                        f"execution_mode={execution_mode}; provider={provider}; model={model or 'none'}; "
+                        f"fallback_used={str(bool(fallback_reason)).lower()}; "
+                        f"fallback_reason={fallback_reason or 'none'}"
+                    ),
+                    duration_ms=duration_ms,
                 )
             )
             history = StudentProfileHistory(
@@ -204,12 +220,15 @@ class ProfileUpdaterService:
                 before_dimensions={},
                 after_dimensions=dimensions,
                 changed_dimensions=list(PROFILE_DIMENSION_KEYS),
-                reason="画像由对话建档结果创建，已初始化六个画像维度。",
+                reason=(
+                    f"画像由对话建档结果创建，已初始化六个画像维度；execution_mode={execution_mode}。"
+                    + (f" LLM 不可用，已回退：{fallback_reason}。" if fallback_reason else "")
+                ),
                 evidence_refs=[
                     {
                         "kind": "dialogue",
                         "agent_run_id": run.id,
-                        "summary": dialogue_summary[:160],
+                        "summary": evidence_summary[:300],
                     }
                 ],
                 agent_run_id=run.id,

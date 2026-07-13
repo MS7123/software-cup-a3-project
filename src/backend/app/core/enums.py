@@ -42,6 +42,7 @@ class LearningPathItemStatus(StrEnum):
 class AgentType(StrEnum):
     router = "router"
     retriever = "retriever"
+    profile_builder = "profile_builder"
     profile_updater = "profile_updater"
     planner = "planner"
     resource = "resource"

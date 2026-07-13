@@ -16,7 +16,8 @@ from app.models import (
     StudentProfileHistory,
 )
 from app.schemas import StudentProfileCreate, StudentProfileDialogueCreate, StudentProfileResponse
-from app.services.profile_builder import build_profile_from_dialogue, normalize_profile_dimensions
+from app.agents.profile_builder_agents import build_profile_builder_agent
+from app.services.profile_builder import normalize_profile_dimensions
 from app.services.demo_data_service import DemoDataService
 from app.services.profile_updater_service import ProfileUpdaterService
 
@@ -49,10 +50,16 @@ class ProfileService:
             return StudentProfileResponse.model_validate(profile)
 
     def create_profile_from_dialogue(self, payload: StudentProfileDialogueCreate) -> StudentProfileResponse:
-        profile = self.create_profile(build_profile_from_dialogue(payload))
+        result = build_profile_builder_agent().build(payload)
+        profile = self.create_profile(result.profile)
         ProfileUpdaterService(database_url=self.database_url).create_initial_history(
             profile.id,
-            dialogue_summary=payload.dialogue.strip(),
+            evidence_summary=result.evidence_summary,
+            execution_mode=result.execution_mode,
+            provider=result.provider,
+            model=result.model,
+            fallback_reason=result.fallback_reason,
+            duration_ms=result.duration_ms,
         )
         return profile
 

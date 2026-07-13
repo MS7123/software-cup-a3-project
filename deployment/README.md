@@ -179,6 +179,7 @@ $env:LLM_ENABLE_FOR_TUTOR='true'
 $env:LLM_ENABLE_FOR_RESOURCE='true'
 $env:LLM_ENABLE_FOR_EVALUATOR='true'
 $env:LLM_ENABLE_FOR_PROFILE_UPDATER='true'
+$env:LLM_ENABLE_FOR_PROFILE_BUILDER='true'
 $env:LLM_TIMEOUT_SECONDS='20'
 $env:LLM_MAX_RETRIES='0'
 $env:LLM_FALLBACK_MODE='rule_based'
@@ -241,6 +242,7 @@ $env:EMBEDDING_BYPASS_PROXY='false'
 | `LLM_ENABLE_FOR_RESOURCE` | `false` | 显式启用后，Resource Agent 会先用 LLM 生成 5 类学习资源，失败时回退到 rule-based。 |
 | `LLM_ENABLE_FOR_EVALUATOR` | `false` | 显式启用后，Evaluator Agent 会用 LLM 生成评分反馈、薄弱点和下一步建议，失败时回退到 rule-based。 |
 | `LLM_ENABLE_FOR_PROFILE_UPDATER` | `false` | 显式启用后，ProfileUpdater 会先用固定 JSON schema 分析 Agent trace，失败时回退到 rule-based。 |
+| `LLM_ENABLE_FOR_PROFILE_BUILDER` | `false` | 显式启用后，初始对话画像由 LLM 结构化抽取六个维度，非法输出或远程失败时回退到现有规则构建器。 |
 | `LLM_BASE_URL` | 空 | OpenAI-compatible endpoint base URL。 |
 | `LLM_API_KEY` | 空 | Secret，不得写入仓库、日志、frontend bundle 或 agent run 记录。 |
 | `LLM_MODEL` | 空 | 模型名称。 |

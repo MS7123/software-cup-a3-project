@@ -2,7 +2,7 @@
 
 最后更新：2026-07-13
 
-状态：待进入任务执行阶段
+状态：执行中（COMP-002、COMP-005 已完成开发与验证）
 
 主要受众：开发团队
 依据：[A3 赛题要求（官网原版）](../../competition/a3-official-requirements-original.md)、[A3 官方赛题要求整理](../../competition/a3-official-requirements.md)、[当前项目赛题对齐分析](../../competition/competition-fit.md)、当前仓库代码与测试状态。
@@ -115,11 +115,13 @@
 
 **验收标准：**
 
-- [ ] 星火配置完整时 factory 构造 LLM-backed ProfileBuilder。
-- [ ] 复杂自然语言输入能生成不少于 6 个合法维度。
-- [ ] 否定表达和隐含偏好不会被简单关键词反向误判。
-- [ ] 非法 JSON、超时或 HTTP 错误时回退规则实现并记录原因。
-- [ ] 初始画像历史能区分 `llm` 与 `rule_based_fallback`。
+- [x] 星火配置完整时 factory 构造 LLM-backed ProfileBuilder。
+- [x] 复杂自然语言输入能生成不少于 6 个合法维度。
+- [x] 否定表达和隐含偏好不会被简单关键词反向误判。
+- [x] 非法 JSON、超时或 HTTP 错误时回退规则实现并记录原因。
+- [x] 初始画像历史能区分 `llm` 与 `rule_based_fallback`。
+
+**完成证据（2026-07-13）：** `profile_builder_agents.py` 已实现结构化 schema、factory 和规则 fallback；`test_profile_builder_llm.py` 覆盖六维校验、配置开关、非法 JSON、timeout、HTTP error 与历史证据。使用星火 MaaS `xop3qwen1b7` 的联机 API 验证得到 `execution_mode=llm`、6 个维度且 `fallback_used=false`，端到端画像 API 与 Agent run 均记录 provider、model、耗时和执行模式。
 
 ### COMP-003：完成 Hybrid 学习路径与主动资源推荐
 
