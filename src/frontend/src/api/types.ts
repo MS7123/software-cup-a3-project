@@ -170,6 +170,9 @@ export interface LearningPath {
   fallback_used?: boolean;
   fallback_reason?: string | null;
   planner_duration_ms?: number | null;
+  provider_duration_ms?: number;
+  retry_count?: number;
+  token_usage?: Record<string, number>;
 }
 
 export interface AgentExecutionMetadata {
@@ -180,6 +183,9 @@ export interface AgentExecutionMetadata {
   fallback_reason: string | null;
   source_refs: string[];
   duration_ms: number;
+  provider_duration_ms: number;
+  retry_count: number;
+  token_usage: Record<string, number>;
 }
 
 export interface AgentRunStep {

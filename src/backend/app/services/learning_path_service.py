@@ -72,7 +72,7 @@ class LearningPathService:
                 session.add(record)
                 recommendations.append(record)
             session.flush()
-            return self._to_path_response(path, items, recommendations)
+            return self._to_path_response(path, items, recommendations, result)
 
     @staticmethod
     def _get_profile_and_course(session, profile_id: int, course_id: int) -> tuple[StudentProfile, Course]:
@@ -174,7 +174,7 @@ class LearningPathService:
                 session.flush()
                 ordered_items = self._path_items(session, path.id)
                 records = self._recommendations(session, ordered_items)
-                refreshed.append(self._to_path_response(path, ordered_items, records))
+                refreshed.append(self._to_path_response(path, ordered_items, records, result))
                 trace_payloads.append((path.id, result))
 
         for path_id, result in trace_payloads:
@@ -282,6 +282,7 @@ class LearningPathService:
         path: LearningPath,
         items: list[LearningPathItem],
         recommendations: list[LearningPathRecommendation],
+        planner_result: PlannerResult | None = None,
     ) -> LearningPathResponse:
         by_item = {record.path_item_id: record for record in recommendations}
         first_record = next((by_item.get(item.id) for item in items if by_item.get(item.id)), None)
@@ -318,6 +319,9 @@ class LearningPathService:
             fallback_used=first_record.fallback_used if first_record else False,
             fallback_reason=first_record.fallback_reason if first_record else None,
             planner_duration_ms=first_record.duration_ms if first_record else 0,
+            provider_duration_ms=int((planner_result.provider_metadata if planner_result else {}).get("provider_duration_ms") or 0),
+            retry_count=int((planner_result.provider_metadata if planner_result else {}).get("retry_count") or 0),
+            token_usage=dict((planner_result.provider_metadata if planner_result else {}).get("usage") or {}),
         )
 
     def _path_rationale(self, profile, course, goal: str, result: PlannerResult, trigger: str) -> str:

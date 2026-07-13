@@ -1,7 +1,7 @@
 import json
 import re
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import AliasChoices, BaseModel, Field, ValidationError
@@ -43,6 +43,7 @@ class ProfileBuildResult:
     fallback_reason: str | None
     evidence_summary: str
     duration_ms: int
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class ProfileBuilderAgent(Protocol):
@@ -102,6 +103,7 @@ class LLMProfileBuilderAgent:
                 fallback_reason=None,
                 evidence_summary=_dimension_evidence_summary(dimensions),
                 duration_ms=_elapsed_ms(started),
+                provider_metadata=result.metadata,
             )
         except Exception as exc:
             reason = _fallback_reason(exc)

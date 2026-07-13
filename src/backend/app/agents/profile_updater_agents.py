@@ -1,7 +1,7 @@
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.adapters.protocols import LLMProvider
@@ -37,6 +37,7 @@ class ProfileTraceAnalysis:
     provider: str = "openai_compatible"
     model: str = ""
     duration_ms: int = 0
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class LLMBackedProfileUpdaterAgent:
@@ -64,6 +65,7 @@ class LLMBackedProfileUpdaterAgent:
             provider=str(result.metadata.get("provider") or self.provider_name),
             model=str(result.metadata.get("model") or self.model),
             duration_ms=max(0, round((time.perf_counter() - started) * 1000)),
+            provider_metadata=result.metadata,
         )
 
 

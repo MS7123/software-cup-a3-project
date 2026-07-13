@@ -223,6 +223,9 @@ class LearningPathResponse(BaseModel):
     fallback_used: bool = False
     fallback_reason: str | None = None
     planner_duration_ms: int | None = None
+    provider_duration_ms: int = 0
+    retry_count: int = 0
+    token_usage: dict[str, int] = Field(default_factory=dict)
 
 
 class ResourceGenerateRequest(BaseModel):
@@ -349,6 +352,9 @@ class AgentExecutionMetadata(BaseModel):
     fallback_reason: str | None = None
     source_refs: list[str] = Field(default_factory=list)
     duration_ms: int = Field(default=0, ge=0)
+    provider_duration_ms: int = Field(default=0, ge=0)
+    retry_count: int = Field(default=0, ge=0)
+    token_usage: dict[str, int] = Field(default_factory=dict)
 
 
 class AgentRunStepResponse(BaseModel):

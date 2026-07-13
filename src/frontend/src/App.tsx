@@ -1589,6 +1589,9 @@ function ExecutionEvidence({ step }: { step: AgentRunStep }) {
         <div><dt>Provider</dt><dd>{step.execution_metadata.provider || "rule_based"}</dd></div>
         <div><dt>Model</dt><dd>{step.execution_metadata.model || "无"}</dd></div>
         <div><dt>耗时</dt><dd>{step.execution_metadata.duration_ms} ms</dd></div>
+        <div><dt>Provider 耗时</dt><dd>{step.execution_metadata.provider_duration_ms} ms</dd></div>
+        <div><dt>重试次数</dt><dd>{step.execution_metadata.retry_count}</dd></div>
+        <div><dt>Token 总量</dt><dd>{step.execution_metadata.token_usage.total_tokens ?? 0}</dd></div>
         <div><dt>Fallback</dt><dd>{step.execution_metadata.fallback_used ? "是" : "否"}</dd></div>
       </dl>
       {step.execution_metadata.fallback_reason ? <p>降级原因：{step.execution_metadata.fallback_reason}</p> : null}

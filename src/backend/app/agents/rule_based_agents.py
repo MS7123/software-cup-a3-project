@@ -18,6 +18,7 @@ class ResourceAgentResult:
     fallback_used: bool = False
     fallback_reason: str | None = None
     duration_ms: int = 0
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class TutorAgentResult:
     fallback_used: bool = False
     fallback_reason: str | None = None
     duration_ms: int = 0
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,7 @@ class QuizAgentResult:
     fallback_used: bool = False
     fallback_reason: str | None = None
     duration_ms: int = 0
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,7 @@ class EvaluatorAgentResult:
     fallback_used: bool = False
     fallback_reason: str | None = None
     duration_ms: int = 0
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class RuleBasedResourceAgent:

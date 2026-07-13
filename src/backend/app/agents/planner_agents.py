@@ -61,6 +61,7 @@ class PlannerResult:
     fallback_reason: str | None
     duration_ms: int
     warning_reason: str | None = None
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class PlannerOutputItem(BaseModel):
@@ -179,6 +180,7 @@ class HybridPlannerAgent:
                 fallback_reason=None,
                 duration_ms=_elapsed_ms(started),
                 warning_reason=warning_reason,
+                provider_metadata=result.metadata,
             )
         except Exception as exc:
             reason = _fallback_reason(exc)

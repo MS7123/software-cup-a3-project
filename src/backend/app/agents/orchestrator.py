@@ -59,6 +59,9 @@ class AgentOrchestrator:
                 fallback_used=path.fallback_used,
                 fallback_reason=path.fallback_reason,
                 duration_ms=path.planner_duration_ms,
+                provider_duration_ms=path.provider_duration_ms,
+                retry_count=path.retry_count,
+                token_usage=path.token_usage,
             ),
         )
         final_summary = f"Planner Agent 已生成学习路径 {path.id}，包含 {len(path.items)} 个步骤。"

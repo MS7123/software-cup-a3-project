@@ -16,6 +16,15 @@ _NAMED_SECRET_PATTERN = re.compile(
 def build_execution_metadata(result: object | None = None, **overrides: Any) -> dict[str, Any]:
     values: dict[str, Any] = {}
     if result is not None:
+        provider_metadata = getattr(result, "provider_metadata", None)
+        if isinstance(provider_metadata, dict):
+            values.update(
+                {
+                    "provider_duration_ms": provider_metadata.get("provider_duration_ms"),
+                    "retry_count": provider_metadata.get("retry_count"),
+                    "token_usage": provider_metadata.get("usage"),
+                }
+            )
         for field in (
             "execution_mode",
             "provider",
@@ -24,6 +33,9 @@ def build_execution_metadata(result: object | None = None, **overrides: Any) -> 
             "fallback_reason",
             "source_refs",
             "duration_ms",
+            "provider_duration_ms",
+            "retry_count",
+            "token_usage",
         ):
             if hasattr(result, field):
                 values[field] = getattr(result, field)
@@ -35,6 +47,9 @@ def build_execution_metadata(result: object | None = None, **overrides: Any) -> 
         "fallback_reason",
         "source_refs",
         "duration_ms",
+        "provider_duration_ms",
+        "retry_count",
+        "token_usage",
     ):
         if field in overrides:
             values[field] = overrides[field]
@@ -56,6 +71,9 @@ def sanitize_execution_metadata(value: dict[str, Any] | AgentExecutionMetadata |
     fallback_reason = _safe_fallback_reason(raw.get("fallback_reason"))
     source_refs = _safe_source_refs(raw.get("source_refs"))
     duration_ms = _safe_duration(raw.get("duration_ms"))
+    provider_duration_ms = _safe_duration(raw.get("provider_duration_ms"))
+    retry_count = _safe_duration(raw.get("retry_count"))
+    token_usage = _safe_token_usage(raw.get("token_usage"))
     return AgentExecutionMetadata(
         execution_mode=execution_mode,
         provider=provider,
@@ -64,6 +82,9 @@ def sanitize_execution_metadata(value: dict[str, Any] | AgentExecutionMetadata |
         fallback_reason=fallback_reason,
         source_refs=source_refs,
         duration_ms=duration_ms,
+        provider_duration_ms=provider_duration_ms,
+        retry_count=retry_count,
+        token_usage=token_usage,
     )
 
 
@@ -125,3 +146,17 @@ def _safe_duration(value: Any) -> int:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _safe_token_usage(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    safe: dict[str, int] = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        try:
+            amount = max(0, int(value.get(key, 0)))
+        except (TypeError, ValueError):
+            amount = 0
+        if amount:
+            safe[key] = amount
+    return safe

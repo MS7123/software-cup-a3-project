@@ -123,6 +123,7 @@ class LLMQuizAgent:
                 provider=provider,
                 model=model,
                 duration_ms=duration_ms,
+                provider_metadata=result.metadata,
             )
         except Exception as exc:
             reason = _fallback_reason(exc)

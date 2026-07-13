@@ -1,6 +1,6 @@
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy import select
@@ -44,6 +44,7 @@ class TraceEvidence:
     model: str = ""
     fallback_used: bool = False
     duration_ms: int = 0
+    provider_metadata: dict = field(default_factory=dict)
 
 
 class ProfileUpdaterService:
@@ -150,6 +151,7 @@ class ProfileUpdaterService:
                     decision_basis=next_preferences["last_profile_update_reason"],
                     duration_ms=evidence.duration_ms,
                     execution_metadata=build_execution_metadata(
+                        evidence,
                         execution_mode=evidence.execution_mode,
                         provider=evidence.provider,
                         model=evidence.model,
@@ -396,6 +398,7 @@ class ProfileUpdaterService:
             provider=analysis.provider,
             model=analysis.model,
             duration_ms=analysis.duration_ms,
+            provider_metadata=analysis.provider_metadata,
         )
 
     @staticmethod

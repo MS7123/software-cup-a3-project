@@ -76,6 +76,7 @@ class LLMBackedResourceAgent:
                 provider=provider,
                 model=model,
                 duration_ms=_elapsed_ms(started),
+                provider_metadata=result.metadata,
             )
         except Exception as exc:
             reason = _fallback_reason(exc)

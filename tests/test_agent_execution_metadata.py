@@ -47,6 +47,16 @@ class AgentExecutionMetadataTests(unittest.TestCase):
                     "excerpt": "private excerpt",
                 }
             ],
+            provider_metadata={
+                "provider_duration_ms": 287,
+                "retry_count": 1,
+                "usage": {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 30,
+                    "total_tokens": 150,
+                    "raw_secret": "must not persist",
+                },
+            },
         )
 
         metadata = build_execution_metadata(result)
@@ -57,9 +67,14 @@ class AgentExecutionMetadataTests(unittest.TestCase):
         self.assertTrue(metadata["fallback_used"])
         self.assertEqual(metadata["source_refs"], ["document:9#chunk:2"])
         self.assertEqual(metadata["duration_ms"], 321)
+        self.assertEqual(metadata["provider_duration_ms"], 287)
+        self.assertEqual(metadata["retry_count"], 1)
+        self.assertEqual(metadata["token_usage"], {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150})
         serialized = json.dumps(metadata, ensure_ascii=False)
         self.assertNotIn("full retrieved content", serialized)
         self.assertNotIn("private excerpt", serialized)
+        self.assertNotIn("raw_secret", serialized)
+        self.assertNotIn("must not persist", serialized)
 
     def test_metadata_redacts_process_secrets_and_ignores_unknown_fields(self) -> None:
         os.environ["LLM_API_KEY"] = "trace-test-super-secret"

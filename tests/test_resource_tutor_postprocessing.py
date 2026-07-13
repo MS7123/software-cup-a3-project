@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -97,6 +98,26 @@ class ResourceTutorPostprocessingTests(unittest.TestCase):
         task = self.client.get(f"/api/v1/tasks/{body['postprocessing_task_id']}")
         self.assertEqual(task.status_code, 200)
         self.assertEqual(task.json()["status"], "completed")
+
+    def test_api_timing_excludes_slow_tutor_profile_postprocessing(self) -> None:
+        started = time.perf_counter()
+        with patch(
+            "app.services.profile_postprocessing_service.ProfileUpdaterService.update_from_trace",
+            side_effect=lambda *args, **kwargs: time.sleep(0.5),
+        ):
+            response = self.client.post(
+                "/api/v1/tutor/ask",
+                json={
+                    "student_profile_id": self.profile["id"],
+                    "course_id": self.demo["course_id"],
+                    "question": "BFS 和 DFS 有什么区别？",
+                },
+            )
+        wall_duration_ms = round((time.perf_counter() - started) * 1000)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(wall_duration_ms, 450)
+        self.assertLess(int(response.headers["X-Process-Time-Ms"]), wall_duration_ms - 300)
 
     def test_frontend_reports_safe_background_progress_without_fake_streaming(self) -> None:
         app_source = (REPO_ROOT / "src/frontend/src/App.tsx").read_text(encoding="utf-8")
