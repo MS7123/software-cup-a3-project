@@ -13,25 +13,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Find-AvailableTcpPort {
-    param(
-        [int]$StartPort,
-        [int]$MaxAttempts = 100
-    )
-
-    for ($offset = 0; $offset -lt $MaxAttempts; $offset++) {
-        $candidate = $StartPort + $offset
-        if ($candidate -gt 65535) {
-            break
-        }
-        $listeners = Get-NetTCPConnection -LocalPort $candidate -State Listen -ErrorAction SilentlyContinue
-        if (-not $listeners) {
-            return $candidate
-        }
-    }
-    throw "No available frontend port found from $StartPort within $MaxAttempts attempts."
-}
-
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $apiKey = $env:XFYUN_SPARK_API_KEY
 if ([string]::IsNullOrWhiteSpace($apiKey)) {
@@ -39,12 +20,6 @@ if ([string]::IsNullOrWhiteSpace($apiKey)) {
 }
 if ([string]::IsNullOrWhiteSpace($apiKey)) {
     throw "Missing XFYUN_SPARK_API_KEY. Set it once with: [Environment]::SetEnvironmentVariable('XFYUN_SPARK_API_KEY', '<your-spark-api-key>', 'User')"
-}
-
-$requestedFrontendPort = $FrontendPort
-$FrontendPort = Find-AvailableTcpPort -StartPort $requestedFrontendPort
-if ($FrontendPort -ne $requestedFrontendPort) {
-    Write-Host "Frontend port $requestedFrontendPort is occupied; using available port $FrontendPort instead."
 }
 
 $managedVariables = @(
@@ -93,6 +68,7 @@ try {
         FrontendPort = $FrontendPort
         DatabaseUrl = $DatabaseUrl
         UseRemoteTutorLLM = $true
+        AutoSelectFrontendPort = $true
     }
     if ($SmokeOnly) {
         $scriptArgs["SmokeOnly"] = $true

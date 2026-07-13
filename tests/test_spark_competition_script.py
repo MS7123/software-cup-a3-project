@@ -10,6 +10,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "run-competition-spark.ps1"
+LOCAL_SCRIPT_PATH = REPO_ROOT / "scripts" / "run-local.ps1"
 DEPLOYMENT_README = REPO_ROOT / "deployment" / "README.md"
 
 
@@ -28,6 +29,20 @@ class SparkCompetitionScriptTests(unittest.TestCase):
 
         self.assertIn('[int]$FrontendPort = 5174', script)
         self.assertNotIn('[int]$FrontendPort = 5173', script)
+
+    def test_local_runner_selects_the_final_frontend_port_before_asserting_it(self) -> None:
+        script = LOCAL_SCRIPT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("[switch]$AutoSelectFrontendPort", script)
+        selection = script.index("if ($AutoSelectFrontendPort)")
+        assertion = script.index("Assert-PortFree -Port $FrontendPort")
+        self.assertLess(selection, assertion)
+
+    def test_competition_script_delegates_auto_port_selection_to_local_runner(self) -> None:
+        script = SCRIPT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("AutoSelectFrontendPort = $true", script)
+        self.assertNotIn("function Find-AvailableTcpPort", script)
 
     def test_script_enables_every_current_and_planned_llm_purpose(self) -> None:
         script = SCRIPT_PATH.read_text(encoding="utf-8")
@@ -77,6 +92,7 @@ param(
     [int]$FrontendPort,
     [string]$DatabaseUrl,
     [switch]$UseRemoteTutorLLM,
+    [switch]$AutoSelectFrontendPort,
     [switch]$SmokeOnly
 )
 [pscustomobject]@{
@@ -91,6 +107,7 @@ param(
     Planner = $env:LLM_ENABLE_FOR_PLANNER
     Quiz = $env:LLM_ENABLE_FOR_QUIZ
     Remote = [bool]$UseRemoteTutorLLM
+    AutoSelectFrontendPort = [bool]$AutoSelectFrontendPort
     FrontendPort = $FrontendPort
 } | ConvertTo-Json -Compress
 """.strip(),
@@ -129,8 +146,9 @@ param(
         for purpose in ("Tutor", "Resource", "Evaluator", "ProfileUpdater", "ProfileBuilder", "Planner", "Quiz"):
             self.assertIn(f'"{purpose}":"true"', result.stdout)
         self.assertIn('"Remote":true', result.stdout)
+        self.assertIn('"AutoSelectFrontendPort":true', result.stdout)
         output = json.loads(result.stdout.strip().splitlines()[-1])
-        self.assertGreater(output["FrontendPort"], occupied_port)
+        self.assertEqual(output["FrontendPort"], occupied_port)
 
 
 if __name__ == "__main__":

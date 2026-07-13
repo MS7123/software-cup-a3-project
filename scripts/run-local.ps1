@@ -7,6 +7,7 @@ param(
     [switch]$SkipFrontendInstall,
     [switch]$SkipDemoLoad,
     [switch]$UseRemoteTutorLLM,
+    [switch]$AutoSelectFrontendPort,
     [switch]$SmokeOnly
 )
 
@@ -28,6 +29,25 @@ function Assert-PortFree {
         $owners = ($listeners | Select-Object -ExpandProperty OwningProcess -Unique) -join ", "
         throw "Port $Port is already in use by process id(s): $owners"
     }
+}
+
+function Find-AvailableTcpPort {
+    param(
+        [int]$StartPort,
+        [int]$MaxAttempts = 100
+    )
+
+    for ($offset = 0; $offset -lt $MaxAttempts; $offset++) {
+        $candidate = $StartPort + $offset
+        if ($candidate -gt 65535) {
+            break
+        }
+        $listeners = Get-NetTCPConnection -LocalPort $candidate -State Listen -ErrorAction SilentlyContinue
+        if (-not $listeners) {
+            return $candidate
+        }
+    }
+    throw "No available frontend port found from $StartPort within $MaxAttempts attempts."
 }
 
 function Wait-ForHttp {
@@ -61,6 +81,14 @@ function Stop-OwnedProcess {
     if ($Process -and -not $Process.HasExited) {
         Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
         $Process.WaitForExit(5000) | Out-Null
+    }
+}
+
+if ($AutoSelectFrontendPort) {
+    $requestedFrontendPort = $FrontendPort
+    $FrontendPort = Find-AvailableTcpPort -StartPort $requestedFrontendPort
+    if ($FrontendPort -ne $requestedFrontendPort) {
+        Write-Host "Frontend port $requestedFrontendPort is occupied; using available port $FrontendPort instead."
     }
 }
 
