@@ -13,6 +13,7 @@ import type {
   Quiz,
   StudentProfileDialogueCreate,
   StudentProfile,
+  StudentProfileHistory,
   TutorAnswer
 } from "./types";
 
@@ -43,6 +44,8 @@ export const api = {
   resetDemoUserData: () => request<{ demo_data: DemoDataStatus }>("/demo-data/reset-user-data", { method: "POST" }),
   listProfiles: () => request<StudentProfile[]>("/student-profiles"),
   getProfile: (profileId: number) => request<StudentProfile>(`/student-profiles/${profileId}`),
+  getProfileHistory: (profileId: number, limit = 20) =>
+    request<StudentProfileHistory[]>(`/student-profiles/${profileId}/history?limit=${limit}`),
   createProfileFromDialogue: (payload: StudentProfileDialogueCreate) =>
     request<StudentProfile>("/student-profiles/from-dialogue", {
       method: "POST",
@@ -92,6 +95,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ student_profile_id: studentProfileId, course_id: courseId, goal })
     }),
+  completePathItem: (itemId: number) =>
+    request<import("./types").LearningPath>(`/learning-path-items/${itemId}/complete`, { method: "POST" }),
   generateResource: (pathItemId: number, resourceType: string) =>
     request<GeneratedResource>("/resources/generate", {
       method: "POST",

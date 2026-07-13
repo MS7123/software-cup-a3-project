@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
-from app.domain.exceptions import NotFoundError, ProtectedResourceError
+from app.domain.exceptions import ConflictError, NotFoundError, ProtectedResourceError
 from app.schemas import (
     ConceptGraphResponse,
     AgentRunResponse,
@@ -24,6 +24,7 @@ from app.schemas import (
     ResourceGenerateRequest,
     StudentProfileCreate,
     StudentProfileDialogueCreate,
+    StudentProfileHistoryResponse,
     StudentProfileResponse,
     TutorAskRequest,
     TutorAskResponse,
@@ -144,6 +145,18 @@ async def upload_course_document(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+@api_router.get("/student-profiles/{profile_id}/history", response_model=list[StudentProfileHistoryResponse])
+def list_student_profile_history(profile_id: int, limit: int = 20) -> list[StudentProfileHistoryResponse]:
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="limit must be between 1 and 100")
+    try:
+        return ProfileService().list_profile_history(profile_id, limit)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
 @api_router.get("/courses/{course_id}/documents", response_model=list[DocumentManagementResponse])
 def list_course_documents(course_id: int) -> list[DocumentManagementResponse]:
     try:
@@ -214,6 +227,16 @@ def get_learning_path(path_id: int) -> LearningPathResponse:
         return LearningPathService().get_path(path_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.post("/learning-path-items/{item_id}/complete", response_model=LearningPathResponse)
+def complete_learning_path_item(item_id: int) -> LearningPathResponse:
+    try:
+        return LearningPathService().complete_item(item_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @api_router.get("/agent-runs/{run_id}", response_model=AgentRunResponse)

@@ -11,6 +11,7 @@ from app.db.session import get_engine, get_session_factory
 from app.main import create_app
 from app.models import Concept, Course, Document, LearningPath, LearningPathItem, StudentProfile
 from app.services.knowledge_base_service import KnowledgeBaseService
+from app.seed.demo_data import DEMO_CHAPTERS, DEMO_CONCEPTS
 
 
 class RagRetrievalTests(unittest.TestCase):
@@ -51,6 +52,68 @@ class RagRetrievalTests(unittest.TestCase):
             finally:
                 session.close()
 
+    def test_demo_course_loads_a_searchable_document_for_every_chapter(self) -> None:
+        with TestClient(create_app()) as client:
+            loaded = client.post("/api/v1/demo-data/load")
+            self.assertEqual(loaded.status_code, 200)
+            course_id = loaded.json()["demo_data"]["course_id"]
+
+            graph = client.get(f"/api/v1/courses/{course_id}/graph").json()
+            self.assertEqual(len(graph["concepts"]), len(DEMO_CONCEPTS))
+            self.assertEqual({concept["chapter"] for concept in graph["concepts"]}, {
+                chapter["chapter"] for chapter in DEMO_CHAPTERS
+            })
+            self.assertGreaterEqual(len(graph["relations"]), len(DEMO_CONCEPTS) - len(DEMO_CHAPTERS))
+
+            for chapter in DEMO_CHAPTERS:
+                response = client.post(
+                    "/api/v1/knowledge/search",
+                    json={
+                        "course_id": course_id,
+                        "query": chapter["search_query"],
+                        "top_k": 3,
+                    },
+                )
+                self.assertEqual(response.status_code, 200)
+                results = response.json()["results"]
+                self.assertTrue(results, chapter["chapter"])
+                self.assertTrue(
+                    any(result["source_ref"].startswith("document:") for result in results),
+                    chapter["chapter"],
+                )
+
+    def test_auto_loaded_course_sources_ground_tutor_and_resource(self) -> None:
+        with TestClient(create_app()) as client:
+            loaded = client.post("/api/v1/demo-data/load").json()["demo_data"]
+            course_id = loaded["course_id"]
+            profile_id = client.get("/api/v1/student-profiles").json()[0]["id"]
+            path = client.post(
+                "/api/v1/learning-paths",
+                json={
+                    "student_profile_id": profile_id,
+                    "course_id": course_id,
+                    "goal": "掌握二分查找和排序基础",
+                },
+            ).json()["learning_path"]
+
+            tutor = client.post(
+                "/api/v1/tutor/ask",
+                json={
+                    "student_profile_id": profile_id,
+                    "course_id": course_id,
+                    "question": "二分查找为什么需要有序序列？它的时间复杂度是什么？",
+                },
+            ).json()
+            self.assertTrue(tutor["source_refs"])
+            self.assertTrue(any(ref["source_ref"].startswith("document:") for ref in tutor["source_refs"]))
+
+            resource = client.post(
+                "/api/v1/resources/generate",
+                json={"path_item_id": path["items"][0]["id"], "resource_type": "guided_note"},
+            ).json()
+            self.assertTrue(resource["source_refs"])
+            self.assertTrue(any(ref["source_ref"].startswith("document:") for ref in resource["source_refs"]))
+
     def test_tutor_and_resource_preserve_real_document_source_refs(self) -> None:
         with TestClient(create_app()) as client:
             document = self._ingest_bfs_document(client)
@@ -69,7 +132,7 @@ class RagRetrievalTests(unittest.TestCase):
             self.assertTrue(tutor_body["answer"])
             self.assertEqual(tutor_body["source_refs"][0]["source_ref"], expected_source_ref)
             tutor_run = client.get(f"/api/v1/agent-runs/{tutor_body['agent_run_id']}").json()
-            tutor_step = tutor_run["steps"][0]
+            tutor_step = next(step for step in tutor_run["steps"] if step["agent_type"] == "tutor")
             self.assertIn(expected_source_ref, tutor_step["output_summary"])
             self.assertIn(expected_source_ref, tutor_step["decision_basis"])
 
@@ -82,7 +145,7 @@ class RagRetrievalTests(unittest.TestCase):
             self.assertTrue(resource_body["content"])
             self.assertEqual(resource_body["source_refs"][0]["source_ref"], expected_source_ref)
             resource_run = client.get(f"/api/v1/agent-runs/{resource_body['agent_run_id']}").json()
-            resource_step = resource_run["steps"][0]
+            resource_step = next(step for step in resource_run["steps"] if step["agent_type"] == "resource")
             self.assertIn(expected_source_ref, resource_step["output_summary"])
             self.assertIn(expected_source_ref, resource_step["decision_basis"])
 
@@ -107,8 +170,9 @@ class RagRetrievalTests(unittest.TestCase):
             tutor_body = tutor.json()
             self.assertEqual(tutor_body["source_refs"], [])
             tutor_run = client.get(f"/api/v1/agent-runs/{tutor_body['agent_run_id']}").json()
-            self.assertIn("Grounded sources: none retrieved.", tutor_run["steps"][0]["decision_basis"])
-            self.assertNotIn("document:", tutor_run["steps"][0]["decision_basis"])
+            tutor_step = next(step for step in tutor_run["steps"] if step["agent_type"] == "tutor")
+            self.assertIn("Grounded sources: none retrieved.", tutor_step["decision_basis"])
+            self.assertNotIn("document:", tutor_step["decision_basis"])
 
     def test_keyword_retrieval_handles_stack_queue_and_ranks_specific_chunk_first(self) -> None:
         with TestClient(create_app()) as client:
@@ -243,7 +307,8 @@ class RagRetrievalTests(unittest.TestCase):
             }
             self.assertTrue(source_refs.intersection(expected_refs))
             tutor_run = client.get(f"/api/v1/agent-runs/{tutor_body['agent_run_id']}").json()
-            decision_basis = tutor_run["steps"][0]["decision_basis"]
+            tutor_step = next(step for step in tutor_run["steps"] if step["agent_type"] == "tutor")
+            decision_basis = tutor_step["decision_basis"]
             self.assertIn("Grounded sources:", decision_basis)
             self.assertTrue(any(source_ref in decision_basis for source_ref in expected_refs))
 

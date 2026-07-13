@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session
 
@@ -21,9 +23,11 @@ from app.models import (
     Quiz,
     QuizItem,
     StudentProfile,
+    StudentProfileHistory,
 )
-from app.schemas import DemoDataLoadResponse, DemoDataStatusResponse, StudentProfileCreate
+from app.schemas import DocumentIngestionRequest, DemoDataLoadResponse, DemoDataStatusResponse, StudentProfileCreate
 from app.seed.demo_data import (
+    DEMO_CHAPTERS,
     DEMO_CHUNKS,
     DEMO_CONCEPTS,
     DEMO_COURSE,
@@ -32,15 +36,11 @@ from app.seed.demo_data import (
     DEMO_RELATIONS,
 )
 from app.services.profile_builder import normalize_profile_dimensions
+from app.services.document_ingestion_service import DocumentIngestionService
 
 
-DEMO_CONCEPT_SLUGS = [
-    "complexity-analysis",
-    "linked-list",
-    "stack-queue",
-    "binary-tree-traversal",
-    "bfs-dfs",
-]
+DEMO_CONCEPT_SLUGS = [concept["slug"] for concept in DEMO_CONCEPTS]
+COURSE_CORPUS_VERSION = "data-structures-v1"
 
 DEMO_PROFILE_TYPES = [
     ProfileType.weak_foundation,
@@ -61,10 +61,13 @@ class DemoDataService:
     def load_demo_data(self) -> DemoDataLoadResponse:
         self._ensure_tables()
         with session_scope(self.database_url) as session:
-            self._load_course_graph(session)
+            course = self._load_course_graph(session)
             self._load_profiles(session)
             self._load_document_chunks(session)
             session.flush()
+            course_id = course.id
+        self._load_course_corpus(course_id)
+        with session_scope(self.database_url) as session:
             status = self._build_status(session)
         return DemoDataLoadResponse(
             status=ProcessingStatus.completed,
@@ -75,6 +78,7 @@ class DemoDataService:
     def reset_user_data(self) -> DemoDataLoadResponse:
         self.load_demo_data()
         with session_scope(self.database_url) as session:
+            session.execute(delete(StudentProfileHistory))
             session.execute(delete(AgentRunStep))
             session.execute(delete(AgentRun))
             session.execute(delete(GeneratedResource))
@@ -193,6 +197,44 @@ class DemoDataService:
                     )
                 )
 
+    def _load_course_corpus(self, course_id: int) -> None:
+        corpus_dir = Path(__file__).resolve().parents[4] / "data" / "course-corpus" / "data-structures"
+        ingestion_service = DocumentIngestionService(database_url=self.database_url)
+        for chapter in DEMO_CHAPTERS:
+            file_path = corpus_dir / chapter["filename"]
+            if not file_path.exists():
+                raise FileNotFoundError(f"Course corpus file is missing: {file_path}")
+            response = ingestion_service.ingest(
+                course_id,
+                DocumentIngestionRequest(
+                    title=chapter["title"],
+                    source_type="markdown",
+                    visibility="demo",
+                    content=file_path.read_text(encoding="utf-8"),
+                ),
+            )
+            self._annotate_course_document(response.document.id, chapter)
+
+    def _annotate_course_document(self, document_id: int, chapter: dict) -> None:
+        with session_scope(self.database_url) as session:
+            chunks = session.scalars(
+                select(DocumentChunk)
+                .where(DocumentChunk.document_id == document_id)
+                .order_by(DocumentChunk.id)
+            ).all()
+            concept_id = session.scalar(
+                select(Concept.id).where(Concept.slug == chapter["concept_slugs"][0])
+            )
+            for chunk in chunks:
+                chunk.concept_id = concept_id
+                chunk.metadata_json = {
+                    **(chunk.metadata_json if isinstance(chunk.metadata_json, dict) else {}),
+                    "course_corpus_version": COURSE_CORPUS_VERSION,
+                    "chapter": chapter["chapter"],
+                    "chapter_slug": chapter["slug"],
+                    "concept_slugs": chapter["concept_slugs"],
+                }
+
     def _build_status(self, session: Session) -> DemoDataStatusResponse:
         course = self._get_demo_course(session)
         if course is None:
@@ -226,8 +268,8 @@ class DemoDataService:
         is_loaded = (
             set(DEMO_CONCEPT_SLUGS).issubset(set(concept_slugs))
             and {profile.value for profile in DEMO_PROFILE_TYPES}.issubset({profile.value for profile in profile_types})
-            and document_count >= 1
-            and chunk_count >= len(DEMO_CHUNKS)
+            and document_count >= len(DEMO_CHAPTERS) + 1
+            and chunk_count > len(DEMO_CHUNKS)
         )
         return DemoDataStatusResponse(
             is_loaded=is_loaded,

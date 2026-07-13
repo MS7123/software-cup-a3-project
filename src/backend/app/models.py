@@ -29,6 +29,25 @@ class StudentProfile(TimestampMixin, Base):
     time_budget: Mapped[str] = mapped_column(String(120), nullable=False)
 
     user: Mapped[User | None] = relationship(back_populates="student_profiles")
+    history: Mapped[list["StudentProfileHistory"]] = relationship(back_populates="profile")
+
+
+class StudentProfileHistory(TimestampMixin, Base):
+    __tablename__ = "student_profile_history"
+    __table_args__ = (UniqueConstraint("event_key", name="uq_student_profile_history_event_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_profile_id: Mapped[int] = mapped_column(ForeignKey("student_profiles.id"), nullable=False)
+    event_key: Mapped[str] = mapped_column(String(180), nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    before_dimensions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    after_dimensions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    changed_dimensions: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_refs: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), nullable=True)
+
+    profile: Mapped[StudentProfile] = relationship(back_populates="history")
 
 
 class Course(TimestampMixin, Base):

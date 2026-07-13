@@ -61,14 +61,12 @@ class LearningPathApiTests(unittest.TestCase):
             self.assertEqual(run["course_id"], payload["course_id"])
             self.assertEqual(run["status"], "completed")
             self.assertTrue(run["final_summary"])
-            self.assertEqual(len(run["steps"]), 1)
-            step = run["steps"][0]
-            self.assertEqual(step["agent_type"], "planner")
-            self.assertEqual(step["step_order"], 1)
-            self.assertEqual(step["status"], "completed")
-            self.assertTrue(step["input_summary"])
-            self.assertTrue(step["output_summary"])
-            self.assertTrue(step["decision_basis"])
+            self.assertEqual([step["agent_type"] for step in run["steps"]], ["router", "planner"])
+            planner_step = next(step for step in run["steps"] if step["agent_type"] == "planner")
+            self.assertEqual(planner_step["status"], "completed")
+            self.assertTrue(planner_step["input_summary"])
+            self.assertTrue(planner_step["output_summary"])
+            self.assertTrue(planner_step["decision_basis"])
 
             path_detail = client.get(f"/api/v1/learning-paths/{path['id']}")
             self.assertEqual(path_detail.status_code, 200)
@@ -76,7 +74,7 @@ class LearningPathApiTests(unittest.TestCase):
 
             run_detail = client.get(f"/api/v1/agent-runs/{run['id']}")
             self.assertEqual(run_detail.status_code, 200)
-            self.assertEqual(run_detail.json()["steps"][0]["agent_type"], "planner")
+            self.assertIn("planner", [step["agent_type"] for step in run_detail.json()["steps"]])
 
     def test_learning_path_missing_inputs_return_404(self) -> None:
         with TestClient(create_app()) as client:

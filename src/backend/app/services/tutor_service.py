@@ -7,6 +7,7 @@ from app.schemas import TutorAskResponse
 from app.services.agent_run_service import AgentRunService
 from app.services.citation_service import source_ref_summary, validate_citations
 from app.services.knowledge_base_service import KnowledgeBaseService
+from app.services.profile_updater_service import ProfileUpdaterService
 
 
 class TutorService:
@@ -64,6 +65,9 @@ class TutorService:
             "completed",
         )
         run_service.complete_run(run.id, f"Tutor Agent 已回答 profile {profile_id} 的问题。")
+        ProfileUpdaterService(database_url=self.database_url).update_from_trace(
+            profile_id, trigger_type="tutor", event_key=f"tutor:{run.id}"
+        )
         return TutorAskResponse(answer=result.answer, source_refs=result.source_refs, agent_run_id=run.id)
 
 

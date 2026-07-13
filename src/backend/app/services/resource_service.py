@@ -11,6 +11,7 @@ from app.services.agent_run_service import AgentRunService
 from app.services.citation_service import source_ref_summary
 from app.services.demo_data_service import DemoDataService
 from app.services.knowledge_base_service import KnowledgeBaseService
+from app.services.profile_updater_service import ProfileUpdaterService
 
 
 class ResourceService:
@@ -135,6 +136,9 @@ class ResourceService:
             response = GeneratedResourceResponse.model_validate(resource)
 
         run_service.complete_run(run.id, f"Multi-agent resource flow generated resource {response.id} for path_item {path_item_id_value}.")
+        ProfileUpdaterService(database_url=self.database_url).update_from_trace(
+            profile_id, trigger_type="resource", event_key=f"resource:{run.id}"
+        )
         response.agent_run_id = run.id
         return response
 

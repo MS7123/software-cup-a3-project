@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.db.session import get_engine, get_session_factory
 from app.main import create_app
 from app.models import AgentRun, Concept, ConceptRelation, Document, DocumentChunk, LearningPath, StudentProfile
-from app.seed.demo_data import DEMO_CHUNKS, DEMO_CONCEPTS, DEMO_PROFILES, DEMO_RELATIONS
+from app.seed.demo_data import DEMO_CHAPTERS, DEMO_CHUNKS, DEMO_CONCEPTS, DEMO_PROFILES, DEMO_RELATIONS
 from app.services.demo_data_service import DemoDataService
 
 
@@ -41,7 +41,7 @@ class DemoDataTests(unittest.TestCase):
         self.assertTrue(loaded.demo_data.is_loaded)
         self.assertEqual(loaded.demo_data.concept_count, len(DEMO_CONCEPTS))
         self.assertEqual(loaded.demo_data.profile_count, len(DEMO_PROFILES))
-        self.assertEqual(loaded.demo_data.chunk_count, len(DEMO_CHUNKS))
+        self.assertGreater(loaded.demo_data.chunk_count, len(DEMO_CHUNKS))
 
         after = service.get_status()
         self.assertTrue(after.is_loaded)
@@ -50,6 +50,15 @@ class DemoDataTests(unittest.TestCase):
             {profile.value for profile in after.profile_types},
             {str(profile["profile_type"]) for profile in DEMO_PROFILES},
         )
+
+    def test_course_corpus_has_teaching_depth_for_every_chapter(self) -> None:
+        corpus_dir = Path(__file__).resolve().parents[1] / "data" / "course-corpus" / "data-structures"
+        for chapter in DEMO_CHAPTERS:
+            content = (corpus_dir / chapter["filename"]).read_text(encoding="utf-8")
+            self.assertGreaterEqual(len(content), 1800, chapter["filename"])
+            self.assertGreaterEqual(content.count("## "), 6, chapter["filename"])
+            self.assertIn("练习题", content, chapter["filename"])
+            self.assertIn("参考答案", content, chapter["filename"])
 
     def test_load_demo_data_is_idempotent(self) -> None:
         service = DemoDataService(database_url=self.database_url)
@@ -61,8 +70,8 @@ class DemoDataTests(unittest.TestCase):
             self.assertEqual(len(session.scalars(select(Concept)).all()), len(DEMO_CONCEPTS))
             self.assertEqual(len(session.scalars(select(ConceptRelation)).all()), len(DEMO_RELATIONS))
             self.assertEqual(len(session.scalars(select(StudentProfile)).all()), len(DEMO_PROFILES))
-            self.assertEqual(len(session.scalars(select(Document)).all()), 1)
-            self.assertEqual(len(session.scalars(select(DocumentChunk)).all()), len(DEMO_CHUNKS))
+            self.assertEqual(len(session.scalars(select(Document)).all()), len(DEMO_CHAPTERS) + 1)
+            self.assertGreater(len(session.scalars(select(DocumentChunk)).all()), len(DEMO_CHUNKS))
         finally:
             session.close()
 
@@ -85,7 +94,10 @@ class DemoDataTests(unittest.TestCase):
                 )
                 self.assertIsNotNone(relation)
 
-            chunks = session.scalars(select(DocumentChunk)).all()
+            legacy_document = session.scalar(select(Document).where(Document.title == "数据结构 MVP 模拟课程资料"))
+            chunks = session.scalars(
+                select(DocumentChunk).where(DocumentChunk.document_id == legacy_document.id)
+            ).all()
             self.assertEqual(len(chunks), len(DEMO_CHUNKS))
             for chunk in chunks:
                 self.assertIsNotNone(chunk.concept_id)
@@ -105,9 +117,9 @@ class DemoDataTests(unittest.TestCase):
             body = loaded.json()
             self.assertEqual(body["status"], "completed")
             self.assertTrue(body["demo_data"]["is_loaded"])
-            self.assertEqual(body["demo_data"]["concept_count"], 5)
+            self.assertEqual(body["demo_data"]["concept_count"], len(DEMO_CONCEPTS))
             self.assertEqual(body["demo_data"]["profile_count"], 3)
-            self.assertGreaterEqual(body["demo_data"]["chunk_count"], 5)
+            self.assertGreaterEqual(body["demo_data"]["chunk_count"], len(DEMO_CHAPTERS) * 3)
 
             after = client.get("/api/v1/demo-data/status")
             self.assertTrue(after.json()["is_loaded"])
@@ -147,7 +159,7 @@ class DemoDataTests(unittest.TestCase):
             try:
                 self.assertEqual(len(session.scalars(select(Concept)).all()), len(DEMO_CONCEPTS))
                 self.assertEqual(len(session.scalars(select(StudentProfile)).all()), len(DEMO_PROFILES))
-                self.assertEqual(len(session.scalars(select(DocumentChunk)).all()), len(DEMO_CHUNKS))
+                self.assertGreater(len(session.scalars(select(DocumentChunk)).all()), len(DEMO_CHUNKS))
                 self.assertEqual(len(session.scalars(select(LearningPath)).all()), 0)
                 self.assertEqual(len(session.scalars(select(AgentRun)).all()), 0)
             finally:

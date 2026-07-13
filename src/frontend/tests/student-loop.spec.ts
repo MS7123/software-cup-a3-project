@@ -7,6 +7,12 @@ test("学生端界面可以完成主要学习闭环", async ({ page }) => {
   await page.getByRole("button", { name: "打开设置与调试" }).click();
   await page.getByTestId("load-demo-button").click();
   await expect(page.getByTestId("load-demo-button")).toBeEnabled();
+  const demoStatus = await page.request.get("/api/v1/demo-data/status");
+  expect(demoStatus.ok()).toBeTruthy();
+  const demoBody = await demoStatus.json();
+  expect(demoBody.concept_count).toBe(24);
+  expect(demoBody.document_count).toBeGreaterThanOrEqual(8);
+  expect(demoBody.chunk_count).toBeGreaterThanOrEqual(24);
   await page.locator('[role="dialog"]').getByRole("button", { name: "关闭设置与调试" }).click();
 
   await page.getByRole("button", { name: "知识库", exact: true }).click();
@@ -30,11 +36,15 @@ test("学生端界面可以完成主要学习闭环", async ({ page }) => {
     .fill("我基础比较薄弱，想每天 1 小时复习二叉树遍历和图搜索，希望多给例题、图解和代码实操。");
   await page.getByTestId("build-profile-button").click();
   await expect(page.getByTestId("profile-dimensions")).toContainText("六维动态学生画像");
+  await expect(page.getByTestId("profile-history")).toContainText("画像变化历史");
+  await expect(page.getByTestId("profile-latest-change")).toBeVisible();
 
   await page.getByRole("button", { name: "学习路径", exact: true }).click();
   await page.getByTestId("create-path-button").click();
   await expect(page.getByTestId("path-item-card").first()).toBeVisible();
   await page.getByTestId("path-item-card").nth(1).click();
+  await page.getByTestId("complete-path-item-button").click();
+  await expect(page.getByTestId("complete-path-item-button")).toContainText("当前节点已完成");
 
   await page.getByRole("button", { name: "资源生成", exact: true }).click();
   await expect(page.getByTestId("current-node")).toBeVisible();
@@ -54,4 +64,8 @@ test("学生端界面可以完成主要学习闭环", async ({ page }) => {
   await page.getByTestId("submit-answer-button").click();
   await expect(page.getByTestId("evaluator-feedback")).toBeVisible();
   await expect(page.getByRole("button", { name: "学习评估" })).toHaveAttribute("aria-current", "page");
+  await page.getByRole("button", { name: "学生画像", exact: true }).click();
+  await expect(page.getByTestId("profile-latest-change")).toBeVisible();
+  await expect(page.getByTestId("profile-history")).toContainText("quiz");
+  await expect(page.getByTestId("profile-history")).toContainText("证据");
 });

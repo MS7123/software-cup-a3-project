@@ -22,6 +22,7 @@ class AgentOrchestrator:
         run_service = AgentRunService(database_url=self.database_url)
         path_service = LearningPathService(database_url=self.database_url)
 
+        path_service.validate_inputs(profile_id, course_id)
         route = self.router_agent.route_learning_path(goal, profile_id, course_id)
         run = run_service.start_run(
             "learning_path_planning",

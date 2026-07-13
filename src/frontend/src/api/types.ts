@@ -71,6 +71,20 @@ export interface DocumentIngestionRequest {
   owner_user_id?: number | null;
 }
 
+export interface StudentProfileHistory {
+  id: number;
+  student_profile_id: number;
+  event_key: string;
+  trigger_type: string;
+  before_dimensions: Record<string, string>;
+  after_dimensions: Record<string, string>;
+  changed_dimensions: string[];
+  reason: string;
+  evidence_refs: Array<Record<string, unknown>>;
+  agent_run_id: number | null;
+  created_at: string | null;
+}
+
 export interface DocumentIngestionResponse {
   document: {
     id: number;

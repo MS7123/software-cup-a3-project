@@ -13,10 +13,12 @@ from app.models import (
     Quiz,
     QuizItem,
     StudentProfile,
+    StudentProfileHistory,
 )
 from app.schemas import StudentProfileCreate, StudentProfileDialogueCreate, StudentProfileResponse
 from app.services.profile_builder import build_profile_from_dialogue, normalize_profile_dimensions
 from app.services.demo_data_service import DemoDataService
+from app.services.profile_updater_service import ProfileUpdaterService
 
 
 class ProfileService:
@@ -47,7 +49,15 @@ class ProfileService:
             return StudentProfileResponse.model_validate(profile)
 
     def create_profile_from_dialogue(self, payload: StudentProfileDialogueCreate) -> StudentProfileResponse:
-        return self.create_profile(build_profile_from_dialogue(payload))
+        profile = self.create_profile(build_profile_from_dialogue(payload))
+        ProfileUpdaterService(database_url=self.database_url).create_initial_history(
+            profile.id,
+            dialogue_summary=payload.dialogue.strip(),
+        )
+        return profile
+
+    def list_profile_history(self, profile_id: int, limit: int = 20):
+        return ProfileUpdaterService(database_url=self.database_url).list_history(profile_id, limit)
 
     def delete_profile(self, profile_id: int) -> None:
         DemoDataService(database_url=self.database_url).get_status()
@@ -89,6 +99,7 @@ class ProfileService:
                 session.execute(delete(Quiz).where(Quiz.id.in_(quiz_ids)))
             session.execute(delete(Attempt).where(Attempt.student_profile_id == profile_id))
             session.execute(delete(MasteryRecord).where(MasteryRecord.student_profile_id == profile_id))
+            session.execute(delete(StudentProfileHistory).where(StudentProfileHistory.student_profile_id == profile_id))
             if run_ids:
                 session.execute(delete(AgentRunStep).where(AgentRunStep.agent_run_id.in_(run_ids)))
                 session.execute(delete(AgentRun).where(AgentRun.id.in_(run_ids)))

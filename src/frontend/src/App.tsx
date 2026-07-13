@@ -20,7 +20,8 @@ import type {
   LearningPathItem,
   ManagedDocument,
   Quiz,
-  StudentProfile
+  StudentProfile,
+  StudentProfileHistory
 } from "./api/types";
 
 type BusyAction =
@@ -199,6 +200,7 @@ export function App() {
   const [profiles, setProfiles] = useState<StudentProfile[]>([]);
   const [graph, setGraph] = useState<ConceptGraph | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
+  const [profileHistory, setProfileHistory] = useState<StudentProfileHistory[]>([]);
   const [selectedPathItemId, setSelectedPathItemId] = useState<number | null>(null);
   const [profileDialogue, setProfileDialogue] = useState(
     "我最近在学习二叉树遍历和图搜索，递归边界容易出错。每天可以投入 1 小时，希望系统多给我图解、例题和代码实操。"
@@ -277,6 +279,8 @@ export function App() {
     setStatus(nextStatus);
     const nextProfiles = await api.listProfiles();
     setProfiles(nextProfiles);
+    const nextSelectedId = nextProfiles.find((profile) => profile.id === selectedProfileId)?.id ?? nextProfiles[0]?.id ?? null;
+    if (nextSelectedId) setProfileHistory(await api.getProfileHistory(nextSelectedId));
     setSelectedProfileId((current) =>
       current && nextProfiles.some((profile) => profile.id === current) ? current : nextProfiles[0]?.id ?? null
     );
@@ -318,6 +322,10 @@ export function App() {
     setSelectedProfileId(nextProfile.id);
   }
 
+  async function refreshProfileHistory(profileId: number) {
+    setProfileHistory(await api.getProfileHistory(profileId));
+  }
+
   async function refreshKnowledgeDocuments() {
     if (!status?.course_id) return;
     setKnowledgeError(null);
@@ -338,10 +346,10 @@ export function App() {
         setAutoProfileUpdate("自动画像更新已关闭，可稍后手动同步。");
         return;
       }
-      setBusy("sync-profile");
-      const nextProfile = await api.updateProfileFromTrace(selectedProfileId);
+      const nextProfile = await api.getProfile(selectedProfileId);
       refreshSelectedProfile(nextProfile);
-      setAutoProfileUpdate(String(nextProfile.preferences.last_profile_update_reason ?? "画像已根据最新学习轨迹更新。"));
+      await refreshProfileHistory(selectedProfileId);
+      setAutoProfileUpdate("画像已根据最新学习证据刷新。");
     } catch (err) {
       setError(toErrorMessage(err));
     } finally {
@@ -414,6 +422,7 @@ export function App() {
                   setProfileDialogue(submitted);
                   const nextProfile = await api.createProfileFromDialogue({ dialogue: submitted });
                   replaceOrAppendProfile(nextProfile);
+                  await refreshProfileHistory(nextProfile.id);
                   setProfileDraft("");
                 })
               }
@@ -449,7 +458,10 @@ export function App() {
           {busy === "build-profile" ? (
             <ProfileSkeleton />
           ) : latestProfile ? (
-            <ProfileDimensionList profile={latestProfile} />
+            <>
+              <ProfileDimensionList profile={latestProfile} />
+              <ProfileHistoryPanel history={profileHistory} />
+            </>
           ) : (
             <EmptyState text="请先通过对话生成一个学生画像。" />
           )}
@@ -556,6 +568,23 @@ export function App() {
         ))}
         {pathItems.length === 0 ? <EmptyState text="生成学习路径后，这里会展示按顺序排列的学习节点。" /> : null}
       </div>
+      {selectedItem ? (
+        <button
+          className="primary-button mt-3"
+          data-testid="complete-path-item-button"
+          disabled={selectedItem.status === "completed" || busy !== null}
+          onClick={() => void runTask("create-path", async () => {
+            const nextPath = await api.completePathItem(selectedItem.id);
+            setFlow((current) => current ? { ...current, learning_path: nextPath } : current);
+            if (selectedProfileId) {
+              refreshSelectedProfile(await api.getProfile(selectedProfileId));
+              await refreshProfileHistory(selectedProfileId);
+            }
+          })}
+        >
+          {selectedItem.status === "completed" ? "当前节点已完成" : "完成当前学习节点"}
+        </button>
+      ) : null}
     </Panel>
   );
 
@@ -1254,6 +1283,35 @@ function NodeSummary({ item, concept }: { item: LearningPathItem | null; concept
       <span>{item.objective}</span>
       <small>{concept?.name ?? `概念 ${item.concept_id}`}</small>
     </div>
+  );
+}
+
+function ProfileHistoryPanel({ history }: { history: StudentProfileHistory[] }) {
+  const latest = history[0];
+  return (
+    <section className="profile-history" data-testid="profile-history">
+      <div className="section-heading"><span className="eyebrow">PROFILE HISTORY</span><h3>画像变化历史</h3></div>
+      {!latest ? <p className="muted">暂无画像变化记录。</p> : (
+        <>
+          <article className="profile-history-latest" data-testid="profile-latest-change">
+            <strong>最近一次：{latest.trigger_type}</strong>
+            <span>变化维度：{latest.changed_dimensions.join("、") || "无"}</span>
+            <p>{latest.reason}</p>
+          </article>
+          <div className="profile-history-list">
+            {history.map((record) => (
+              <article key={record.id} className="profile-history-record">
+                <strong>{record.trigger_type}</strong>
+                <small>{record.created_at ? new Date(record.created_at).toLocaleString() : ""}</small>
+                <div>{record.changed_dimensions.map((key) => `${key}: ${record.before_dimensions[key] ?? "空"} → ${record.after_dimensions[key] ?? "空"}`).join("；")}</div>
+                <p>{record.reason}</p>
+                <small>证据：{record.evidence_refs.length} 条，Agent run #{record.agent_run_id ?? "-"}</small>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

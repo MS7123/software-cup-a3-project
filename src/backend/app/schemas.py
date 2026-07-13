@@ -111,12 +111,26 @@ class DocumentResponse(DocumentCreate):
     course_id: int
     status: ProcessingStatus
     created_at: datetime | None = None
-    visibility: str = "course"
-    owner_user_id: int | None = None
     file_name: str | None = None
     mime_type: str | None = None
     file_size: int | None = None
     parser_name: str | None = None
+
+
+class StudentProfileHistoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    student_profile_id: int
+    event_key: str
+    trigger_type: str
+    before_dimensions: dict[str, Any] = Field(default_factory=dict)
+    after_dimensions: dict[str, Any] = Field(default_factory=dict)
+    changed_dimensions: list[str] = Field(default_factory=list)
+    reason: str
+    evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
+    agent_run_id: int | None = None
+    created_at: datetime | None = None
 
 
 class DocumentManagementResponse(DocumentResponse):
