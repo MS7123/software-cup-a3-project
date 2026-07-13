@@ -1,6 +1,6 @@
 # Review Log
 
-最后更新：2026-06-03
+最后更新：2026-07-13
 
 ## 2026-06-03 State Manager Review
 
@@ -1693,3 +1693,46 @@ Allowed to commit: Yes
 ## Final Recommendation
 
 允许提交 COMP-007。本轮只增加可审计运行证据和安全展示，不把 Router、Retriever、Critic、schema、引用校验或客观题评分改造成 LLM，也不记录 prompt、完整上下文或模型隐式推理。
+
+## 2026-07-13 Review & Test Agent Review: PERF-001 Quiz Postprocessing
+
+## Review Conclusion
+
+Result: Pass
+
+Allowed to commit: Yes
+
+## Scope Reviewed
+
+- Attempt additive API contract and existing-client compatibility.
+- Deterministic score persistence before remote postprocessing.
+- Reuse of `tasks` for `pending`、`running`、`completed`、`failed` state.
+- FastAPI background execution and single-learning-path Planner scope.
+- Frontend task polling, success/failure messages and current profile/path refresh.
+
+## Findings
+
+### Blocking
+
+- None.
+
+### Fix Before Merge
+
+- None.
+
+### Residual Environment Risk
+
+- FastAPI in-process background tasks are appropriate for the SQLite competition demo but do not survive process termination; persistent queue infrastructure remains `COMP-015`.
+- Seven real Spark online tests remain opt-in and were not called during this offline regression run.
+
+## Test Assessment
+
+- `tests/test_quiz_postprocessing.py`: 6 passed, including task error secret redaction.
+- `python -m unittest discover -s tests -v`: 169 passed, 7 opt-in Spark tests skipped.
+- `npm run build`: passed.
+- Playwright real local learning loop: 1 passed.
+- Real Uvicorn socket probe: response 97 ms while injected background work took 6000 ms; task changed from `running` to `completed` and score remained 1.0.
+
+## Final Recommendation
+
+允许提交 PERF-001。该增量消除客观题评分链路中的远端等待，并把 Planner 限定到当前相关路径；不得将此结论扩大为 PERF-002 至 PERF-005 已完成。

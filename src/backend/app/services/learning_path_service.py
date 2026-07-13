@@ -125,19 +125,26 @@ class LearningPathService:
             self.refresh_active_paths(profile_id, course_id, trigger=f"path_item:{item_id}:completed")
         return self.get_path(path_id)
 
-    def refresh_active_paths(self, profile_id: int, course_id: int, trigger: str) -> list[LearningPathResponse]:
+    def refresh_active_paths(
+        self,
+        profile_id: int,
+        course_id: int,
+        trigger: str,
+        path_id: int | None = None,
+    ) -> list[LearningPathResponse]:
         refreshed: list[LearningPathResponse] = []
         trace_payloads: list[tuple[int, PlannerResult]] = []
         with session_scope(self.database_url) as session:
             profile, course = self._get_profile_and_course(session, profile_id, course_id)
             concepts, relations = self._course_graph(session, course.id)
-            paths = session.scalars(
-                select(LearningPath).where(
-                    LearningPath.student_profile_id == profile_id,
-                    LearningPath.course_id == course_id,
-                    LearningPath.status == "active",
-                )
-            ).all()
+            path_query = select(LearningPath).where(
+                LearningPath.student_profile_id == profile_id,
+                LearningPath.course_id == course_id,
+                LearningPath.status == "active",
+            )
+            if path_id is not None:
+                path_query = path_query.where(LearningPath.id == path_id)
+            paths = session.scalars(path_query).all()
             for path in paths:
                 items = self._path_items(session, path.id)
                 completed_items = [item for item in items if item.status == "completed"]

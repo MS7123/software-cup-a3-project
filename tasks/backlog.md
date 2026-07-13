@@ -42,6 +42,11 @@
 | COMP-014 | 统一项目状态、需求和验收文档 | A3-配套文档 | COMP-014-AC | Backlog | P1，统一完成状态和证据链接 |
 | COMP-015 | 正式数据库、向量检索和异步任务增强 | 工程增强 | COMP-015-AC | Backlog | P2，不得阻塞比赛交付 |
 | COMP-016 | 认证、多用户隔离和长期学习历史 | 工程增强 | COMP-016-AC | Backlog | P2，不得阻塞比赛交付 |
+| PERF-001 | 评测立即返回与单路径后台后处理 | 比赛性能 | PERF-001-AC | Done | 97 ms 返回成绩，6000 ms 模拟慢后处理在后台完成；全量、build、Playwright 通过 |
+| PERF-002 | 重构 Hybrid Planner 个性化合同 | 比赛性能 | PERF-002-AC | Backlog | LLM 提供有限排序信号，规则层构造完整合法路径 |
+| PERF-003 | 分用途 LLM 调用预算与选择性重试 | 比赛性能 | PERF-003-AC | Backlog | purpose-specific timeout、max tokens 和 retry policy |
+| PERF-004 | Resource/Tutor 渐进式体验 | 比赛性能 | PERF-004-AC | Backlog | 后台画像更新、有限修复和安全渐进式展示 |
+| PERF-005 | 性能可观测性与回归预算 | 比赛性能 | PERF-005-AC | Backlog | API 总耗时、TTFT、usage 和真实 p50/p95 证据 |
 
 ## 已裁决事项
 

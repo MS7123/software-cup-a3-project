@@ -302,6 +302,8 @@ class QuizResponse(BaseModel):
 class AttemptSubmitRequest(BaseModel):
     student_profile_id: int
     answers: dict[str, Any] = Field(min_length=1, max_length=20)
+    learning_path_id: int | None = Field(default=None, ge=1)
+    run_postprocessing: bool = True
 
     @field_validator("answers")
     @classmethod
@@ -318,6 +320,8 @@ class EvaluationResult(BaseModel):
     feedback: str
     mastery_updates: list[dict[str, Any]] = Field(default_factory=list)
     agent_run_id: int | None = None
+    postprocessing_task_id: int | None = None
+    postprocessing_status: Literal["not_requested", "pending", "running", "completed", "failed"] = "not_requested"
 
 
 class TaskResponse(BaseModel):

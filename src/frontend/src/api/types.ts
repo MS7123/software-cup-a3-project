@@ -266,4 +266,15 @@ export interface EvaluationResult {
   feedback: string;
   mastery_updates: Array<Record<string, unknown>>;
   agent_run_id: number | null;
+  postprocessing_task_id: number | null;
+  postprocessing_status: "not_requested" | "pending" | "running" | "completed" | "failed";
+}
+
+export interface Task {
+  id: number;
+  task_type: string;
+  status: "pending" | "running" | "completed" | "failed" | "deleted";
+  result_ref: string | null;
+  error: string | null;
+  created_at: string | null;
 }

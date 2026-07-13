@@ -14,6 +14,7 @@ import type {
   StudentProfileDialogueCreate,
   StudentProfile,
   StudentProfileHistory,
+  Task,
   TutorAnswer
 } from "./types";
 
@@ -95,6 +96,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ student_profile_id: studentProfileId, course_id: courseId, goal })
     }),
+  getLearningPath: (pathId: number) => request<import("./types").LearningPath>(`/learning-paths/${pathId}`),
   completePathItem: (itemId: number) =>
     request<import("./types").LearningPath>(`/learning-path-items/${itemId}/complete`, { method: "POST" }),
   generateResource: (pathItemId: number, resourceType: string) =>
@@ -112,10 +114,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ student_profile_id: studentProfileId, concept_id: conceptId, difficulty })
     }),
-  submitAttempt: (quizId: number, studentProfileId: number, answers: Record<string, unknown>) =>
+  submitAttempt: (
+    quizId: number,
+    studentProfileId: number,
+    answers: Record<string, unknown>,
+    learningPathId: number | null,
+    runPostprocessing = true
+  ) =>
     request<EvaluationResult>(`/quizzes/${quizId}/attempts`, {
       method: "POST",
-      body: JSON.stringify({ student_profile_id: studentProfileId, answers })
+      body: JSON.stringify({
+        student_profile_id: studentProfileId,
+        answers,
+        learning_path_id: learningPathId,
+        run_postprocessing: runPostprocessing
+      })
     }),
+  getTask: (taskId: number) => request<Task>(`/tasks/${taskId}`),
   getAgentRun: (runId: number) => request<AgentRun>(`/agent-runs/${runId}`)
 };

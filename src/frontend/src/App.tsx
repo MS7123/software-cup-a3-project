@@ -198,6 +198,10 @@ function resultDisplayName(result: KnowledgeSearchResult): string {
   return String(result.metadata?.filename ?? result.metadata?.source_title ?? result.source_ref ?? "知识来源");
 }
 
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 export function App() {
   const [status, setStatus] = useState<DemoDataStatus | null>(null);
   const [profiles, setProfiles] = useState<StudentProfile[]>([]);
@@ -240,6 +244,7 @@ export function App() {
   const [activeStep, setActiveStep] = useState<StepKey>("home");
   const [profileDraft, setProfileDraft] = useState("");
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const selectedProfileIdRef = useRef<number | null>(null);
 
   const latestProfile = profiles[0] ?? null;
   const pathItems = flow?.learning_path.items ?? [];
@@ -335,30 +340,76 @@ export function App() {
     setKnowledgeDocuments(await api.listCourseDocuments(status.course_id));
   }
 
+  async function pollQuizPostprocessing(taskId: number, profileId: number, pathId: number | null) {
+    try {
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        const task = await api.getTask(taskId);
+        if (task.status === "failed") {
+          setAutoProfileUpdate(`成绩已保存，但画像与路径后台更新失败：${task.error ?? "未知错误"}`);
+          return;
+        }
+        if (task.status === "completed") {
+          const [nextProfile, nextHistory, nextPath] = await Promise.all([
+            api.getProfile(profileId),
+            api.getProfileHistory(profileId),
+            pathId === null ? Promise.resolve(null) : api.getLearningPath(pathId)
+          ]);
+          setProfiles((current) => current.map((profile) => (profile.id === nextProfile.id ? nextProfile : profile)));
+          if (selectedProfileIdRef.current === profileId) {
+            setProfileHistory(nextHistory);
+          }
+          if (nextPath !== null) {
+            setFlow((current) =>
+              current?.learning_path.id === nextPath.id ? { ...current, learning_path: nextPath } : current
+            );
+          }
+          setAutoProfileUpdate("成绩已保存，画像与当前学习路径已在后台刷新。");
+          return;
+        }
+        setAutoProfileUpdate("成绩已返回，画像与当前学习路径正在后台更新。");
+        await delay(1000);
+      }
+      setAutoProfileUpdate("成绩已保存，后台更新仍在进行，可稍后查看任务状态。");
+    } catch (err) {
+      setAutoProfileUpdate(`成绩已保存，但后台任务状态查询失败：${toErrorMessage(err)}`);
+    }
+  }
+
   async function submitQuizAttempt() {
     if (!quiz || !selectedProfileId || !attemptText.trim()) return;
     setBusy("submit-attempt");
     setError(null);
     setAutoProfileUpdate(null);
     try {
-      const nextEvaluation = await api.submitAttempt(quiz.id, selectedProfileId, { answer: attemptText });
+      const pathId = flow?.learning_path.id ?? null;
+      const nextEvaluation = await api.submitAttempt(
+        quiz.id,
+        selectedProfileId,
+        { answer: attemptText },
+        pathId,
+        autoProfileUpdateEnabled
+      );
       setEvaluation(nextEvaluation);
       await appendRun(nextEvaluation.agent_run_id);
       setActiveStep("assess");
       if (!autoProfileUpdateEnabled) {
-        setAutoProfileUpdate("自动画像更新已关闭，可稍后手动同步。");
+        setAutoProfileUpdate("成绩已保存，画像与路径后台更新已关闭。");
         return;
       }
-      const nextProfile = await api.getProfile(selectedProfileId);
-      refreshSelectedProfile(nextProfile);
-      await refreshProfileHistory(selectedProfileId);
-      setAutoProfileUpdate("画像已根据最新学习证据刷新。");
+      if (nextEvaluation.postprocessing_task_id !== null) {
+        setAutoProfileUpdate("成绩已返回，画像与当前学习路径正在后台更新。");
+        void pollQuizPostprocessing(nextEvaluation.postprocessing_task_id, selectedProfileId, pathId);
+      }
     } catch (err) {
       setError(toErrorMessage(err));
     } finally {
       setBusy(null);
     }
   }
+
+  useEffect(() => {
+    selectedProfileIdRef.current = selectedProfileId;
+  }, [selectedProfileId]);
 
   useEffect(() => {
     let active = true;
@@ -783,8 +834,8 @@ export function App() {
                   onChange={(event) => setAutoProfileUpdateEnabled(event.target.checked)}
                 />
                 <span>
-                  <strong>评估后自动更新学生画像</strong>
-                  <small>测评教师完成评分后，画像顾问会读取学习轨迹并回写画像。</small>
+                  <strong>评估后后台更新画像与路径</strong>
+                  <small>成绩会先返回，画像顾问和学习规划师随后在后台更新当前学习路径。</small>
                 </span>
               </label>
               <button className="primary-button" data-testid="submit-answer-button" disabled={!attemptText.trim() || busy !== null} onClick={() => void submitQuizAttempt()}>

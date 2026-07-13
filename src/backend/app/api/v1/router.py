@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile, status
 
 from app.domain.exceptions import ConflictError, NotFoundError, ProtectedResourceError
 from app.schemas import (
@@ -28,6 +28,7 @@ from app.schemas import (
     StudentProfileResponse,
     TutorAskRequest,
     TutorAskResponse,
+    TaskResponse,
 )
 from app.agents.orchestrator import AgentOrchestrator
 from app.services.agent_run_service import AgentRunService
@@ -42,6 +43,7 @@ from app.services.profile_service import ProfileService
 from app.services.profile_updater_service import ProfileUpdaterService
 from app.services.resource_service import ResourceService
 from app.services.tutor_service import TutorService
+from app.services.task_service import TaskService
 
 api_router = APIRouter()
 
@@ -272,8 +274,30 @@ def generate_quiz(payload: QuizGenerateRequest) -> QuizResponse:
 
 
 @api_router.post("/quizzes/{quiz_id}/attempts", response_model=EvaluationResult)
-def submit_quiz_attempt(quiz_id: int, payload: AttemptSubmitRequest) -> EvaluationResult:
+def submit_quiz_attempt(
+    quiz_id: int,
+    payload: AttemptSubmitRequest,
+    background_tasks: BackgroundTasks,
+) -> EvaluationResult:
     try:
-        return AssessmentService().submit_attempt(quiz_id, payload.student_profile_id, payload.answers)
+        service = AssessmentService()
+        result = service.submit_attempt(
+            quiz_id,
+            payload.student_profile_id,
+            payload.answers,
+            learning_path_id=payload.learning_path_id,
+            run_postprocessing=payload.run_postprocessing,
+        )
+        if result.postprocessing_task_id is not None:
+            background_tasks.add_task(service.process_attempt_postprocessing, result.postprocessing_task_id)
+        return result
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.get("/tasks/{task_id}", response_model=TaskResponse)
+def get_task(task_id: int) -> TaskResponse:
+    try:
+        return TaskService().get_task(task_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

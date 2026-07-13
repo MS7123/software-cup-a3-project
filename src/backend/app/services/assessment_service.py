@@ -1,3 +1,4 @@
+import json
 import re
 from dataclasses import replace
 from typing import Any
@@ -12,7 +13,16 @@ from app.agents.router_agent import RuleBasedRouterAgent
 from app.agents.rule_based_agents import EvaluatorAgentResult, RuleBasedQuizAgent
 from app.db.session import session_scope
 from app.domain.exceptions import NotFoundError
-from app.models import Attempt, Concept, MasteryRecord, Quiz, QuizItem, QuizItemGenerationMetadata, StudentProfile
+from app.models import (
+    Attempt,
+    Concept,
+    LearningPath,
+    MasteryRecord,
+    Quiz,
+    QuizItem,
+    QuizItemGenerationMetadata,
+    StudentProfile,
+)
 from app.schemas import EvaluationResult, QuizItemResponse, QuizResponse
 from app.services.agent_run_service import AgentRunService
 from app.services.agent_execution_metadata import build_execution_metadata
@@ -21,6 +31,7 @@ from app.services.content_safety_service import ContentSafetyService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.learning_path_service import LearningPathService
 from app.services.profile_updater_service import ProfileUpdaterService
+from app.services.task_service import TaskService
 
 
 class AssessmentService:
@@ -304,6 +315,8 @@ class AssessmentService:
         quiz_id: int,
         profile_id: int,
         answers: dict[str, Any],
+        learning_path_id: int | None = None,
+        run_postprocessing: bool = True,
     ) -> EvaluationResult:
         DemoDataService(database_url=self.database_url).get_status()
 
@@ -326,6 +339,21 @@ class AssessmentService:
             expected_answer = item.answer
             concept_id_value = concept.id
             course_id = concept.course_id
+            path_query = (
+                select(LearningPath)
+                .where(
+                    LearningPath.student_profile_id == profile.id,
+                    LearningPath.course_id == course_id,
+                    LearningPath.status == "active",
+                )
+                .order_by(LearningPath.id.desc())
+            )
+            if learning_path_id is not None:
+                path_query = path_query.where(LearningPath.id == learning_path_id)
+            selected_path = session.scalar(path_query.limit(1))
+            if learning_path_id is not None and selected_path is None:
+                raise NotFoundError("Active learning path", learning_path_id)
+            selected_path_id = selected_path.id if selected_path is not None else None
             metadata = session.scalar(
                 select(QuizItemGenerationMetadata).where(QuizItemGenerationMetadata.quiz_item_id == item.id)
             )
@@ -379,21 +407,65 @@ class AssessmentService:
             execution_metadata=build_execution_metadata(result),
         )
         run_service.complete_run(run.id, f"Evaluator Agent evaluated attempt {attempt_id}.")
-        ProfileUpdaterService(database_url=self.database_url).update_from_trace(
-            profile_id_value, trigger_type="quiz", event_key=f"quiz:{attempt_id}"
-        )
-        LearningPathService(database_url=self.database_url).refresh_active_paths(
-            profile_id_value,
-            course_id,
-            trigger=f"quiz:{attempt_id}",
-        )
+        postprocessing_task = None
+        if run_postprocessing:
+            result_ref = json.dumps(
+                {"attempt_id": attempt_id, "learning_path_id": selected_path_id},
+                separators=(",", ":"),
+            )
+            postprocessing_task = TaskService(database_url=self.database_url).create_task(
+                "quiz_postprocessing",
+                result_ref=result_ref,
+            )
         return EvaluationResult(
             attempt_id=attempt_id,
             score=result.score,
             feedback=result.feedback,
             mastery_updates=result.mastery_updates,
             agent_run_id=run.id,
+            postprocessing_task_id=postprocessing_task.id if postprocessing_task is not None else None,
+            postprocessing_status=postprocessing_task.status if postprocessing_task is not None else "not_requested",
         )
+
+    def process_attempt_postprocessing(self, task_id: int) -> None:
+        task_service = TaskService(database_url=self.database_url)
+        task = task_service.get_task(task_id)
+        if task.status != "pending":
+            return
+        task_service.mark_running(task_id)
+        try:
+            payload = json.loads(task.result_ref or "{}")
+            attempt_id = int(payload["attempt_id"])
+            path_id = payload.get("learning_path_id")
+            path_id = int(path_id) if path_id is not None else None
+            with session_scope(self.database_url) as session:
+                attempt = session.get(Attempt, attempt_id)
+                if attempt is None:
+                    raise NotFoundError("Attempt", attempt_id)
+                quiz = session.get(Quiz, attempt.quiz_id)
+                if quiz is None:
+                    raise NotFoundError("Quiz", attempt.quiz_id)
+                concept = session.get(Concept, quiz.concept_id)
+                if concept is None:
+                    raise NotFoundError("Concept", quiz.concept_id)
+                profile_id = attempt.student_profile_id
+                course_id = concept.course_id
+
+            ProfileUpdaterService(database_url=self.database_url).update_from_trace(
+                profile_id,
+                trigger_type="quiz",
+                event_key=f"quiz:{attempt_id}",
+            )
+            if path_id is not None:
+                LearningPathService(database_url=self.database_url).refresh_active_paths(
+                    profile_id,
+                    course_id,
+                    trigger=f"quiz:{attempt_id}",
+                    path_id=path_id,
+                )
+            task_service.mark_completed(task_id)
+        except Exception as exc:
+            task_service.mark_failed(task_id, exc)
 
     def _to_quiz_response(
         self,
