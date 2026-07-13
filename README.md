@@ -14,28 +14,41 @@
 
 当前仓库已经从调研资料库推进为可运行 MVP 工程。它适合本地演示、阶段评审和后续比赛材料制作，但仍不是生产级系统。
 
-## kanno 分支主要修改
+## kanno 分支能力已纳入当前主流程
 
-本分支围绕赛题演示前端进行了集中升级，重点提升个性化学习闭环的可展示性、交互质感和评分点覆盖度。
+`kanno` 分支的主要修改已经吸收进当前比赛演示主流程，当前不再作为独立实现分支维护。已纳入的能力包括：
 
-- 前端整体重构为 Vercel / Linear 风格的浅色极简工作台，收敛背景、圆角、阴影和交互动效。
-- 学生画像页改为对话式引导流程，加入快捷回复、生成中骨架屏和六维动态画像 Bento 卡片。
-- 教学团队展示从“智能体”技术命名调整为画像顾问、资料管理员、学习规划师、资源设计师、答疑教师、出题老师、测评教师等教育角色。
-- 知识库页改为 Master-Detail 双栏，资料录入迁移到弹窗，主区域聚焦检索与证据结果。
-- 资源生成支持讲解文档、练习题库、思维导图、拓展阅读、代码实操和教学动画六类资源，代码案例升级为 Mac 风格卡片。
-- 教师答疑支持多轮对话历史、自动滚动、Markdown 渲染、打字机式呈现和合规免责声明。
-- 资源输出与答疑结果的溯源证据改为折叠展示，减少信息噪音。
-- 增加多节点状态进度器、内容安全与防幻觉提示、模型来源徽章和执行追踪浮层。
+- 浅色学习工作台、学习阶段进度器和统一的教育角色命名：画像顾问、资料管理员、学习规划师、资源设计师、答疑教师、出题老师、测评教师。
+- 对话式画像引导：快捷回复、生成中状态、六维画像卡片，以及画像生成后的可视化确认。
+- Master-Detail 知识库界面：资料录入弹窗、文档列表、检索结果、来源摘要和安全状态集中展示。
+- 资源卡片增强：练习题列表、代码块、思维导图、正文折叠区和 grounded source 展示；后端稳定生成仍以五类资源为准，教学视频/动画目前是前端展示占位，不计入真实生成能力。
+- Tutor 多轮答疑：对话历史、自动滚动、Markdown/公式渲染、打字机式输出、内容安全免责声明和可折叠溯源证据。
+- 模型与运行证据：模型来源徽章、fallback 状态、安全横幅和 Agent trace 浮层，能够观察每个主流程阶段的执行结果。
+
+这些能力均服务于同一条主流程：**学生画像 → 学习路径 → 资源生成 → Tutor → Quiz → Evaluator → 动态画像更新**。
 
 ## 当前工作进度
 
-当前分支处于个人敏捷开发模式下的 RAG Phase 5 演示增强阶段：
+当前分支已完成比赛演示主流程和主要 AI 接入，正在进行最终验收材料、现场演示和发布前复核。
 
-- Phase 2：核心智能能力已基本补齐，包括真实 LLM opt-in、画像构建、资源生成、评价反馈。
-- Phase 3 / Phase 4：RAG reranking、citation quality、source panel 和 Agent trace 证据展示已完成。
-- Phase 5：知识库管理最小闭环已完成，包括 document list、文件上传、PDF / Word 文本解析、删除、reindex 和 scope filter。
+- Phase 1：FastAPI、React、SQLite、Agent、adapter 和 orchestrator 基础架构已完成。
+- Phase 2：画像构建、学习路径、五类资源、Tutor、Quiz、Evaluator 和画像更新闭环已完成。
+- Phase 3 / Phase 4：真实 RAG、引用白名单、source panel、内容安全和 Agent trace 已完成。
+- Phase 5：知识库管理最小闭环已完成，包括 document list、文件上传、PDF / Word / PPTX 文本解析、删除、reindex 和 scope filter。
+- Phase 6：科大讯飞星火比赛入口、七项 LLM 能力默认启用、T2 结构化证据 Tutor 和 P2 语义化 Hybrid Planner 已完成。
 
-截至 2026-06-17，当前分支已具备以下可演示能力。
+截至 **2026-07-14**，当前分支已具备以下可演示能力。
+
+### 最近验证基线
+
+| 验证项 | 当前结果 |
+|---|---|
+| 后端全量回归 | 201 项通过，10 项按设计跳过 |
+| 前端 production build | 通过 |
+| Playwright 学习闭环 | 2 项通过 |
+| 星火在线 Planner | 已验证目标节点、先修时间和小测里程碑能够落地 |
+
+以上是当前代码基线；真实外部服务的延迟、额度和网络状态仍需在最终比赛环境中复核。
 
 ### 已完成的主流程能力
 
@@ -49,13 +62,16 @@
   - `weak_points`
   - `resource_preference`
 - 用户画像删除和关联学习数据清理。
+- 对话式画像引导：快捷回复、生成中状态和六维画像确认卡片。
+- 教育角色化工作台：将各 Agent 显示为画像顾问、资料管理员、学习规划师、资源设计师、答疑教师、出题老师和测评教师。
 - 数据结构课程知识点图：
   - 复杂度分析
   - 链表
   - 栈 / 队列
   - 二叉树遍历
   - BFS / DFS
-- 学习路径生成。
+- 语义化学习路径生成：识别目标知识点、学习目的、测验准备意图和可用时间，仅补充必要 hard prerequisite。
+- 路径活动和小测里程碑：展示目标节点、基础检查、重点巩固、预计时间、完成标准和模拟小测。
 - 5 类个性化学习资源生成：
   - `guided_note`：讲解文档
   - `practice_questions`：练习题
@@ -63,6 +79,7 @@
   - `extended_reading`：拓展阅读
   - `coding_case`：代码实操案例
 - Tutor 问答。
+- Tutor 多轮问答、Markdown/公式渲染、打字机式呈现和折叠来源证据。
 - Quiz 生成与作答。
 - Evaluator 评分、反馈、薄弱点和下一步建议。
 - Quiz 作答后自动从 Agent trace 更新学生画像。
@@ -71,6 +88,7 @@
   - Output
   - Decision
   - fallback 标记
+- 模型来源徽章、安全状态横幅和执行追踪浮层。
 - 资源卡片展示增强：
   - 练习题列表
   - 代码块展示
@@ -79,7 +97,7 @@
   - grounded source 展示
 - 真实 RAG 第一阶段闭环：
   - 前端 `Knowledge setup` 可粘贴 `text` / `markdown` 课程资料。
-  - 前端可上传 `.txt`、`.md`、`.pdf`、`.docx` 资料。
+  - 前端可上传 `.txt`、`.md`、`.pdf`、`.docx`、`.pptx` 资料。
   - 后端创建 `documents` / `document_chunks`。
   - `KnowledgeBaseService.search()` 基于真实导入 chunk 做 keyword retrieval。
   - Tutor / Resource response 保留真实 `source_refs`。
@@ -107,7 +125,7 @@
 当前七项核心 Agent 已通过统一 `LLMProvider` adapter 接入 OpenAI-compatible 模型，并保留 rule-based fallback：
 
 - ProfileBuilder：自然语言构建六维初始画像。
-- Planner：采用两阶段语义规划；第一次 LLM 解析真实目标节点与 `learning_intent`，规则层只补充未掌握的 hard prerequisite，第二次 LLM 为最多 8 个节点生成活动、资源、时间和完成标准。低置信度目标返回中文 `422`，不再扩展为完整课程。
+- Planner：采用两阶段语义规划；第一次 LLM 解析真实目标节点与 `learning_intent`，规则层修复显式目标锚点并只补充未掌握的 hard prerequisite，第二次 LLM 为最多 8 个节点生成活动、资源、时间和完成标准。对小测或期末准备目标，路径额外保存覆盖目标知识点的 `mock_assessment` 里程碑；低置信度目标返回中文 `422`，不再扩展为完整课程。
 - Resource：生成五类差异化、有来源的学习资源。
 - Tutor：检索 5 条原始证据后去重压缩为最多 3 条、总计不超过 2400 字符；模型只能引用 `E1`～`E3`，后端再映射真实 `source_ref` 并执行安全与引用校验。失败时主回答只显示中文降级说明，原始证据保留在独立来源面板。
 - Quiz：生成全中文的结构化、多题型、有引用测验；代码和通用技术缩写可以保留英文。
@@ -166,8 +184,6 @@
 
 ### 核心能力
 
-- PPT 文件上传和解析。
-- 扫描版 PDF OCR。
 - pgvector / production-grade vector index 检索链路。
 - 生产级 reranker 或 cross-encoder reranker。
 - Tutor / Resource 对复杂真实课程资料的更强 grounded generation。
@@ -181,15 +197,16 @@
 - Redis/RQ 或等价任务队列。
 - 生产级配置、日志、安全和运维脚本。
 - CI/CD。
-- 依赖 license 清单和提交材料中的开源合规表。
+- 依据最终实际分发内容汇总第三方 LICENSE/NOTICE 原文；直接依赖清单和传递依赖 license report 已形成。
 
 ### 测试与演示材料
 
 - 失败路径 UI 自动化测试。
 - 多浏览器 / 移动视口测试。
 - 真实外部 LLM endpoint 的手动验收记录。
-- 7 分钟演示脚本。
-- PPT、系统说明书、测试说明书、AI Coding 使用说明。
+- 最终演示视频录制文件。
+
+系统开发说明书、测试说明书、AI Coding 工具说明、演示 PPT 和 7 分钟视频脚本已生成在 `submission/`；最终提交前仍需按真实运行版本复核封面、截图和录制内容。
 
 ## 本地部署教程
 
@@ -435,7 +452,7 @@ $env:RAG_RERANK_CONTEXT_CHAR_LIMIT='3500'
 ## 重要边界
 
 - 当前 SQLite 只用于本地开发和比赛演示，不代表正式数据库方向。
-- 当前真实资料导入支持 `text` / `markdown` 粘贴和 `.txt` / `.md` / `.pdf` / `.docx` 文件上传，但不支持 OCR 和 PPT。
+- 当前真实资料导入支持 `text` / `markdown` 粘贴和 `.txt`、`.md`、`.pdf`、`.docx`、`.pptx` 文件上传。扫描 PDF 在整份文档无原生文本层时可使用可选的 Tesseract OCR fallback；`.pptx` 支持文本与表格文本提取，但不识别幻灯片图片中的文字，旧版 `.ppt` 需先转换为 `.pptx`。
 - 当前 RAG 默认使用 SQLite keyword retrieval；SQLite cosine hybrid retrieval 已作为显式 opt-in 能力提供，不代表 pgvector 或生产级向量索引已完成。
 - 当前知识库 private scope 使用 `owner_user_id` 最小实现，尚未接入正式认证 session。
 - 默认 rule-based fallback 是演示稳定性保障，不等同于完整智能能力。
