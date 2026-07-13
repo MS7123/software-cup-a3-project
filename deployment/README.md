@@ -63,6 +63,24 @@ $env:PLAYWRIGHT_CHANNEL='chromium'
 - Agent trace
 - Git commit
 
+### 科大讯飞星辰 MaaS 比赛默认入口
+
+比赛演示默认使用服务管控页面提供的科大讯飞星辰 MaaS OpenAI-compatible API。启动脚本读取 `XFYUN_SPARK_API_KEY`，并将其仅映射到当前进程的 `LLM_API_KEY`；仓库不保存真实凭据。
+
+一次性写入 Windows User scope：
+
+```powershell
+[Environment]::SetEnvironmentVariable('XFYUN_SPARK_API_KEY', '<your-spark-api-key>', 'User')
+```
+
+比赛默认启动：
+
+```powershell
+./scripts/run-competition-spark.ps1
+```
+
+当前服务使用控制台给出的 `https://maas-api.cn-huabei-1.xf-yun.com/v2` 和 `/models` 实际返回的 model ID `xop3qwen1b7`。脚本启用 Tutor、Resource、Evaluator、ProfileUpdater 以及后续接入的 ProfileBuilder、Planner、Quiz；单次失败时回退 rule-based，缺少 APIKey 时在启动服务前直接失败。
+
 ### DeepSeek Chat LLM
 
 DeepSeek 脚本读取 `DEEPSEEK_API_KEY`，并在启动时映射成后端实际使用的 `LLM_API_KEY`。
@@ -290,6 +308,7 @@ $env:RAG_RERANK_CONTEXT_CHAR_LIMIT='3500'
 | 脚本 | 需要的 API key | LLM 结果 | RAG 检索结果 | 适合场景 |
 |---|---|---|---|---|
 | `./scripts/run-local.ps1` | 无 | 全部 Agent 使用 rule-based fallback | `keyword` 默认检索 | 最稳的离线演示、无网络、评委本地快速启动 |
+| `./scripts/run-competition-spark.ps1` | `XFYUN_SPARK_API_KEY` | 当前及后续 LLM Agent 默认使用讯飞 MaaS 服务，单次失败回退 rule-based | 默认 `keyword` | **比赛默认入口** |
 | `./scripts/run-local.ps1 -UseRemoteTutorLLM` | 手动设置 `LLM_*` | 按当前 shell 中 `LLM_ENABLE_FOR_*` 决定哪些 Agent 调 LLM | 默认仍是 `keyword`，除非手动设置 RAG 变量 | 自定义 provider 调试 |
 | `./scripts/run-local-deepseek.ps1` | `DEEPSEEK_API_KEY` | Tutor / Resource / Evaluator / ProfileUpdater 全部使用 DeepSeek，失败回退 rule-based | 默认 `keyword` | 使用 DeepSeek 做真实 Agent 输出 |
 | `./scripts/run-local-aliyun-flash.ps1` | `ALIYUN_BAILIAN_API_KEY` | Tutor / Resource / Evaluator / ProfileUpdater 全部使用 Qwen Flash，失败回退 rule-based | 默认 `keyword` | 使用阿里云 Qwen Flash 做真实 Agent 输出 |
@@ -310,6 +329,7 @@ $env:RAG_RERANK_CONTEXT_CHAR_LIMIT='3500'
 
 | 目标 | 推荐命令 | 说明 |
 |---|---|---|
+| 比赛默认演示 | `./scripts/run-competition-spark.ps1` | 使用科大讯飞星辰 MaaS 启用当前及后续 LLM Agent。 |
 | 无网络稳定演示 | `./scripts/run-local.ps1` | 所有核心流程可跑，输出是 rule-based。 |
 | 真实 LLM 演示但不启用向量 | `./scripts/run-local-deepseek.ps1` | 回答更自然，但检索仍是 keyword。 |
 | 真实 LLM + hybrid RAG | `./scripts/run-local-deepseek-hybrid.ps1` | 当前最完整的 RAG 演示组合。 |
