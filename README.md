@@ -307,6 +307,8 @@ $env:XFYUN_SPARK_API_PASSWORD='<your-api-key>'
 
 ### COMP-008 手动验收操作指南
 
+完整、可交付的独立验收文档见 [COMP-008 防幻觉与内容安全手动验收指南](docs/runbooks/comp-008-manual-acceptance-guide.md)。下面保留最短操作路径。
+
 1. 在仓库根目录启动比赛入口，并打开控制台打印的 frontend 地址：
 
    ```powershell
