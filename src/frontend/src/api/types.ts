@@ -220,6 +220,8 @@ export interface GeneratedResource {
   agent_run_id: number | null;
   safety_status: "passed" | "blocked" | "degraded";
   safety_message: string | null;
+  postprocessing_task_id: number | null;
+  postprocessing_status: string;
 }
 
 export interface TutorAnswer {
@@ -228,6 +230,8 @@ export interface TutorAnswer {
   agent_run_id: number | null;
   safety_status: "passed" | "blocked" | "degraded";
   safety_message: string | null;
+  postprocessing_task_id: number | null;
+  postprocessing_status: string;
 }
 
 export interface QuizItem {

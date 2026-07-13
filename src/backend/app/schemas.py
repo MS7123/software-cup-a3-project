@@ -242,6 +242,8 @@ class GeneratedResourceResponse(BaseModel):
     agent_run_id: int | None = None
     safety_status: Literal["passed", "blocked", "degraded"] = "passed"
     safety_message: str | None = None
+    postprocessing_task_id: int | None = None
+    postprocessing_status: Literal["not_requested", "pending", "running", "completed", "failed"] = "not_requested"
 
 
 class TutorAskRequest(BaseModel):
@@ -256,6 +258,8 @@ class TutorAskResponse(BaseModel):
     agent_run_id: int | None = None
     safety_status: Literal["passed", "blocked", "degraded"] = "passed"
     safety_message: str | None = None
+    postprocessing_task_id: int | None = None
+    postprocessing_status: Literal["not_requested", "pending", "running", "completed", "failed"] = "not_requested"
 
 
 class QuizGenerateRequest(BaseModel):

@@ -405,7 +405,15 @@ class LLMProviderTutorTests(unittest.TestCase):
                 tutor_body = tutor.json()
                 self.assertEqual(
                     set(tutor_body.keys()),
-                    {"answer", "source_refs", "agent_run_id", "safety_status", "safety_message"},
+                    {
+                        "answer",
+                        "source_refs",
+                        "agent_run_id",
+                        "safety_status",
+                        "safety_message",
+                        "postprocessing_task_id",
+                        "postprocessing_status",
+                    },
                 )
                 self.assertEqual(tutor_body["safety_status"], "degraded")
                 self.assertIn("根据课程资料", tutor_body["answer"])

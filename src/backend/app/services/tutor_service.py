@@ -9,7 +9,7 @@ from app.services.agent_execution_metadata import build_execution_metadata
 from app.services.citation_service import source_ref_summary, validate_citations
 from app.services.content_safety_service import ContentSafetyService
 from app.services.knowledge_base_service import KnowledgeBaseService
-from app.services.profile_updater_service import ProfileUpdaterService
+from app.services.profile_postprocessing_service import ProfilePostprocessingService
 
 
 class TutorService:
@@ -117,8 +117,10 @@ class TutorService:
             execution_metadata=build_execution_metadata(result),
         )
         run_service.complete_run(run.id, f"Tutor Agent 已回答 profile {profile_id} 的问题。")
-        ProfileUpdaterService(database_url=self.database_url).update_from_trace(
-            profile_id, trigger_type="tutor", event_key=f"tutor:{run.id}"
+        postprocessing_task = ProfilePostprocessingService(database_url=self.database_url).schedule(
+            profile_id,
+            trigger_type="tutor",
+            event_key=f"tutor:{run.id}",
         )
         return TutorAskResponse(
             answer=result.answer,
@@ -126,6 +128,8 @@ class TutorService:
             agent_run_id=run.id,
             safety_status="degraded" if result.fallback_used else "passed",
             safety_message=(f"已安全降级：{result.fallback_reason}" if result.fallback_used else "内容已通过引用与安全校验。"),
+            postprocessing_task_id=postprocessing_task.id,
+            postprocessing_status=postprocessing_task.status,
         )
 
 

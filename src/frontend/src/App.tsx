@@ -233,6 +233,7 @@ export function App() {
   const [attemptText, setAttemptText] = useState("");
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [autoProfileUpdate, setAutoProfileUpdate] = useState<string | null>(null);
+  const [learningTraceUpdateNotice, setLearningTraceUpdateNotice] = useState<string | null>(null);
   const [autoProfileUpdateEnabled, setAutoProfileUpdateEnabled] = useState(true);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [retainedTraces, setRetainedTraces] = useState<TraceAction[]>([]);
@@ -314,6 +315,7 @@ export function App() {
     setAttemptText("");
     setEvaluation(null);
     setAutoProfileUpdate(null);
+    setLearningTraceUpdateNotice(null);
   }
 
   function replaceOrAppendProfile(nextProfile: StudentProfile) {
@@ -372,6 +374,35 @@ export function App() {
       setAutoProfileUpdate("成绩已保存，后台更新仍在进行，可稍后查看任务状态。");
     } catch (err) {
       setAutoProfileUpdate(`成绩已保存，但后台任务状态查询失败：${toErrorMessage(err)}`);
+    }
+  }
+
+  async function pollProfilePostprocessing(taskId: number, profileId: number) {
+    setLearningTraceUpdateNotice("内容已返回，画像正在后台更新。");
+    try {
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        const task = await api.getTask(taskId);
+        if (task.status === "failed") {
+          setLearningTraceUpdateNotice(`内容已返回，但画像后台更新失败：${task.error ?? "未知错误"}`);
+          return;
+        }
+        if (task.status === "completed") {
+          const [nextProfile, nextHistory] = await Promise.all([
+            api.getProfile(profileId),
+            api.getProfileHistory(profileId)
+          ]);
+          setProfiles((current) => current.map((profile) => (profile.id === nextProfile.id ? nextProfile : profile)));
+          if (selectedProfileIdRef.current === profileId) {
+            setProfileHistory(nextHistory);
+          }
+          setLearningTraceUpdateNotice("内容已返回，画像已在后台更新。");
+          return;
+        }
+        await delay(1000);
+      }
+      setLearningTraceUpdateNotice("内容已返回，画像后台更新仍在进行，可稍后查看任务状态。");
+    } catch (err) {
+      setLearningTraceUpdateNotice(`内容已返回，但画像后台任务状态查询失败：${toErrorMessage(err)}`);
     }
   }
 
@@ -669,6 +700,9 @@ export function App() {
               const nextResource = await api.generateResource(selectedItem.id, backendResourceType);
               setResource(resourceType === "teaching_video" ? { ...nextResource, resource_type: "teaching_video" } : nextResource);
               await appendRun(nextResource.agent_run_id);
+              if (nextResource.postprocessing_task_id !== null && selectedProfileId !== null) {
+                void pollProfilePostprocessing(nextResource.postprocessing_task_id, selectedProfileId);
+              }
             })
           }
         >
@@ -681,10 +715,11 @@ export function App() {
             steps={[
               { label: "检索课程资料", detail: "资料管理员正在获取相关证据片段", status: "done" },
               { label: "组织资源结构", detail: "资源设计师正在匹配画像与知识短板", status: "active" },
-              { label: "流式生成内容", detail: "即将输出文档、图解与实操材料", status: "pending" }
+              { label: "安全校验内容", detail: "安全校验通过后展示完整资源", status: "pending" }
             ]}
           />
         ) : null}
+        {learningTraceUpdateNotice ? <p className="ai-disclaimer">{learningTraceUpdateNotice}</p> : null}
       </Panel>
       {resource ? <ResourceOutputBlock resource={resource} /> : <EmptyState text="请选择路径节点和资源类型后生成内容。" />}
     </div>
@@ -726,7 +761,7 @@ export function App() {
                 steps={[
                   { label: "检索证据", detail: "已锁定课程资料与相关知识点", status: "done" },
                   { label: "组织解释", detail: "答疑教师正在按你的画像调整讲解方式", status: "active" },
-                  { label: "流式生成", detail: "回答即将逐字呈现", status: "pending" }
+                  { label: "安全校验", detail: "安全校验通过后展示完整回答", status: "pending" }
                 ]}
               />
             </article>
@@ -768,6 +803,9 @@ export function App() {
                   }
                 ]);
                 await appendRun(nextAnswer.agent_run_id);
+                if (nextAnswer.postprocessing_task_id !== null) {
+                  void pollProfilePostprocessing(nextAnswer.postprocessing_task_id, selectedProfileId);
+                }
               })
             }
           >
@@ -775,6 +813,7 @@ export function App() {
           </button>
         </div>
         <InlineAgentTrace action="tutor" busy={busy === "ask-tutor"} runs={runs} visible={retainedTraces.includes("tutor")} />
+        {learningTraceUpdateNotice ? <p className="ai-disclaimer">{learningTraceUpdateNotice}</p> : null}
         <p className="ai-disclaimer">* 教师团队生成内容仅供参考，请注意甄别事实（已开启内容安全与防幻觉过滤机制）*</p>
       </div>
     </section>

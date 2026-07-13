@@ -40,6 +40,7 @@ from app.services.document_ingestion_service import DocumentIngestionService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.learning_path_service import LearningPathService
 from app.services.profile_service import ProfileService
+from app.services.profile_postprocessing_service import ProfilePostprocessingService
 from app.services.profile_updater_service import ProfileUpdaterService
 from app.services.resource_service import ResourceService
 from app.services.tutor_service import TutorService
@@ -250,17 +251,29 @@ def get_agent_run(run_id: int) -> AgentRunResponse:
 
 
 @api_router.post("/resources/generate", response_model=GeneratedResourceResponse)
-def generate_resource(payload: ResourceGenerateRequest) -> GeneratedResourceResponse:
+def generate_resource(payload: ResourceGenerateRequest, background_tasks: BackgroundTasks) -> GeneratedResourceResponse:
     try:
-        return ResourceService().generate_resource(payload.path_item_id, payload.resource_type)
+        response = ResourceService().generate_resource(payload.path_item_id, payload.resource_type)
+        if response.postprocessing_task_id is not None:
+            background_tasks.add_task(
+                ProfilePostprocessingService().process,
+                response.postprocessing_task_id,
+            )
+        return response
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @api_router.post("/tutor/ask", response_model=TutorAskResponse)
-def ask_tutor(payload: TutorAskRequest) -> TutorAskResponse:
+def ask_tutor(payload: TutorAskRequest, background_tasks: BackgroundTasks) -> TutorAskResponse:
     try:
-        return TutorService().ask(payload.student_profile_id, payload.course_id, payload.question)
+        response = TutorService().ask(payload.student_profile_id, payload.course_id, payload.question)
+        if response.postprocessing_task_id is not None:
+            background_tasks.add_task(
+                ProfilePostprocessingService().process,
+                response.postprocessing_task_id,
+            )
+        return response
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
