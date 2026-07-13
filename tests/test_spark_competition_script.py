@@ -21,6 +21,12 @@ class SparkCompetitionScriptTests(unittest.TestCase):
         self.assertIn('$env:LLM_PROVIDER = "openai_compatible"', script)
         self.assertIn('$env:LLM_FALLBACK_MODE = "rule_based"', script)
 
+    def test_script_uses_a_non_vite_default_frontend_port(self) -> None:
+        script = SCRIPT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('[int]$FrontendPort = 5174', script)
+        self.assertNotIn('[int]$FrontendPort = 5173', script)
+
     def test_script_enables_every_current_and_planned_llm_purpose(self) -> None:
         script = SCRIPT_PATH.read_text(encoding="utf-8")
 

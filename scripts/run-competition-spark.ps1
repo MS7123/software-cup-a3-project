@@ -2,7 +2,7 @@ param(
     [string]$BackendHost = "127.0.0.1",
     [int]$BackendPort = 8000,
     [string]$FrontendHost = "127.0.0.1",
-    [int]$FrontendPort = 5173,
+    [int]$FrontendPort = 5174,
     [string]$DatabaseUrl = "sqlite:///./data/demo.sqlite3",
     [string]$Model = "xop3qwen1b7",
     [int]$TimeoutSeconds = 45,
