@@ -79,7 +79,7 @@ $env:PLAYWRIGHT_CHANNEL='chromium'
 ./scripts/run-competition-spark.ps1
 ```
 
-比赛入口默认 frontend 为 `http://127.0.0.1:5174`，避免占用 Vite 常用的 `5173` 端口；需要时仍可通过 `-FrontendPort` 覆盖。
+比赛入口从 frontend 端口 `5174` 开始检查；若端口已被占用，会依次寻找后续可用端口并在终端打印最终 URL。需要时仍可通过 `-FrontendPort` 指定自动查找的起始端口。
 
 当前服务使用控制台给出的 `https://maas-api.cn-huabei-1.xf-yun.com/v2` 和 `/models` 实际返回的 model ID `xop3qwen1b7`。脚本启用 Tutor、Resource、Evaluator、ProfileUpdater 以及后续接入的 ProfileBuilder、Planner、Quiz；单次失败时回退 rule-based，缺少 APIKey 时在启动服务前直接失败。
 
@@ -310,7 +310,7 @@ $env:RAG_RERANK_CONTEXT_CHAR_LIMIT='3500'
 | 脚本 | 需要的 API key | LLM 结果 | RAG 检索结果 | 适合场景 |
 |---|---|---|---|---|
 | `./scripts/run-local.ps1` | 无 | 全部 Agent 使用 rule-based fallback | `keyword` 默认检索 | 最稳的离线演示、无网络、评委本地快速启动 |
-| `./scripts/run-competition-spark.ps1` | `XFYUN_SPARK_API_KEY` | 当前及后续 LLM Agent 默认使用讯飞 MaaS 服务，单次失败回退 rule-based | 默认 `keyword` | **比赛默认入口，frontend 端口为 `5174`** |
+| `./scripts/run-competition-spark.ps1` | `XFYUN_SPARK_API_KEY` | 当前及后续 LLM Agent 默认使用讯飞 MaaS 服务，单次失败回退 rule-based | 默认 `keyword` | **比赛默认入口，frontend 从 `5174` 起自动选择可用端口** |
 | `./scripts/run-local.ps1 -UseRemoteTutorLLM` | 手动设置 `LLM_*` | 按当前 shell 中 `LLM_ENABLE_FOR_*` 决定哪些 Agent 调 LLM | 默认仍是 `keyword`，除非手动设置 RAG 变量 | 自定义 provider 调试 |
 | `./scripts/run-local-deepseek.ps1` | `DEEPSEEK_API_KEY` | Tutor / Resource / Evaluator / ProfileUpdater 全部使用 DeepSeek，失败回退 rule-based | 默认 `keyword` | 使用 DeepSeek 做真实 Agent 输出 |
 | `./scripts/run-local-aliyun-flash.ps1` | `ALIYUN_BAILIAN_API_KEY` | Tutor / Resource / Evaluator / ProfileUpdater 全部使用 Qwen Flash，失败回退 rule-based | 默认 `keyword` | 使用阿里云 Qwen Flash 做真实 Agent 输出 |

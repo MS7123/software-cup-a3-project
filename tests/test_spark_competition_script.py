@@ -1,5 +1,7 @@
+import json
 import os
 import shutil
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -89,29 +91,36 @@ param(
     Planner = $env:LLM_ENABLE_FOR_PLANNER
     Quiz = $env:LLM_ENABLE_FOR_QUIZ
     Remote = [bool]$UseRemoteTutorLLM
+    FrontendPort = $FrontendPort
 } | ConvertTo-Json -Compress
 """.strip(),
                 encoding="utf-8",
             )
             environment = os.environ.copy()
             environment["XFYUN_SPARK_API_KEY"] = "test-only-key"
-            result = subprocess.run(
-                [
-                    powershell,
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    str(scripts_dir / SCRIPT_PATH.name),
-                    "-SmokeOnly",
-                ],
-                cwd=temp_root,
-                env=environment,
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=False,
-            )
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupied_socket:
+                occupied_socket.bind(("127.0.0.1", 0))
+                occupied_socket.listen()
+                occupied_port = occupied_socket.getsockname()[1]
+                result = subprocess.run(
+                    [
+                        powershell,
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        str(scripts_dir / SCRIPT_PATH.name),
+                        "-FrontendPort",
+                        str(occupied_port),
+                        "-SmokeOnly",
+                    ],
+                    cwd=temp_root,
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                )
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('"Provider":"openai_compatible"', result.stdout)
@@ -120,6 +129,8 @@ param(
         for purpose in ("Tutor", "Resource", "Evaluator", "ProfileUpdater", "ProfileBuilder", "Planner", "Quiz"):
             self.assertIn(f'"{purpose}":"true"', result.stdout)
         self.assertIn('"Remote":true', result.stdout)
+        output = json.loads(result.stdout.strip().splitlines()[-1])
+        self.assertGreater(output["FrontendPort"], occupied_port)
 
 
 if __name__ == "__main__":
