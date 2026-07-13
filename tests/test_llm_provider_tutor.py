@@ -3,6 +3,7 @@ import os
 import socket
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -68,7 +69,8 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
                         "content": "这是来自本地 fake OpenAI-compatible endpoint 的回答。"
                     }
                 }
-            ]
+            ],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20},
         }
         encoded = json.dumps(body).encode("utf-8")
         self.send_response(200)
@@ -112,6 +114,25 @@ class OpenAICompatibleDisconnectOnceHandler(OpenAICompatibleHandler):
         super().do_POST()
 
 
+class OpenAICompatibleSlowHandler(OpenAICompatibleHandler):
+    attempts = 0
+
+    def do_POST(self) -> None:
+        OpenAICompatibleSlowHandler.attempts += 1
+        length = int(self.headers.get("Content-Length", "0"))
+        self.rfile.read(length)
+        time.sleep(0.25)
+        encoded = json.dumps({"choices": [{"message": {"content": "slow response"}}]}).encode("utf-8")
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
+
+
 class LLMProviderTutorTests(unittest.TestCase):
     def test_openai_compatible_provider_uses_contract_without_exposing_key(self) -> None:
         server = HTTPServer(("127.0.0.1", 0), OpenAICompatibleHandler)
@@ -125,6 +146,7 @@ class LLMProviderTutorTests(unittest.TestCase):
                 model="deepseek-v4-flash",
                 timeout_seconds=2,
                 max_retries=0,
+                max_tokens=321,
                 fallback_mode="rule_based",
                 enable_for_tutor=True,
                 bypass_proxy=True,
@@ -141,6 +163,58 @@ class LLMProviderTutorTests(unittest.TestCase):
         self.assertNotIn("test-secret", str(result.metadata))
         self.assertEqual(OpenAICompatibleHandler.auth_header, "Bearer test-secret")
         self.assertEqual(OpenAICompatibleHandler.request_payload["model"], "deepseek-v4-flash")
+        self.assertEqual(OpenAICompatibleHandler.request_payload["max_tokens"], 321)
+        self.assertEqual(result.metadata["retry_count"], 0)
+        self.assertGreaterEqual(result.metadata["provider_duration_ms"], 0)
+        self.assertEqual(result.metadata["usage"]["total_tokens"], 20)
+
+    def test_settings_resolve_a_purpose_specific_budget(self) -> None:
+        keys = (
+            "LLM_PLANNER_TIMEOUT_SECONDS",
+            "LLM_PLANNER_MAX_RETRIES",
+            "LLM_PLANNER_MAX_TOKENS",
+        )
+        previous = {key: os.environ.get(key) for key in keys}
+        try:
+            os.environ["LLM_PLANNER_TIMEOUT_SECONDS"] = "7"
+            os.environ["LLM_PLANNER_MAX_RETRIES"] = "1"
+            os.environ["LLM_PLANNER_MAX_TOKENS"] = "456"
+            budget = LLMSettings.from_env().budget_for("planner")
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+        self.assertEqual(budget.timeout_seconds, 7)
+        self.assertEqual(budget.max_retries, 1)
+        self.assertEqual(budget.max_tokens, 456)
+
+    def test_timeout_is_not_retried_even_when_retry_budget_is_available(self) -> None:
+        OpenAICompatibleSlowHandler.attempts = 0
+        server = HTTPServer(("127.0.0.1", 0), OpenAICompatibleSlowHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            settings = LLMSettings(
+                provider="openai_compatible",
+                base_url=f"http://127.0.0.1:{server.server_port}",
+                api_key="test-secret",
+                model="test-model",
+                timeout_seconds=0.05,
+                max_retries=2,
+                enable_for_tutor=True,
+                bypass_proxy=True,
+            )
+            with self.assertRaises(LLMProviderError):
+                OpenAICompatibleLLMProvider(settings).generate([{"role": "user", "content": "hello"}])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(OpenAICompatibleSlowHandler.attempts, 1)
 
     def test_provider_error_summary_includes_http_status_and_safe_message(self) -> None:
         server = HTTPServer(("127.0.0.1", 0), OpenAICompatibleErrorHandler)

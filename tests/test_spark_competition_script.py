@@ -58,6 +58,23 @@ class SparkCompetitionScriptTests(unittest.TestCase):
         ):
             self.assertIn(f'$env:LLM_ENABLE_FOR_{purpose} = "true"', script)
 
+    def test_script_sets_purpose_specific_latency_and_token_budgets(self) -> None:
+        script = SCRIPT_PATH.read_text(encoding="utf-8")
+
+        expected = {
+            "PLANNER": (12, 0, 600),
+            "PROFILE_UPDATER": (12, 0, 700),
+            "PROFILE_BUILDER": (15, 0, 900),
+            "EVALUATOR": (15, 0, 900),
+            "TUTOR": (20, 0, 1200),
+            "QUIZ": (20, 0, 1400),
+            "RESOURCE": (30, 0, 2000),
+        }
+        for purpose, (timeout, retries, max_tokens) in expected.items():
+            self.assertIn(f'$env:LLM_{purpose}_TIMEOUT_SECONDS = "{timeout}"', script)
+            self.assertIn(f'$env:LLM_{purpose}_MAX_RETRIES = "{retries}"', script)
+            self.assertIn(f'$env:LLM_{purpose}_MAX_TOKENS = "{max_tokens}"', script)
+
     def test_script_fails_for_a_missing_secret_before_starting_services(self) -> None:
         script = SCRIPT_PATH.read_text(encoding="utf-8")
 
