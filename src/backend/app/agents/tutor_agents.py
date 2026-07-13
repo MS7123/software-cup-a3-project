@@ -5,7 +5,7 @@ from app.adapters.llm_provider import LLMProviderError
 from app.agents.rule_based_agents import RuleBasedTutorAgent, TutorAgentResult
 from app.agents.tutor_prompts import build_tutor_messages
 from app.schemas import KnowledgeSearchResult
-from app.services.citation_service import source_ref_payload
+from app.services.citation_service import source_ref_payload, validate_citations
 
 
 class TutorAgent(Protocol):
@@ -38,6 +38,18 @@ class LLMBackedTutorAgent:
         course_title: str = "",
     ) -> TutorAgentResult:
         source_refs = [source_ref_payload(chunk) for chunk in chunks]
+        if not chunks:
+            fallback = self.fallback_agent.answer(question, chunks, profile_summary, course_title)
+            return TutorAgentResult(
+                answer=fallback.answer,
+                source_refs=fallback.source_refs,
+                input_summary=fallback.input_summary,
+                output_summary="No RAG evidence was retrieved; returned the rule-based grounded limitation without calling LLM.",
+                decision_basis=(
+                    f"{fallback.decision_basis} "
+                    "Fallback reason: No retrieved course chunks are available."
+                ),
+            )
         try:
             result = self.provider.generate(
                 build_tutor_messages(question, chunks, profile_summary, course_title),
@@ -54,12 +66,16 @@ class LLMBackedTutorAgent:
                         "Fallback reason: LLM answer contradicted non-empty retrieved chunks."
                     ),
                 )
+            grounded_answer = _ensure_grounded_citations(result.content, source_refs)
             return TutorAgentResult(
-                answer=result.content,
+                answer=grounded_answer,
                 source_refs=source_refs,
                 input_summary=f"使用真实 LLM 回答学生问题：{question}",
-                output_summary="LLM provider 返回 grounded tutor answer。",
-                decision_basis="通过 LLMProvider adapter 调用 OpenAI-compatible provider，并使用 KnowledgeBaseService 返回的 chunk 作为回答依据。",
+                output_summary="LLM provider 返回 grounded tutor answer，并通过引用白名单校验。",
+                decision_basis=(
+                    "通过 LLMProvider adapter 调用 OpenAI-compatible provider，并使用 KnowledgeBaseService "
+                    "返回的 chunk 作为回答依据；缺失的内联引用仅从 Retriever source_ref 白名单补充。"
+                ),
             )
         except Exception as exc:
             reason = _fallback_reason(exc)
@@ -97,3 +113,16 @@ def _contradicts_retrieved_context(answer: str) -> bool:
         "\u7247\u6bb5\u4e0d\u8db3",
     ]
     return any(marker in normalized for marker in no_context_markers)
+
+
+def _ensure_grounded_citations(answer: str, source_refs: list[dict]) -> str:
+    citation_check = validate_citations(answer, source_refs)
+    fake_refs = citation_check["fake_source_refs"]
+    if fake_refs:
+        raise ValueError(f"LLM answer cited unknown source refs: {', '.join(fake_refs[:3])}")
+    if not citation_check["missing_citation"]:
+        return answer
+
+    verified_refs = citation_check["allowed_source_refs"]
+    citations = " ".join(f"[{source_ref}]" for source_ref in verified_refs)
+    return f"{answer.rstrip()}\n\n资料依据：{citations}"

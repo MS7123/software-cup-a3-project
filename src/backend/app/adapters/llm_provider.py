@@ -1,4 +1,5 @@
 import json
+import http.client
 import os
 import time
 import urllib.error
@@ -131,7 +132,15 @@ class OpenAICompatibleLLMProvider:
                 last_error = LLMProviderError(_url_error_summary(exc))
                 if attempt < self.settings.max_retries:
                     time.sleep(0.2)
-            except (TimeoutError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            except (
+                TimeoutError,
+                ConnectionResetError,
+                http.client.RemoteDisconnected,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as exc:
                 last_error = exc
                 if attempt < self.settings.max_retries:
                     time.sleep(0.2)

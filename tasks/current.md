@@ -5,13 +5,13 @@
 
 ## 当前批准执行
 
-### COMP-006: 启用并验证已经接入的 LLM 能力
+### COMP-007: 统一 LLM 配置与运行证据
 
 - 状态：Current
 - 依据：`docs/plans/competition/16-a3-requirements-gap-roadmap.md`
-- 前置依赖：`COMP-004` 已完成 Quiz LLM 自动化、前端构建、星火联机与评价闭环验证；`COMP-005` 比赛启动入口已完成并通过状态复核。
-- 执行边界：禁止重复开发 Tutor、Resource、Evaluator 和 ProfileUpdater；仅补充星火联机验收、必要兼容修正和可核验 trace 证据。
-- Done 条件：满足路线图 COMP-006 的全部自动化与星火联机验收标准后，才能移入 Done。
+- 前置依赖：`COMP-006` 已完成四项既有 LLM 能力的星火联机验收、Tutor 引用白名单补强、远端断连重试兼容和无证据安全降级验证。
+- 执行边界：统一所有核心 Agent run 的 execution mode、provider、model、fallback、source refs 和耗时证据；禁止记录 API key、完整 prompt、完整上下文或 chain-of-thought，优先复用现有 Agent run 数据结构。
+- Done 条件：满足路线图 COMP-007 的全部自动化、数据安全和联机 trace 验收标准后，才能移入 Done。
 
 ### PLAN-002: 编写测试计划
 

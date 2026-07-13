@@ -79,6 +79,21 @@ class ProfileUpdaterLLMTests(unittest.TestCase):
         self.assertIn("LLM 分析不可用，已回退到 rule-based", preferences["last_profile_update_reason"])
         self.assertIn("provider unavailable", preferences["last_profile_update_reason"])
 
+    def test_profile_updater_does_not_call_llm_or_write_history_without_trace(self) -> None:
+        DemoDataService(database_url=self.database_url).load_demo_data()
+        profile_id = ProfileService(database_url=self.database_url).list_demo_profiles()[0].id
+        before = ProfileService(database_url=self.database_url).get_profile(profile_id)
+
+        with patch(
+            "app.services.profile_updater_service.build_llm_provider",
+            side_effect=AssertionError("provider must not be built without trace evidence"),
+        ):
+            after = ProfileUpdaterService(database_url=self.database_url).update_from_trace(profile_id)
+
+        history = ProfileUpdaterService(database_url=self.database_url).list_history(profile_id)
+        self.assertEqual(after.model_dump(), before.model_dump())
+        self.assertEqual(history, [])
+
     def _seed_trace(self) -> int:
         demo = DemoDataService(database_url=self.database_url).load_demo_data().demo_data
         profile_id = ProfileService(database_url=self.database_url).list_demo_profiles()[0].id

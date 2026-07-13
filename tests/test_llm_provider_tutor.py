@@ -1,5 +1,6 @@
 import json
 import os
+import socket
 import tempfile
 import threading
 import unittest
@@ -17,6 +18,7 @@ from app.agents.rule_based_agents import RuleBasedTutorAgent
 from app.agents.tutor_agents import LLMBackedTutorAgent
 from app.agents.tutor_factory import build_tutor_agent
 from app.schemas import KnowledgeSearchResult
+from app.services.citation_service import validate_citations
 
 
 class FakeProvider:
@@ -35,6 +37,11 @@ class NoContextProvider:
             content="No retrieved course chunks are available, so I cannot answer.",
             metadata={"provider": "fake"},
         )
+
+
+class UnexpectedCallProvider:
+    def generate(self, messages, response_schema=None) -> LLMResult:
+        raise AssertionError("provider must not be called without retrieved evidence")
 
 
 class PromptCaptureProvider:
@@ -89,6 +96,20 @@ class OpenAICompatibleErrorHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args) -> None:
         return
+
+
+class OpenAICompatibleDisconnectOnceHandler(OpenAICompatibleHandler):
+    attempts = 0
+
+    def do_POST(self) -> None:
+        OpenAICompatibleDisconnectOnceHandler.attempts += 1
+        if OpenAICompatibleDisconnectOnceHandler.attempts == 1:
+            length = int(self.headers.get("Content-Length", "0"))
+            self.rfile.read(length)
+            self.connection.shutdown(socket.SHUT_RDWR)
+            self.connection.close()
+            return
+        super().do_POST()
 
 
 class LLMProviderTutorTests(unittest.TestCase):
@@ -150,6 +171,32 @@ class LLMProviderTutorTests(unittest.TestCase):
         self.assertNotIn("test-secret", message)
         self.assertEqual(OpenAICompatibleErrorHandler.request_path, "/chat/completions")
 
+    def test_provider_retries_when_remote_disconnects_before_response(self) -> None:
+        OpenAICompatibleDisconnectOnceHandler.attempts = 0
+        server = HTTPServer(("127.0.0.1", 0), OpenAICompatibleDisconnectOnceHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            settings = LLMSettings(
+                provider="openai_compatible",
+                base_url=f"http://127.0.0.1:{server.server_port}",
+                api_key="test-secret",
+                model="test-model",
+                timeout_seconds=2,
+                max_retries=1,
+                enable_for_tutor=True,
+                bypass_proxy=True,
+            )
+            result = OpenAICompatibleLLMProvider(settings).generate([{"role": "user", "content": "hello"}])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(OpenAICompatibleDisconnectOnceHandler.attempts, 2)
+        self.assertIn("fake OpenAI-compatible", result.content)
+        self.assertEqual(result.metadata["attempt"], 2)
+
     def test_llm_tutor_fallback_includes_url_error_reason(self) -> None:
         class UrlErrorProvider:
             def generate(self, messages, response_schema=None) -> LLMResult:
@@ -172,12 +219,39 @@ class LLMProviderTutorTests(unittest.TestCase):
         self.assertTrue(result.source_refs)
         self.assertIn("LLMProvider adapter", result.decision_basis)
 
+    def test_llm_tutor_agent_appends_verified_source_when_provider_omits_inline_citation(self) -> None:
+        chunk = KnowledgeSearchResult(
+            chunk_id=90,
+            content="BFS 使用队列，DFS 使用递归或显式栈。",
+            score=1.0,
+            source_ref="document:9#chunk:0",
+        )
+        agent = LLMBackedTutorAgent(FakeProvider())
+
+        result = agent.answer("BFS 和 DFS 使用什么数据结构？", [chunk])
+        citation_check = validate_citations(result.answer, result.source_refs)
+
+        self.assertIn("[document:9#chunk:0]", result.answer)
+        self.assertFalse(citation_check["missing_citation"])
+        self.assertEqual(citation_check["fake_source_refs"], [])
+        self.assertNotIn("Fallback reason:", result.decision_basis)
+
     def test_llm_tutor_agent_falls_back_when_provider_denies_non_empty_context(self) -> None:
         agent = LLMBackedTutorAgent(NoContextProvider())
         result = agent.answer("Why compare BFS and DFS?", [_chunk()])
         self.assertNotIn("No retrieved course chunks", result.answer)
         self.assertTrue(result.source_refs)
         self.assertIn("contradicted non-empty retrieved chunks", result.decision_basis)
+        self.assertIn("rule-based", result.output_summary)
+
+    def test_llm_tutor_agent_returns_explicit_limitation_without_retrieved_chunks(self) -> None:
+        agent = LLMBackedTutorAgent(UnexpectedCallProvider())
+
+        result = agent.answer("BFS 和 DFS 有什么不同？", [])
+
+        self.assertIn("暂未检索到足够资料", result.answer)
+        self.assertEqual(result.source_refs, [])
+        self.assertIn("No retrieved course chunks", result.decision_basis)
         self.assertIn("rule-based", result.output_summary)
 
     def test_llm_tutor_prompt_requires_stable_sections_profile_and_sources(self) -> None:

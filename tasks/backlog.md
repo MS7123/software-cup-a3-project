@@ -31,8 +31,8 @@
 | COMP-003 | 完成 Hybrid 学习路径与主动资源推荐 | A3-学习路径与资源推送 | COMP-003-AC | Done | 已完成图谱硬约束、LLM 排序、主动推荐、动态重算、fallback 与星火联机验证 |
 | COMP-004 | 完成 Quiz LLM 接入 | A3-个性化练习题 | COMP-004-AC | Done | 已完成五类题型、grounded 引用、Critic、确定性客观题评分、fallback 与星火闭环 |
 | COMP-005 | 新增科大讯飞星辰 MaaS 比赛默认启动入口 | A3-大模型融合 | COMP-005-AC | Done | 已完成 MaaS `/v2` 比赛入口、七项 LLM purpose、密钥保护、自动端口与 SmokeOnly 验证 |
-| COMP-006 | 启用并验证已经接入的 LLM 能力 | A3-大模型融合 | COMP-006-AC | Current | 下一开发增量：不重复开发 Tutor、Resource、Evaluator、ProfileUpdater，只做真实星火验收与兼容修正 |
-| COMP-007 | 统一 LLM 配置与运行证据 | A3-Multi-Agent | COMP-007-AC | Backlog | 记录 execution mode、provider、model 和 fallback |
+| COMP-006 | 启用并验证已经接入的 LLM 能力 | A3-大模型融合 | COMP-006-AC | Done | 已完成四项既有 Agent 的真实星火验收、引用白名单、断连重试兼容、无证据 no-op 与 opt-in 联机测试 |
+| COMP-007 | 统一 LLM 配置与运行证据 | A3-Multi-Agent | COMP-007-AC | Current | 下一开发增量：统一 execution mode、provider、model、fallback、source refs 和耗时证据 |
 | COMP-008 | 建立防幻觉与内容安全验证闭环 | A3-非功能要求 | COMP-008-AC | Backlog | 固化引用白名单、安全拦截和降级策略 |
 | COMP-009 | 完成比赛交付文档与合规材料 | A3-文档及其他要求 | COMP-009-AC | Backlog | 开发说明、测试说明、依赖协议和 AI 工具说明 |
 | COMP-010 | 冻结 7 分钟演示与初赛作品目录 | A3-初赛提交要求 | COMP-010-AC | Backlog | 固定演示数据、流程和比赛启动入口 |

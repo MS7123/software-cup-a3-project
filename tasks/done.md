@@ -29,6 +29,12 @@
 
 ## 已通过 Review 的实现任务
 
+- [x] `COMP-006`：启用并验证已经接入的 LLM 能力。
+  - 完成范围：不重复实现 Tutor、Resource、Evaluator 或 ProfileUpdater；新增可重复执行的真实星火验收入口，补齐 Tutor 引用白名单、无检索资料安全限制和 OpenAI-compatible adapter 的 `RemoteDisconnected` 重试兼容。
+  - 自动化证据：Evaluator 非法 JSON 安全 fallback、ProfileUpdater 无证据 no-op、Tutor 缺失引用确定性补充、无检索不调用 LLM、断连重试、联机测试 opt-in 和既有 factory 复用均有回归测试。
+  - 联机证据：`verify-spark-existing-agents.ps1` 对 MaaS `xop3qwen1b7` 的 6 项验收全部通过；五类 Resource 均走 LLM 且通过 Critic，两组画像输出不同，Tutor 引用合法，Evaluator 结构合法，ProfileUpdater 使用真实 trace 且无证据不变化。
+  - 保留边界：Router、Retriever、Critic、引用白名单、schema、无证据拒答与 rule-based fallback 继续承担确定性约束；完整 prompt、模型回答和 API key 不进入验收输出。
+
 - [x] `COMP-005`：新增科大讯飞星辰 MaaS 比赛默认启动入口。
   - 完成范围：复用现有 OpenAI-compatible adapter，配置 MaaS `/v2`、`xop3qwen1b7`、User/Process scope APIKey、七项 LLM purpose、rule-based fallback、环境恢复和前端自动可用端口。
   - 自动化证据：`tests/test_spark_competition_script.py` 覆盖配置、密钥保护顺序、全部 purpose、参数传递、端口占用、`-SmokeOnly` 和部署文档；既有提交为 `3ba978a`、`7347a27`、`6d2d789`。

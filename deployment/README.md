@@ -83,6 +83,14 @@ $env:PLAYWRIGHT_CHANNEL='chromium'
 
 当前服务使用控制台给出的 `https://maas-api.cn-huabei-1.xf-yun.com/v2` 和 `/models` 实际返回的 model ID `xop3qwen1b7`。脚本启用 Tutor、Resource、Evaluator、ProfileUpdater 以及后续接入的 ProfileBuilder、Planner、Quiz；单次失败时回退 rule-based，缺少 APIKey 时在启动服务前直接失败。
 
+验证已有 Tutor、五类 Resource、Evaluator 和 ProfileUpdater 确实调用星火，而不是静默运行 fallback：
+
+```powershell
+./scripts/verify-spark-existing-agents.ps1
+```
+
+该命令是显式联机验收入口，会产生真实 MaaS 调用。它只打印执行模式、内容长度与哈希、引用数量、Critic 结果、结构化评分和响应耗时；不会打印 API key、完整 prompt 或完整模型回答。任一 Agent 进入 fallback、Tutor 引用不合法、五类资源未通过 Critic、Evaluator 结构非法或 ProfileUpdater 无证据时修改画像，命令都会失败。普通 `python -m unittest discover -s tests` 不会调用外部服务。
+
 ### DeepSeek Chat LLM
 
 DeepSeek 脚本读取 `DEEPSEEK_API_KEY`，并在启动时映射成后端实际使用的 `LLM_API_KEY`。

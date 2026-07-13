@@ -219,7 +219,7 @@ LLM_ENABLE_FOR_QUIZ=true
 - [x] 单次远程调用失败时业务可按配置降级，且 trace 明确记录原因。
 - [x] `run-local.ps1` 的默认离线行为和现有自动化测试不受影响。
 
-**完成证据（2026-07-13 状态校正）：** `scripts/run-competition-spark.ps1` 已由提交 `3ba978a` 实现，并由 `7347a27`、`6d2d789` 完成默认端口调整和自动选择可用端口；脚本从 User/Process scope 安全读取 MaaS APIKey，默认配置 `/v2`、`xop3qwen1b7`、所有七项 LLM purpose 和 rule-based fallback，并在退出时恢复原环境。`test_spark_competition_script.py` 覆盖配置、缺少密钥保护顺序、所有 purpose、参数传递、端口占用和 `-SmokeOnly`；本地离线测试与全量回归继续通过。该任务仅校正文档状态，不重复开发启动脚本。
+**完成证据（2026-07-13 状态校正）：** `scripts/run-competition-spark.ps1` 已由提交 `3ba978a` 实现，并由 `7347a27`、`6d2d789`、`8a5f802` 完成默认端口调整和在实际本地启动器内自动选择可用端口；脚本从 User/Process scope 安全读取 MaaS APIKey，默认配置 `/v2`、`xop3qwen1b7`、所有七项 LLM purpose 和 rule-based fallback，并在退出时恢复原环境。`test_spark_competition_script.py` 覆盖配置、缺少密钥保护顺序、所有 purpose、参数传递、端口占用和 `-SmokeOnly`；本地离线测试与全量回归继续通过。该任务仅校正文档状态，不重复开发启动脚本。
 
 ### COMP-006：启用并验证已经接入的 LLM 能力
 
@@ -237,11 +237,13 @@ LLM_ENABLE_FOR_QUIZ=true
 
 **验收标准：**
 
-- [ ] 五类资源均由星火真实生成并通过 Critic。
-- [ ] Tutor 的主要事实断言能够追溯到真实 `source_ref`。
-- [ ] Evaluator 非法 JSON 会被拒绝或安全 fallback。
-- [ ] ProfileUpdater 无新证据时不会伪造画像变化。
-- [ ] 自动化测试证明上述能力没有被重新实现为第二套重复架构。
+- [x] 五类资源均由星火真实生成并通过 Critic。
+- [x] Tutor 的主要事实断言能够追溯到真实 `source_ref`。
+- [x] Evaluator 非法 JSON 会被拒绝或安全 fallback。
+- [x] ProfileUpdater 无新证据时不会伪造画像变化。
+- [x] 自动化测试证明上述能力没有被重新实现为第二套重复架构。
+
+**完成证据（2026-07-13）：** 新增 `scripts/verify-spark-existing-agents.ps1` 与 opt-in `tests/test_spark_existing_agents_online.py`，只复用既有 Resource/Tutor/Evaluator factory、RuleBasedCriticAgent、引用校验和 ProfileUpdaterService，没有创建第二套 Agent。真实 MaaS `xop3qwen1b7` 联机验收 6/6 通过：五类 Resource 均为 LLM 路径、均含 2 个 Retriever 来源并通过 Critic，五类内容哈希互异；同一 `guided_note` 在 beginner/visual 与 intermediate/code 两组画像下生成不同内容；Tutor 的允许引用和正文引用均为 2 个且无伪造/缺失；Evaluator 返回合法评分、反馈与 LLM mastery update；ProfileUpdater 基于真实 trace 写入画像历史，无证据时画像与历史均保持不变。联机过程中发现 Tutor 可能遗漏内联引用，现由规则层仅从 Retriever 白名单补充来源；发现 MaaS `RemoteDisconnected` 未进入 adapter 重试路径，已补回归测试并纳入现有重试机制。Evaluator 非法 JSON、Tutor 无检索资料、provider failure/fallback reason 和架构复用均有离线自动化覆盖。完整后端测试、前端 production build 与比赛入口 `-SmokeOnly` 均通过。
 
 ### COMP-007：统一 LLM 配置与运行证据
 

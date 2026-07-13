@@ -8,14 +8,15 @@ from app.agents.rule_based_agents import RuleBasedEvaluatorAgent
 
 
 class FakeEvaluatorProvider:
-    def __init__(self, fail: bool = False) -> None:
+    def __init__(self, fail: bool = False, content: str | None = None) -> None:
         self.fail = fail
+        self.content = content
 
     def generate(self, messages, response_schema=None) -> LLMResult:
         if self.fail:
             raise RuntimeError("evaluator provider unavailable")
         return LLMResult(
-            content="""
+            content=self.content or """
             {
               "score": 0.72,
               "feedback": "你的回答能区分 BFS 和 DFS 的遍历方向，但缺少复杂度和适用场景说明。",
@@ -55,6 +56,17 @@ class EvaluatorLLMTests(unittest.TestCase):
         self.assertIn("Fallback reason", result.decision_basis)
         self.assertIn("evaluator provider unavailable", result.decision_basis)
         self.assertIn("rule-based", result.output_summary)
+
+    def test_llm_evaluator_rejects_invalid_json_and_falls_back_safely(self) -> None:
+        agent = LLMBackedEvaluatorAgent(FakeEvaluatorProvider(content="not-json"))
+
+        result = agent.evaluate("应围绕链表定义说明。", {"answer": "链表由节点组成。"}, 2)
+
+        self.assertGreaterEqual(result.score, 0.0)
+        self.assertLessEqual(result.score, 1.0)
+        self.assertIn("rule-based", result.output_summary)
+        self.assertIn("Fallback reason:", result.decision_basis)
+        self.assertIn("JSON object", result.decision_basis)
 
 
 if __name__ == "__main__":
