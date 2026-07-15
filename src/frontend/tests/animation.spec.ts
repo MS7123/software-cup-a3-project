@@ -29,4 +29,16 @@ test("教学动画根据模板数据渲染并支持逐步播放", async ({ page 
 
   await animation.getByRole("button", { name: "重播" }).click();
   await expect(animation.getByTestId("animation-visit-order")).toContainText("尚未开始");
+
+  await page.getByRole("button", { name: "学习路径", exact: true }).click();
+  await pathTimeline.getByTestId("path-item-card").filter({ hasText: "BFS/DFS" }).first().click();
+  await page.getByRole("button", { name: "资源生成", exact: true }).click();
+  await page.getByTestId("resource-type-teaching_video").click();
+  await page.getByTestId("generate-resource-button").click();
+
+  const graphAnimation = page.getByTestId("svg-animation-player");
+  await expect(graphAnimation).toHaveAttribute("data-template-id", "graph_visualizer", { timeout: 60_000 });
+  await expect(graphAnimation.getByTestId("animation-scene").locator("circle")).toHaveCount(5);
+  await graphAnimation.getByRole("button", { name: "下一步" }).click();
+  await expect(graphAnimation.getByTestId("animation-visit-order")).toContainText("A → B");
 });

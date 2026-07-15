@@ -41,7 +41,7 @@ export default function ResourceOutputBlock({ resource }: { resource: GeneratedR
       <ResourceHeader title={resourceLabel(resource.resource_type)} />
       <SafetyStatusBanner status={resource.safety_status} message={resource.safety_message} />
       {resource.resource_type === "teaching_video" && resource.animation_spec ? <AnimationRenderer spec={resource.animation_spec} /> : null}
-      {resource.resource_type === "teaching_video" && !resource.animation_spec ? <VideoPlayerCard title="个性化教学动画讲解" /> : null}
+      {resource.resource_type === "teaching_video" && !resource.animation_spec ? <LegacyAnimationNotice /> : null}
       {resource.resource_type === "mind_map" ? <MindMapDiagram text={resource.content} /> : null}
       {resource.resource_type === "coding_case" ? <CodeCaseCard code={extractFencedCode(resource.content) || resource.content} /> : null}
       {resource.resource_type !== "mind_map" && resource.resource_type !== "coding_case" && resource.resource_type !== "teaching_video" ? <TypewriterMarkdown text={resource.content} /> : null}
@@ -51,19 +51,11 @@ export default function ResourceOutputBlock({ resource }: { resource: GeneratedR
   );
 }
 
-function VideoPlayerCard({ title }: { title: string }) {
+function LegacyAnimationNotice() {
   return (
-    <article className="video-player-card" data-testid="video-player-card">
-      <div className="video-cover">
-        <button className="video-play-button" type="button" aria-label="播放教学动画">
-          ▶
-        </button>
-        <span className="video-duration">03:28</span>
-      </div>
-      <div className="video-meta">
-        <strong>{title}</strong>
-        <span>动画占位内容，后续可替换为 SeeDance 等多模态生成结果。</span>
-      </div>
+    <article className="animation-legacy-notice" role="status" data-testid="animation-legacy-notice">
+      <strong>这是一条旧版动画资源</strong>
+      <span>旧记录未包含动画场景数据，请点击左侧“生成教学动画”重新生成。</span>
     </article>
   );
 }

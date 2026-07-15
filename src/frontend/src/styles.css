@@ -2822,6 +2822,19 @@ button:disabled {
   vector-effect: non-scaling-stroke;
 }
 
+.animation-edges marker path {
+  fill: #9eaea5;
+}
+
+.animation-edges text {
+  fill: #6f7f76;
+  font-size: 0.72rem;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: #f7faf8;
+  stroke-width: 5px;
+}
+
 .animation-node {
   transition: filter 220ms ease;
 }
@@ -2833,6 +2846,13 @@ button:disabled {
   transition: fill 220ms ease, stroke 220ms ease, stroke-width 220ms ease;
 }
 
+.animation-node rect {
+  fill: #ffffff;
+  stroke: #c6d4cc;
+  stroke-width: 2;
+  transition: fill 220ms ease, stroke 220ms ease, transform 220ms ease;
+}
+
 .animation-node text {
   fill: #53635b;
   font-size: 1rem;
@@ -2842,6 +2862,11 @@ button:disabled {
 }
 
 .animation-node-visited circle {
+  fill: #dff0e8;
+  stroke: #82b59f;
+}
+
+.animation-node-visited rect {
   fill: #dff0e8;
   stroke: #82b59f;
 }
@@ -2860,8 +2885,42 @@ button:disabled {
   stroke-width: 4;
 }
 
+.animation-node-current rect {
+  fill: #178565;
+  stroke: #ffffff;
+  stroke-width: 4;
+}
+
 .animation-node-current text {
   fill: #ffffff;
+}
+
+.animation-bar rect {
+  transform-origin: center bottom;
+}
+
+.animation-bar.animation-node-current rect {
+  transform: translateY(-5px);
+}
+
+.animation-scene-algorithm_workflow .animation-box text {
+  font-size: 0.82rem;
+}
+
+.animation-legacy-notice {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  border: 1px solid #dddfd4;
+  border-radius: 0.75rem;
+  background: #f7f7f2;
+  padding: 1rem;
+  color: #4e5a52;
+}
+
+.animation-legacy-notice span {
+  color: #778078;
+  font-size: 0.86rem;
 }
 
 .animation-caption {
@@ -2957,6 +3016,7 @@ button:disabled {
 @media (prefers-reduced-motion: reduce) {
   .animation-node,
   .animation-node circle,
+  .animation-node rect,
   .animation-node text,
   .animation-control-buttons button {
     transition: none;

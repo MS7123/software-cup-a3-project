@@ -253,30 +253,47 @@ export interface AnimationNode {
   label: string;
   x: number;
   y: number;
+  value: number | null;
+  kind: string;
 }
 
 export interface AnimationEdge {
   source: string;
   target: string;
+  label: string | null;
 }
 
 export interface AnimationTimelineStep {
   at_ms: number;
-  action: "visit" | "highlight";
+  action: "visit" | "highlight" | "compare" | "swap" | "push" | "pop" | "enqueue" | "dequeue" | "relax" | "select" | "complete";
   target: string;
   caption: string;
 }
 
+export type AnimationTemplateId =
+  | "binary_tree_traversal"
+  | "complexity_visualizer"
+  | "linear_structure"
+  | "stack_queue_operations"
+  | "tree_visualizer"
+  | "graph_visualizer"
+  | "search_visualizer"
+  | "sorting_visualizer"
+  | "algorithm_workflow"
+  | "concept_fallback";
+
 export interface AnimationSpec {
   version: "1.0";
-  template_id: "binary_tree_traversal";
+  template_id: AnimationTemplateId;
   title: string;
   description: string;
   duration_ms: number;
   data: {
-    traversal_type: "PRE_ORDER" | "IN_ORDER" | "POST_ORDER" | "LEVEL_ORDER";
+    mode: string;
+    traversal_type: "PRE_ORDER" | "IN_ORDER" | "POST_ORDER" | "LEVEL_ORDER" | null;
     nodes: AnimationNode[];
     edges: AnimationEdge[];
+    sequence: string[];
   };
   timeline: AnimationTimelineStep[];
 }
