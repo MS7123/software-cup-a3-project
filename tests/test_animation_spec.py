@@ -1,5 +1,6 @@
 import unittest
 
+from app.seed.demo_data import DEMO_CONCEPTS
 from app.services.animation_spec_service import AnimationSpecService
 
 
@@ -60,7 +61,26 @@ class AnimationSpecServiceTests(unittest.TestCase):
 
         self.assertIsNone(spec)
 
-    def test_unsupported_video_topic_falls_back_without_raw_svg(self) -> None:
+    def test_every_official_concept_builds_a_validated_animation_spec(self) -> None:
+        specs = {
+            concept["slug"]: self.service.build(
+                concept_name=concept["name"],
+                concept_slug=concept["slug"],
+                objective=concept["description"],
+                resource_type="teaching_video",
+            )
+            for concept in DEMO_CONCEPTS
+        }
+
+        self.assertEqual(len(specs), 24)
+        self.assertTrue(all(spec is not None for spec in specs.values()))
+        self.assertGreaterEqual(len({spec.template_id for spec in specs.values() if spec}), 8)
+        for concept_slug, spec in specs.items():
+            assert spec is not None, concept_slug
+            self.assertGreater(len(spec.data.nodes), 0, concept_slug)
+            self.assertGreater(len(spec.timeline), 0, concept_slug)
+
+    def test_unknown_video_topic_uses_safe_fallback_without_raw_svg(self) -> None:
         spec = self.service.build(
             concept_name="红黑树旋转",
             concept_slug="red-black-tree",
@@ -68,7 +88,10 @@ class AnimationSpecServiceTests(unittest.TestCase):
             resource_type="teaching_video",
         )
 
-        self.assertIsNone(spec)
+        self.assertIsNotNone(spec)
+        assert spec is not None
+        self.assertEqual(spec.template_id, "concept_fallback")
+        self.assertNotIn("<svg", spec.model_dump_json().lower())
 
 
 if __name__ == "__main__":

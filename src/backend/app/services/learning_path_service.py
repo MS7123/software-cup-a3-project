@@ -23,7 +23,7 @@ from app.models import (
     StudentProfile,
 )
 from app.schemas import LearningPathItemResponse, LearningPathResponse
-from app.services.demo_data_service import DemoDataService
+from app.services.demo_data_service import DEMO_CONCEPT_SLUGS, DemoDataService
 from app.services.agent_execution_metadata import build_execution_metadata
 from app.services.profile_updater_service import ProfileUpdaterService
 
@@ -224,7 +224,12 @@ class LearningPathService:
         return refreshed
 
     def _course_graph(self, session, course_id: int) -> tuple[list[PlannerConcept], list[PlannerRelation]]:
-        concept_rows = session.scalars(select(Concept).where(Concept.course_id == course_id)).all()
+        concept_rows = session.scalars(
+            select(Concept).where(
+                Concept.course_id == course_id,
+                Concept.slug.in_(DEMO_CONCEPT_SLUGS),
+            )
+        ).all()
         concepts = [
             PlannerConcept(
                 id=concept.id,

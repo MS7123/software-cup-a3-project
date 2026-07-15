@@ -4,7 +4,7 @@ from app.db.session import session_scope
 from app.domain.exceptions import NotFoundError
 from app.models import Concept, ConceptRelation, Course
 from app.schemas import ConceptGraphResponse, ConceptRelationResponse, ConceptResponse, DemoDataStatusResponse
-from app.services.demo_data_service import DemoDataService
+from app.services.demo_data_service import DEMO_CONCEPT_SLUGS, DemoDataService
 
 
 class CourseService:
@@ -18,7 +18,9 @@ class CourseService:
             if course is None:
                 raise NotFoundError("Course", course_id)
             concepts = session.scalars(
-                select(Concept).where(Concept.course_id == course.id).order_by(Concept.id)
+                select(Concept)
+                .where(Concept.course_id == course.id, Concept.slug.in_(DEMO_CONCEPT_SLUGS))
+                .order_by(Concept.id)
             ).all()
             concept_ids = [concept.id for concept in concepts]
             relations = []

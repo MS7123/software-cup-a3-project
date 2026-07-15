@@ -10,6 +10,7 @@ from app.db.session import get_engine, get_session_factory
 from app.main import create_app
 from app.models import AgentRun, Concept, ConceptRelation, Document, DocumentChunk, LearningPath, StudentProfile
 from app.seed.demo_data import DEMO_CHAPTERS, DEMO_CHUNKS, DEMO_CONCEPTS, DEMO_PROFILES, DEMO_RELATIONS
+from app.services.course_service import CourseService
 from app.services.demo_data_service import DemoDataService
 
 
@@ -74,6 +75,32 @@ class DemoDataTests(unittest.TestCase):
             self.assertGreater(len(session.scalars(select(DocumentChunk)).all()), len(DEMO_CHUNKS))
         finally:
             session.close()
+
+    def test_legacy_stack_queue_is_hidden_from_active_course_graph(self) -> None:
+        service = DemoDataService(database_url=self.database_url)
+        loaded = service.load_demo_data().demo_data
+        session = get_session_factory(self.database_url)()
+        try:
+            session.add(
+                Concept(
+                    course_id=loaded.course_id,
+                    slug="stack-queue",
+                    name="栈与队列（旧版）",
+                    chapter="第 3 章 栈、队列与递归",
+                    description="旧版合并节点",
+                    difficulty="basic",
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        status = service.get_status()
+        graph = CourseService(database_url=self.database_url).get_concept_graph(loaded.course_id)
+
+        self.assertEqual(status.concept_count, len(DEMO_CONCEPTS))
+        self.assertNotIn("stack-queue", status.concept_slugs)
+        self.assertEqual({concept.slug for concept in graph.concepts}, {item["slug"] for item in DEMO_CONCEPTS})
 
     def test_status_upgrades_legacy_generated_resources_table_for_animation_specs(self) -> None:
         engine = get_engine(self.database_url)

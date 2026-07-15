@@ -251,33 +251,61 @@ class AnimationNode(BaseModel):
     label: str = Field(min_length=1, max_length=20)
     x: int = Field(ge=0, le=640)
     y: int = Field(ge=0, le=360)
+    value: int | None = Field(default=None, ge=0, le=1000)
+    kind: str = Field(default="node", min_length=1, max_length=30)
 
 
 class AnimationEdge(BaseModel):
     source: str = Field(min_length=1, max_length=40)
     target: str = Field(min_length=1, max_length=40)
+    label: str | None = Field(default=None, max_length=20)
 
 
-class BinaryTreeAnimationData(BaseModel):
-    traversal_type: Literal["PRE_ORDER", "IN_ORDER", "POST_ORDER", "LEVEL_ORDER"]
+class AnimationSceneData(BaseModel):
+    mode: str = Field(default="overview", min_length=1, max_length=40)
+    traversal_type: Literal["PRE_ORDER", "IN_ORDER", "POST_ORDER", "LEVEL_ORDER"] | None = None
     nodes: list[AnimationNode] = Field(min_length=1, max_length=31)
     edges: list[AnimationEdge] = Field(default_factory=list, max_length=30)
+    sequence: list[str] = Field(default_factory=list, max_length=31)
 
 
 class AnimationTimelineStep(BaseModel):
     at_ms: int = Field(ge=0)
-    action: Literal["visit", "highlight"]
+    action: Literal[
+        "visit",
+        "highlight",
+        "compare",
+        "swap",
+        "push",
+        "pop",
+        "enqueue",
+        "dequeue",
+        "relax",
+        "select",
+        "complete",
+    ]
     target: str = Field(min_length=1, max_length=40)
     caption: str = Field(min_length=1, max_length=120)
 
 
 class AnimationSpecResponse(BaseModel):
     version: Literal["1.0"] = "1.0"
-    template_id: Literal["binary_tree_traversal"]
+    template_id: Literal[
+        "binary_tree_traversal",
+        "complexity_visualizer",
+        "linear_structure",
+        "stack_queue_operations",
+        "tree_visualizer",
+        "graph_visualizer",
+        "search_visualizer",
+        "sorting_visualizer",
+        "algorithm_workflow",
+        "concept_fallback",
+    ]
     title: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=240)
     duration_ms: int = Field(gt=0, le=120_000)
-    data: BinaryTreeAnimationData
+    data: AnimationSceneData
     timeline: list[AnimationTimelineStep] = Field(min_length=1, max_length=120)
 
     @model_validator(mode="after")

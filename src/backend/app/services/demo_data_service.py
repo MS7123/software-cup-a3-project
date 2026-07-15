@@ -273,7 +273,9 @@ class DemoDataService:
         concept_slugs = [
             slug
             for slug in session.scalars(
-                select(Concept.slug).where(Concept.course_id == course.id).order_by(Concept.id)
+                select(Concept.slug)
+                .where(Concept.course_id == course.id, Concept.slug.in_(DEMO_CONCEPT_SLUGS))
+                .order_by(Concept.id)
             ).all()
         ]
         profile_types = [
