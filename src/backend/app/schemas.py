@@ -261,14 +261,6 @@ class AnimationEdge(BaseModel):
     label: str | None = Field(default=None, max_length=20)
 
 
-class AnimationSceneData(BaseModel):
-    mode: str = Field(default="overview", min_length=1, max_length=40)
-    traversal_type: Literal["PRE_ORDER", "IN_ORDER", "POST_ORDER", "LEVEL_ORDER"] | None = None
-    nodes: list[AnimationNode] = Field(min_length=1, max_length=31)
-    edges: list[AnimationEdge] = Field(default_factory=list, max_length=30)
-    sequence: list[str] = Field(default_factory=list, max_length=31)
-
-
 class AnimationTimelineStep(BaseModel):
     at_ms: int = Field(ge=0)
     action: Literal[
@@ -286,6 +278,29 @@ class AnimationTimelineStep(BaseModel):
     ]
     target: str = Field(min_length=1, max_length=40)
     caption: str = Field(min_length=1, max_length=120)
+    values: dict[str, int] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict)
+    frontier: list[str] = Field(default_factory=list, max_length=31)
+    visited: list[str] = Field(default_factory=list, max_length=31)
+    range_start: int | None = Field(default=None, ge=0, le=30)
+    range_end: int | None = Field(default=None, ge=0, le=30)
+
+
+class AnimationVariant(BaseModel):
+    id: Literal["bfs", "dfs"]
+    label: str = Field(min_length=1, max_length=40)
+    structure_label: str = Field(min_length=1, max_length=40)
+    timeline: list[AnimationTimelineStep] = Field(min_length=1, max_length=120)
+
+
+class AnimationSceneData(BaseModel):
+    mode: str = Field(default="overview", min_length=1, max_length=40)
+    structure_label: str = Field(default="演示状态", min_length=1, max_length=40)
+    traversal_type: Literal["PRE_ORDER", "IN_ORDER", "POST_ORDER", "LEVEL_ORDER"] | None = None
+    nodes: list[AnimationNode] = Field(min_length=1, max_length=31)
+    edges: list[AnimationEdge] = Field(default_factory=list, max_length=30)
+    sequence: list[str] = Field(default_factory=list, max_length=31)
+    variants: list[AnimationVariant] = Field(default_factory=list, max_length=4)
 
 
 class AnimationSpecResponse(BaseModel):
@@ -315,8 +330,14 @@ class AnimationSpecResponse(BaseModel):
             raise ValueError("animation node ids must be unique")
         if any(edge.source not in node_ids or edge.target not in node_ids for edge in self.data.edges):
             raise ValueError("animation edges must reference declared nodes")
-        if any(step.target not in node_ids for step in self.timeline):
-            raise ValueError("animation timeline must reference declared nodes")
+        timelines = [self.timeline, *(variant.timeline for variant in self.data.variants)]
+        for timeline in timelines:
+            if any(step.target not in node_ids for step in timeline):
+                raise ValueError("animation timeline must reference declared nodes")
+            if any(any(node_id not in node_ids for node_id in step.frontier + step.visited) for step in timeline):
+                raise ValueError("animation state must reference declared nodes")
+            if any(any(node_id not in node_ids for node_id in step.values | step.labels) for step in timeline):
+                raise ValueError("animation state maps must reference declared nodes")
         if any(node_id not in node_ids for node_id in self.data.sequence):
             raise ValueError("animation sequence must reference declared nodes")
         return self

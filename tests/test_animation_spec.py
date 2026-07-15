@@ -93,6 +93,88 @@ class AnimationSpecServiceTests(unittest.TestCase):
         self.assertEqual(spec.template_id, "concept_fallback")
         self.assertNotIn("<svg", spec.model_dump_json().lower())
 
+    def test_bfs_dfs_exposes_distinct_queue_and_stack_traces(self) -> None:
+        spec = self.service.build(
+            concept_name="BFS/DFS",
+            concept_slug="bfs-dfs",
+            objective="比较广度优先搜索和深度优先搜索",
+            resource_type="teaching_video",
+        )
+
+        assert spec is not None
+        variants = {variant.id: variant for variant in spec.data.variants}
+        self.assertEqual(set(variants), {"bfs", "dfs"})
+        self.assertEqual(variants["bfs"].structure_label, "Queue 队列")
+        self.assertEqual(variants["dfs"].structure_label, "Stack 栈")
+        self.assertEqual([step.target for step in variants["bfs"].timeline], ["gA", "gB", "gC", "gD", "gE"])
+        self.assertEqual([step.target for step in variants["dfs"].timeline], ["gA", "gB", "gD", "gE", "gC"])
+        self.assertTrue(all(step.frontier for step in variants["bfs"].timeline[:-1]))
+        self.assertNotEqual(
+            [step.frontier for step in variants["bfs"].timeline],
+            [step.frontier for step in variants["dfs"].timeline],
+        )
+
+    def test_every_template_family_contains_real_state_changes(self) -> None:
+        slugs = [
+            "complexity-analysis",
+            "linked-list",
+            "stack",
+            "tree-basics",
+            "shortest-path",
+            "search-basics",
+            "simple-sorts",
+            "algorithm-design",
+        ]
+
+        specs = [
+            self.service.build(
+                concept_name=next(item["name"] for item in DEMO_CONCEPTS if item["slug"] == slug),
+                concept_slug=slug,
+                objective=next(item["description"] for item in DEMO_CONCEPTS if item["slug"] == slug),
+                resource_type="teaching_video",
+            )
+            for slug in slugs
+        ]
+
+        for slug, spec in zip(slugs, specs, strict=True):
+            assert spec is not None
+            signatures = {
+                (
+                    tuple(sorted(step.values.items())),
+                    tuple(sorted(step.labels.items())),
+                    tuple(step.frontier),
+                    tuple(step.visited),
+                    step.range_start,
+                    step.range_end,
+                )
+                for step in spec.timeline
+            }
+            self.assertGreater(len(signatures), 1, slug)
+
+    def test_stack_and_queue_show_mutating_lifo_and_fifo_operations(self) -> None:
+        stack = self.service.build(
+            concept_name="栈",
+            concept_slug="stack",
+            objective="理解 LIFO 与 push/pop",
+            resource_type="teaching_video",
+        )
+        queue = self.service.build(
+            concept_name="队列",
+            concept_slug="queue",
+            objective="理解 FIFO 与 enqueue/dequeue",
+            resource_type="teaching_video",
+        )
+
+        assert stack is not None and queue is not None
+        self.assertEqual(stack.data.structure_label, "Stack 栈")
+        self.assertEqual(queue.data.structure_label, "Queue 队列")
+        self.assertIn("push", {step.action for step in stack.timeline})
+        self.assertIn("pop", {step.action for step in stack.timeline})
+        self.assertIn("enqueue", {step.action for step in queue.timeline})
+        self.assertIn("dequeue", {step.action for step in queue.timeline})
+        self.assertEqual(stack.timeline[-1].frontier, ["s0", "s1", "s2"])
+        self.assertEqual(queue.timeline[-1].frontier, ["s1", "s2", "s3"])
+
 
 if __name__ == "__main__":
     unittest.main()

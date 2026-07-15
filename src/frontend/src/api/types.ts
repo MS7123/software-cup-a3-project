@@ -268,6 +268,19 @@ export interface AnimationTimelineStep {
   action: "visit" | "highlight" | "compare" | "swap" | "push" | "pop" | "enqueue" | "dequeue" | "relax" | "select" | "complete";
   target: string;
   caption: string;
+  values: Record<string, number>;
+  labels: Record<string, string>;
+  frontier: string[];
+  visited: string[];
+  range_start: number | null;
+  range_end: number | null;
+}
+
+export interface AnimationVariant {
+  id: "bfs" | "dfs";
+  label: string;
+  structure_label: string;
+  timeline: AnimationTimelineStep[];
 }
 
 export type AnimationTemplateId =
@@ -290,10 +303,12 @@ export interface AnimationSpec {
   duration_ms: number;
   data: {
     mode: string;
+    structure_label: string;
     traversal_type: "PRE_ORDER" | "IN_ORDER" | "POST_ORDER" | "LEVEL_ORDER" | null;
     nodes: AnimationNode[];
     edges: AnimationEdge[];
     sequence: string[];
+    variants: AnimationVariant[];
   };
   timeline: AnimationTimelineStep[];
 }

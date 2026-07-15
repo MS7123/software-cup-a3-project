@@ -2769,6 +2769,30 @@ button:disabled {
   margin: 0;
 }
 
+.animation-variant-tabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid #e3ebe6;
+  background: #fbfcfb;
+  padding: 0.65rem 1.1rem;
+}
+
+.animation-variant-tabs button {
+  border: 1px solid #cfddd5;
+  border-radius: 0.45rem;
+  background: #ffffff;
+  padding: 0.45rem 0.8rem;
+  color: #53635b;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.animation-variant-tabs .animation-variant-active {
+  border-color: #178565;
+  background: #e6f3ed;
+  color: #12694f;
+}
+
 .animation-player-header h4 {
   color: #172a21;
   font-size: 1rem;
@@ -2836,7 +2860,11 @@ button:disabled {
 }
 
 .animation-node {
-  transition: filter 220ms ease;
+  transition: opacity 220ms ease, filter 220ms ease, transform 280ms ease;
+}
+
+.animation-node-muted {
+  opacity: 0.22;
 }
 
 .animation-node circle {
@@ -2859,6 +2887,12 @@ button:disabled {
   font-weight: 800;
   pointer-events: none;
   transition: fill 220ms ease;
+}
+
+.animation-node .animation-node-state {
+  fill: #53635b;
+  font-size: 0.75rem;
+  font-weight: 850;
 }
 
 .animation-node-visited circle {
@@ -2905,6 +2939,65 @@ button:disabled {
 
 .animation-scene-algorithm_workflow .animation-box text {
   font-size: 0.82rem;
+}
+
+.animation-structure-guide path {
+  fill: none;
+  stroke: #a9bdb2;
+  stroke-dasharray: 6 5;
+  stroke-width: 2;
+}
+
+.animation-structure-guide text {
+  fill: #6d7f75;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.animation-state-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem;
+  border-top: 1px solid #dce7e0;
+  background: #edf5f0;
+  padding: 0.8rem 1.1rem;
+}
+
+.animation-state-group {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+}
+
+.animation-state-group > span {
+  color: #728178;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.animation-state-group > strong {
+  color: #244c3c;
+  font-size: 0.82rem;
+}
+
+.animation-operation-state > strong {
+  color: #12694f;
+  font-size: 0.9rem;
+}
+
+.animation-state-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.animation-state-tokens b {
+  border: 1px solid #b8d2c4;
+  border-radius: 0.35rem;
+  background: #ffffff;
+  padding: 0.25rem 0.4rem;
+  color: #176b51;
+  font-size: 0.75rem;
 }
 
 .animation-legacy-notice {
@@ -3017,6 +3110,7 @@ button:disabled {
   .animation-node,
   .animation-node circle,
   .animation-node rect,
+  .animation-variant-tabs button,
   .animation-node text,
   .animation-control-buttons button {
     transition: none;

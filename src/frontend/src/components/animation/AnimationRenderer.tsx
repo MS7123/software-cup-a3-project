@@ -1,29 +1,53 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AnimationNode, AnimationSpec } from "../../api/types";
+import type { AnimationSpec } from "../../api/types";
+import AnimationScene from "./AnimationScene";
+import AnimationStatePanel from "./AnimationStatePanel";
 
 export default function AnimationRenderer({ spec }: { spec: AnimationSpec }) {
+  const [variantId, setVariantId] = useState(spec.data.variants[0]?.id ?? "");
+  const activeVariant = useMemo(
+    () => spec.data.variants.find((variant) => variant.id === variantId) ?? null,
+    [spec.data.variants, variantId]
+  );
+  const timeline = activeVariant?.timeline ?? spec.timeline;
+  const structureLabel = activeVariant?.structure_label ?? spec.data.structure_label;
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const currentStep = spec.timeline[Math.max(0, currentIndex)];
-  const completedTargets = currentIndex < 0 ? [] : spec.timeline.slice(0, currentIndex + 1).map((step) => step.target);
+  const currentStep = timeline[Math.max(0, currentIndex)];
+  const completedTargets = currentIndex < 0
+    ? []
+    : currentStep?.visited.length
+      ? currentStep.visited
+      : timeline.slice(0, currentIndex + 1).map((step) => step.target);
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setIsPlaying(false);
+  }, [variantId]);
+
+  useEffect(() => {
+    setVariantId(spec.data.variants[0]?.id ?? "");
+    setCurrentIndex(0);
+    setIsPlaying(false);
+  }, [spec]);
 
   useEffect(() => {
     if (!isPlaying) return undefined;
-    if (currentIndex >= spec.timeline.length - 1) {
+    if (currentIndex >= timeline.length - 1) {
       setIsPlaying(false);
       return undefined;
     }
-    const currentAt = spec.timeline[Math.max(0, currentIndex)]?.at_ms ?? 0;
-    const nextAt = spec.timeline[currentIndex + 1]?.at_ms ?? currentAt + 1000;
+    const currentAt = timeline[Math.max(0, currentIndex)]?.at_ms ?? 0;
+    const nextAt = timeline[currentIndex + 1]?.at_ms ?? currentAt + 1000;
     const timer = window.setTimeout(
-      () => setCurrentIndex((index) => Math.min(index + 1, spec.timeline.length - 1)),
+      () => setCurrentIndex((index) => Math.min(index + 1, timeline.length - 1)),
       Math.max(650, nextAt - currentAt)
     );
     return () => window.clearTimeout(timer);
-  }, [currentIndex, isPlaying, spec.timeline]);
+  }, [currentIndex, isPlaying, timeline]);
 
   function togglePlayback() {
-    if (currentIndex >= spec.timeline.length - 1) setCurrentIndex(0);
+    if (currentIndex >= timeline.length - 1) setCurrentIndex(0);
     setIsPlaying((playing) => !playing);
   }
 
@@ -38,10 +62,28 @@ export default function AnimationRenderer({ spec }: { spec: AnimationSpec }) {
         <span className="animation-duration">{Math.ceil(spec.duration_ms / 1000)} 秒</span>
       </header>
 
+      {spec.data.variants.length > 0 ? (
+        <div className="animation-variant-tabs" role="tablist" aria-label="选择遍历算法">
+          {spec.data.variants.map((variant) => (
+            <button
+              key={variant.id}
+              type="button"
+              role="tab"
+              aria-selected={variant.id === variantId}
+              className={variant.id === variantId ? "animation-variant-active" : ""}
+              onClick={() => setVariantId(variant.id)}
+            >
+              {variant.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <div className="animation-stage">
-        <Scene spec={spec} currentTarget={currentIndex < 0 ? null : currentStep?.target ?? null} completedTargets={completedTargets} />
+        <AnimationScene spec={spec} step={currentIndex < 0 ? null : currentStep} completedTargets={completedTargets} />
+        <AnimationStatePanel spec={spec} step={currentIndex < 0 ? null : currentStep} structureLabel={structureLabel} />
         <div className="animation-caption" aria-live="polite">
-          <span>步骤 {Math.max(0, currentIndex + 1)} / {spec.timeline.length}</span>
+          <span>步骤 {Math.max(0, currentIndex + 1)} / {timeline.length}</span>
           <strong data-testid="animation-step-caption">
             {currentIndex < 0 ? "点击播放，观察结构如何逐步变化" : currentStep?.caption}
           </strong>
@@ -52,7 +94,9 @@ export default function AnimationRenderer({ spec }: { spec: AnimationSpec }) {
         <div className="animation-visit-order">
           <span>演示序列</span>
           <strong data-testid="animation-visit-order">
-            {completedTargets.length > 0 ? completedTargets.map((id) => spec.data.nodes.find((node) => node.id === id)?.label ?? id).join(" → ") : "尚未开始"}
+            {completedTargets.length > 0
+              ? completedTargets.map((id) => spec.data.nodes.find((node) => node.id === id)?.label ?? id).join(" → ")
+              : "尚未开始"}
           </strong>
         </div>
         <div className="animation-control-buttons">
@@ -61,9 +105,9 @@ export default function AnimationRenderer({ spec }: { spec: AnimationSpec }) {
             type="button"
             onClick={() => {
               setIsPlaying(false);
-              setCurrentIndex((index) => Math.min(index + 1, spec.timeline.length - 1));
+              setCurrentIndex((index) => Math.min(index + 1, timeline.length - 1));
             }}
-            disabled={currentIndex >= spec.timeline.length - 1}
+            disabled={currentIndex >= timeline.length - 1}
           >
             下一步
           </button>
@@ -71,69 +115,5 @@ export default function AnimationRenderer({ spec }: { spec: AnimationSpec }) {
         </div>
       </footer>
     </article>
-  );
-}
-
-function Scene({ spec, currentTarget, completedTargets }: { spec: AnimationSpec; currentTarget: string | null; completedTargets: string[] }) {
-  const nodeMap = useMemo(() => new Map(spec.data.nodes.map((node) => [node.id, node])), [spec.data.nodes]);
-  const isBarScene = spec.template_id === "complexity_visualizer" || spec.template_id === "sorting_visualizer";
-  const isBoxScene = ["linear_structure", "stack_queue_operations", "search_visualizer", "algorithm_workflow"].includes(spec.template_id);
-  const classNameFor = (node: AnimationNode) => [
-    "animation-node",
-    completedTargets.includes(node.id) ? "animation-node-visited" : "",
-    currentTarget === node.id ? "animation-node-current" : "",
-  ].filter(Boolean).join(" ");
-
-  return (
-    <svg viewBox="0 0 640 330" role="img" aria-label={`${spec.title}动画`} data-testid="animation-scene">
-      <defs>
-        <marker id="animation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 Z" />
-        </marker>
-      </defs>
-      <g className="animation-edges" aria-hidden="true">
-        {spec.data.edges.map((edge) => {
-          const source = nodeMap.get(edge.source);
-          const target = nodeMap.get(edge.target);
-          if (!source || !target) return null;
-          const key = `${edge.source}-${edge.target}`;
-          return (
-            <g key={key}>
-              <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} markerEnd="url(#animation-arrow)" />
-              {edge.label ? <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 8}>{edge.label}</text> : null}
-            </g>
-          );
-        })}
-      </g>
-      <g className={`animation-nodes animation-scene-${spec.template_id}`}>
-        {spec.data.nodes.map((node) => {
-          const className = classNameFor(node);
-          if (isBarScene) {
-            const height = Math.max(42, (node.value ?? 20) * 2.15);
-            return (
-              <g key={node.id} className={`${className} animation-bar`} transform={`translate(${node.x} 300)`} data-node-id={node.id}>
-                <rect x="-34" y={-height} width="68" height={height} rx="8" />
-                <text textAnchor="middle" y={-height - 12}>{node.label}</text>
-              </g>
-            );
-          }
-          if (isBoxScene) {
-            const width = spec.template_id === "algorithm_workflow" ? 112 : 88;
-            return (
-              <g key={node.id} className={`${className} animation-box`} transform={`translate(${node.x} ${node.y})`} data-node-id={node.id}>
-                <rect x={-width / 2} y="-27" width={width} height="54" rx="9" />
-                <text textAnchor="middle" dominantBaseline="central">{node.label}</text>
-              </g>
-            );
-          }
-          return (
-            <g key={node.id} className={className} transform={`translate(${node.x} ${node.y})`} data-node-id={node.id}>
-              <circle r={node.kind === "focus" ? 42 : 28} />
-              <text textAnchor="middle" dominantBaseline="central">{node.label}</text>
-            </g>
-          );
-        })}
-      </g>
-    </svg>
   );
 }
