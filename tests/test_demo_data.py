@@ -8,7 +8,7 @@ from sqlalchemy import inspect, select, text
 
 from app.db.session import get_engine, get_session_factory
 from app.main import create_app
-from app.models import AgentRun, Concept, ConceptRelation, Document, DocumentChunk, LearningPath, StudentProfile
+from app.models import AgentRun, Concept, ConceptRelation, Course, Document, DocumentChunk, LearningPath, StudentProfile
 from app.seed.demo_data import DEMO_CHAPTERS, DEMO_CHUNKS, DEMO_CONCEPTS, DEMO_PROFILES, DEMO_RELATIONS
 from app.services.course_service import CourseService
 from app.services.demo_data_service import DemoDataService
@@ -101,6 +101,32 @@ class DemoDataTests(unittest.TestCase):
         self.assertEqual(status.concept_count, len(DEMO_CONCEPTS))
         self.assertNotIn("stack-queue", status.concept_slugs)
         self.assertEqual({concept.slug for concept in graph.concepts}, {item["slug"] for item in DEMO_CONCEPTS})
+
+    def test_custom_course_concepts_are_not_filtered_by_demo_catalog(self) -> None:
+        DemoDataService(database_url=self.database_url).load_demo_data()
+        session = get_session_factory(self.database_url)()
+        try:
+            custom_course = Course(title="自定义课程", description="用户课程", is_demo=False)
+            session.add(custom_course)
+            session.flush()
+            session.add(
+                Concept(
+                    course_id=custom_course.id,
+                    slug="red-black-tree",
+                    name="红黑树",
+                    chapter="扩展章节",
+                    description="用户自定义概念",
+                    difficulty="advanced",
+                )
+            )
+            session.commit()
+            custom_course_id = custom_course.id
+        finally:
+            session.close()
+
+        graph = CourseService(database_url=self.database_url).get_concept_graph(custom_course_id)
+
+        self.assertEqual([concept.slug for concept in graph.concepts], ["red-black-tree"])
 
     def test_status_upgrades_legacy_generated_resources_table_for_animation_specs(self) -> None:
         engine = get_engine(self.database_url)

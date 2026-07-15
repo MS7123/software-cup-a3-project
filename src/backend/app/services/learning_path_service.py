@@ -224,12 +224,11 @@ class LearningPathService:
         return refreshed
 
     def _course_graph(self, session, course_id: int) -> tuple[list[PlannerConcept], list[PlannerRelation]]:
-        concept_rows = session.scalars(
-            select(Concept).where(
-                Concept.course_id == course_id,
-                Concept.slug.in_(DEMO_CONCEPT_SLUGS),
-            )
-        ).all()
+        course = session.get(Course, course_id)
+        concept_query = select(Concept).where(Concept.course_id == course_id)
+        if course is not None and course.is_demo:
+            concept_query = concept_query.where(Concept.slug.in_(DEMO_CONCEPT_SLUGS))
+        concept_rows = session.scalars(concept_query).all()
         concepts = [
             PlannerConcept(
                 id=concept.id,

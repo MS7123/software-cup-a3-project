@@ -17,11 +17,10 @@ class CourseService:
             course = session.get(Course, course_id)
             if course is None:
                 raise NotFoundError("Course", course_id)
-            concepts = session.scalars(
-                select(Concept)
-                .where(Concept.course_id == course.id, Concept.slug.in_(DEMO_CONCEPT_SLUGS))
-                .order_by(Concept.id)
-            ).all()
+            concept_query = select(Concept).where(Concept.course_id == course.id)
+            if course.is_demo:
+                concept_query = concept_query.where(Concept.slug.in_(DEMO_CONCEPT_SLUGS))
+            concepts = session.scalars(concept_query.order_by(Concept.id)).all()
             concept_ids = [concept.id for concept in concepts]
             relations = []
             if concept_ids:

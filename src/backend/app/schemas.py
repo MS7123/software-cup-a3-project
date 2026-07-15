@@ -317,6 +317,8 @@ class AnimationSpecResponse(BaseModel):
             raise ValueError("animation edges must reference declared nodes")
         if any(step.target not in node_ids for step in self.timeline):
             raise ValueError("animation timeline must reference declared nodes")
+        if any(node_id not in node_ids for node_id in self.data.sequence):
+            raise ValueError("animation sequence must reference declared nodes")
         return self
 
 
