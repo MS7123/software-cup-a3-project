@@ -63,6 +63,9 @@ test("学生端界面可以完成主要学习闭环", async ({ page }) => {
   const pathTrace = page.locator('[data-trace-action="path"]');
   await expect(pathTrace.locator(".terminal-agent").getByText("学习规划师", { exact: true })).toHaveCount(1);
   await expect(pathTrace).toContainText("依次完成目标解析、约束校验和活动编排");
+  await expect(pathTrace).toHaveCSS("background-color", "rgb(248, 250, 247)");
+  await expect(pathTrace).toHaveCSS("border-top-color", "rgb(220, 229, 221)");
+  await expect(pathTrace.locator(".terminal-time").first()).toHaveCSS("border-radius", "999px");
   await expect(page.getByTestId("path-intent-summary")).toContainText("本次重点");
   await expect(page.getByTestId("path-intent-summary")).toContainText("二叉树遍历");
   await expect(page.getByTestId("path-intent-summary")).toContainText("BFS/DFS");
