@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.enums import (
     AgentRunStatus,
@@ -246,6 +246,52 @@ class LearningPathResponse(BaseModel):
     planner_phases: list[dict[str, Any]] = Field(default_factory=list, exclude=True)
 
 
+class AnimationNode(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    label: str = Field(min_length=1, max_length=20)
+    x: int = Field(ge=0, le=640)
+    y: int = Field(ge=0, le=360)
+
+
+class AnimationEdge(BaseModel):
+    source: str = Field(min_length=1, max_length=40)
+    target: str = Field(min_length=1, max_length=40)
+
+
+class BinaryTreeAnimationData(BaseModel):
+    traversal_type: Literal["PRE_ORDER", "IN_ORDER", "POST_ORDER", "LEVEL_ORDER"]
+    nodes: list[AnimationNode] = Field(min_length=1, max_length=31)
+    edges: list[AnimationEdge] = Field(default_factory=list, max_length=30)
+
+
+class AnimationTimelineStep(BaseModel):
+    at_ms: int = Field(ge=0)
+    action: Literal["visit", "highlight"]
+    target: str = Field(min_length=1, max_length=40)
+    caption: str = Field(min_length=1, max_length=120)
+
+
+class AnimationSpecResponse(BaseModel):
+    version: Literal["1.0"] = "1.0"
+    template_id: Literal["binary_tree_traversal"]
+    title: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=240)
+    duration_ms: int = Field(gt=0, le=120_000)
+    data: BinaryTreeAnimationData
+    timeline: list[AnimationTimelineStep] = Field(min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_graph_references(self) -> "AnimationSpecResponse":
+        node_ids = {node.id for node in self.data.nodes}
+        if len(node_ids) != len(self.data.nodes):
+            raise ValueError("animation node ids must be unique")
+        if any(edge.source not in node_ids or edge.target not in node_ids for edge in self.data.edges):
+            raise ValueError("animation edges must reference declared nodes")
+        if any(step.target not in node_ids for step in self.timeline):
+            raise ValueError("animation timeline must reference declared nodes")
+        return self
+
+
 class ResourceGenerateRequest(BaseModel):
     path_item_id: int
     resource_type: str
@@ -265,6 +311,7 @@ class GeneratedResourceResponse(BaseModel):
     safety_message: str | None = None
     postprocessing_task_id: int | None = None
     postprocessing_status: Literal["not_requested", "pending", "running", "completed", "failed"] = "not_requested"
+    animation_spec: AnimationSpecResponse | None = None
 
 
 class TutorAskRequest(BaseModel):
