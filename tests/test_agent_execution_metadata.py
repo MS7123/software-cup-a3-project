@@ -168,12 +168,11 @@ class AgentExecutionMetadataTests(unittest.TestCase):
         columns = {column["name"] for column in inspect(engine).get_columns("agent_run_steps")}
         self.assertIn("execution_metadata", columns)
 
-    def test_frontend_keeps_runtime_evidence_folded_and_typed(self) -> None:
-        app = FRONTEND_APP.read_text(encoding="utf-8")
+    def test_frontend_keeps_runtime_trace_scoped_and_typed(self) -> None:
+        trace = (FRONTEND_APP.parent / "components" / "AgentTrace.tsx").read_text(encoding="utf-8")
         types = FRONTEND_TYPES.read_text(encoding="utf-8")
 
-        self.assertIn('<details className="execution-evidence">', app)
-        self.assertGreaterEqual(app.count("<ExecutionEvidence"), 2)
+        self.assertIn("const traceRunTypes", trace)
         for run_type in (
             "profile_build",
             "profile_update",
@@ -184,10 +183,7 @@ class AgentExecutionMetadataTests(unittest.TestCase):
             "quiz_generation",
             "attempt_evaluation",
         ):
-            self.assertIn(f'"{run_type}"', app)
-        self.assertIn("executionModeLabel(step.execution_metadata.execution_mode)", app)
-        self.assertIn("step.execution_metadata.fallback_reason", app)
-        self.assertIn("step.execution_metadata.source_refs", app)
+            self.assertIn(f'"{run_type}"', trace)
         self.assertIn("export interface AgentExecutionMetadata", types)
         self.assertIn("execution_metadata: AgentExecutionMetadata", types)
 

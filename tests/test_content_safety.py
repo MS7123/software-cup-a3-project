@@ -91,13 +91,15 @@ class ContentSafetyServiceTests(unittest.TestCase):
     def test_frontend_contract_displays_blocked_and_degraded_safety_status(self) -> None:
         root = Path(__file__).resolve().parents[1]
         types_source = (root / "src" / "frontend" / "src" / "api" / "types.ts").read_text(encoding="utf-8")
-        app_source = (root / "src" / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+        common_source = (root / "src" / "frontend" / "src" / "components" / "common.tsx").read_text(encoding="utf-8")
+        quiz_source = (root / "src" / "frontend" / "src" / "features" / "quiz" / "QuizStep.tsx").read_text(encoding="utf-8")
+        ui_source = common_source + quiz_source
 
         self.assertGreaterEqual(types_source.count('safety_status: "passed" | "blocked" | "degraded"'), 3)
-        self.assertIn("data-testid=\"safety-status\"", app_source)
-        self.assertIn("安全策略已拦截", app_source)
-        self.assertIn("课程资料不足", app_source)
-        self.assertIn("quiz.items.length > 0", app_source)
+        self.assertIn("data-testid=\"safety-status\"", ui_source)
+        self.assertIn("安全策略已拦截", ui_source)
+        self.assertIn("课程资料不足", ui_source)
+        self.assertIn("quiz.items.length > 0", ui_source)
 
     def test_llm_facing_api_contracts_cap_untrusted_text_size(self) -> None:
         invalid_payloads = [

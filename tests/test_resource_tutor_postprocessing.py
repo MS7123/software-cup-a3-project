@@ -121,11 +121,14 @@ class ResourceTutorPostprocessingTests(unittest.TestCase):
 
     def test_frontend_reports_safe_background_progress_without_fake_streaming(self) -> None:
         app_source = (REPO_ROOT / "src/frontend/src/App.tsx").read_text(encoding="utf-8")
+        resource_source = (REPO_ROOT / "src/frontend/src/features/resource/ResourceStep.tsx").read_text(encoding="utf-8")
+        tutor_source = (REPO_ROOT / "src/frontend/src/features/tutor/TutorStep.tsx").read_text(encoding="utf-8")
         type_source = (REPO_ROOT / "src/frontend/src/api/types.ts").read_text(encoding="utf-8")
+        ui_source = app_source + resource_source + tutor_source
 
-        self.assertIn("内容已返回，画像正在后台更新", app_source)
-        self.assertIn("安全校验通过后展示", app_source)
-        self.assertNotIn("回答即将逐字呈现", app_source)
+        self.assertIn("内容已返回，画像正在后台更新", ui_source)
+        self.assertIn("安全校验通过后展示", ui_source)
+        self.assertNotIn("回答即将逐字呈现", ui_source)
         self.assertIn("postprocessing_task_id", type_source)
 
 
