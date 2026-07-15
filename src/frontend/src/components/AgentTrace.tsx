@@ -2,6 +2,24 @@ import type { AgentRun, AgentRunStep } from "../api/types";
 
 export type TraceAction = "profile" | "path" | "resource" | "tutor" | "quiz" | "assessment";
 
+type TraceLine = {
+  agent_type: string;
+  output_summary: string;
+  decision_basis: string;
+};
+
+const plannerPhasePresentation: Record<string, { stage: string }> = {
+  goal_resolution: {
+    stage: "目标解析"
+  },
+  constraint_validation: {
+    stage: "约束校验"
+  },
+  activity_generation: {
+    stage: "活动编排"
+  }
+};
+
 const agentTypeLabels: Record<string, string> = {
   planner: "学习规划师",
   resource: "资源设计师",
@@ -45,7 +63,7 @@ const traceRunTypes: Record<TraceAction, string[]> = {
   assessment: ["attempt_evaluation"]
 };
 
-const tracePresets: Record<TraceAction, Array<{ agent_type: string; output_summary: string; decision_basis: string }>> = {
+const tracePresets: Record<TraceAction, TraceLine[]> = {
   profile: [
     { agent_type: "profile_updater", output_summary: "读取对话内容，抽取学习目标、基础水平和偏好线索。", decision_basis: "仅更新学生画像，不生成学习资源。" },
     { agent_type: "router", output_summary: "判断当前任务属于画像构建流程。", decision_basis: "输入包含课程困难、时间预算或资源偏好。" }
@@ -81,7 +99,7 @@ export function InlineAgentTrace({ action, busy, runs, visible = false }: { acti
     : tracePresets[action];
 
   return (
-    <section className="inline-agent-terminal" aria-live="polite">
+    <section className="inline-agent-terminal" data-trace-action={action} aria-live="polite">
       <div className="terminal-header">
         <span className={`terminal-status-dot ${busy ? "terminal-status-active" : ""}`} />
         <strong>{busy ? "协作生成中" : "最近一次协作过程"}</strong>
@@ -100,12 +118,38 @@ export function InlineAgentTrace({ action, busy, runs, visible = false }: { acti
   );
 }
 
-function summarizeRunSteps(steps: AgentRunStep[], action: TraceAction): Array<{ agent_type: string; output_summary: string; decision_basis: string }> {
-  return steps.map((step) => ({
-    agent_type: step.agent_type,
-    output_summary: userFacingStepSummary(step, action),
-    decision_basis: ""
-  }));
+function summarizeRunSteps(steps: AgentRunStep[], action: TraceAction): TraceLine[] {
+  const plannerStages = action === "path"
+    ? steps
+        .filter((step) => step.agent_type === "planner")
+        .map(plannerPhaseForStep)
+        .filter((stage): stage is string => Boolean(stage))
+    : [];
+  let plannerIncluded = false;
+
+  return steps.flatMap((step) => {
+    if (action === "path" && step.agent_type === "planner") {
+      if (plannerIncluded) return [];
+      plannerIncluded = true;
+    }
+    return {
+      agent_type: step.agent_type,
+      output_summary: action === "path" && step.agent_type === "planner" && plannerStages.length
+        ? `依次完成${joinChineseList(plannerStages)}，生成可执行的学习节点顺序与活动安排。`
+        : userFacingStepSummary(step, action),
+      decision_basis: ""
+    };
+  });
+}
+
+function plannerPhaseForStep(step: AgentRunStep): string | undefined {
+  const phase = `${step.input_summary} ${step.decision_basis}`.match(/phase=([a-z_]+)/)?.[1];
+  return phase ? plannerPhasePresentation[phase]?.stage : undefined;
+}
+
+function joinChineseList(items: string[]): string {
+  if (items.length < 2) return items[0] ?? "路径规划";
+  return `${items.slice(0, -1).join("、")}和${items.at(-1)}`;
 }
 
 function userFacingStepSummary(step: AgentRunStep, action: TraceAction): string {

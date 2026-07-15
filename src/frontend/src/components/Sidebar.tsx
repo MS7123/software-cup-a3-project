@@ -63,6 +63,7 @@ function DashboardSidebar({ activeStep, onSelect }: { activeStep: StepKey; onSel
               <span className="sidebar-nav-copy">
                 <strong>{step.label}</strong>
               </span>
+              <span className="sidebar-nav-status" aria-hidden="true" />
             </button>
           );
         })}

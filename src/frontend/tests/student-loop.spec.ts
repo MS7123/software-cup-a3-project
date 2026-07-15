@@ -40,19 +40,48 @@ test("学生端界面可以完成主要学习闭环", async ({ page }) => {
   await expect(page.getByTestId("profile-latest-change")).toBeVisible();
 
   await page.getByRole("button", { name: "学习路径", exact: true }).click();
-  await page.getByTestId("create-path-button").click();
-  await expect(page.getByTestId("path-item-card").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "学习路径", exact: true })).toHaveAttribute("aria-current", "page");
+  const createPathButton = page.getByTestId("create-path-button");
+  await createPathButton.click();
+  await expect(createPathButton).toBeEnabled({ timeout: 60_000 });
+  const pathRail = page.getByTestId("persistent-path-rail");
+  await expect(pathRail).toBeVisible();
+  const mainTimeline = page.getByTestId("path-timeline-main");
+  await expect(mainTimeline).toBeVisible();
+  await expect(mainTimeline.getByTestId("path-item-card")).toHaveCount(5);
+  const unselectedCardStyles = await mainTimeline.getByTestId("path-item-card").evaluateAll((cards) =>
+    cards.slice(1).map((card) => {
+      const style = window.getComputedStyle(card);
+      return {
+        backgroundColor: style.backgroundColor,
+        borderTopColor: style.borderTopColor,
+        boxShadow: style.boxShadow
+      };
+    })
+  );
+  expect(new Set(unselectedCardStyles.map((style) => JSON.stringify(style))).size).toBe(1);
+  const pathTrace = page.locator('[data-trace-action="path"]');
+  await expect(pathTrace.locator(".terminal-agent").getByText("学习规划师", { exact: true })).toHaveCount(1);
+  await expect(pathTrace).toContainText("依次完成目标解析、约束校验和活动编排");
   await expect(page.getByTestId("path-intent-summary")).toContainText("本次重点");
   await expect(page.getByTestId("path-intent-summary")).toContainText("二叉树遍历");
   await expect(page.getByTestId("path-intent-summary")).toContainText("BFS/DFS");
   await expect(page.getByTestId("path-intent-summary")).toContainText("课程小测准备");
   await expect(page.getByTestId("path-intent-summary")).toContainText("重点巩固");
   await expect(page.getByTestId("path-milestone")).toContainText("课程小测模拟检验");
-  await page.getByTestId("path-item-card").nth(1).click();
+  await expect(mainTimeline.getByTestId("path-item-card").first()).toHaveAttribute("aria-current", "step");
+  await mainTimeline.getByTestId("path-item-card").nth(1).click();
+  await expect(mainTimeline.getByTestId("path-item-card").nth(1)).toHaveAttribute("aria-current", "step");
+  const completionResponse = page.waitForResponse(
+    (response) => response.url().includes("/learning-path-items/") && response.url().endsWith("/complete") && response.request().method() === "POST"
+  );
   await page.getByTestId("complete-path-item-button").click();
+  expect((await completionResponse).ok()).toBeTruthy();
   await expect(page.getByTestId("complete-path-item-button")).toContainText("当前节点已完成");
+  await expect(mainTimeline.getByTestId("path-item-card").nth(1).locator(".path-step-index")).toHaveText("✓");
 
   await page.getByRole("button", { name: "资源生成", exact: true }).click();
+  await expect(pathRail).toBeVisible();
   await expect(page.getByTestId("current-node")).toBeVisible();
   await page.getByTestId("generate-resource-button").click();
   await expect(page.getByTestId("output-block")).toBeVisible();
@@ -72,8 +101,8 @@ test("学生端界面可以完成主要学习闭环", async ({ page }) => {
   await expect(page.getByRole("button", { name: "学习评估" })).toHaveAttribute("aria-current", "page");
   await page.getByRole("button", { name: "学生画像", exact: true }).click();
   await expect(page.getByTestId("profile-latest-change")).toBeVisible();
-  await expect(page.getByTestId("profile-history")).toContainText("quiz");
-  await expect(page.getByTestId("profile-history")).toContainText("证据");
+  await expect(page.getByTestId("profile-history")).toContainText("根据测验表现更新");
+  await expect(page.getByTestId("profile-history")).toContainText("依据");
 });
 
 test("低置信度目标保留输入并显示中文改写提示", async ({ page }) => {
@@ -83,7 +112,47 @@ test("低置信度目标保留输入并显示中文改写提示", async ({ page 
   await page.getByRole("button", { name: "学习路径", exact: true }).click();
   const goalInput = page.getByLabel("学习目标");
   await goalInput.fill("把这个再弄扎实一点");
-  await page.getByTestId("create-path-button").click();
+  const createPathButton = page.getByTestId("create-path-button");
+  await createPathButton.click();
+  await expect(createPathButton).toBeEnabled({ timeout: 60_000 });
   await expect(page.locator(".error-note")).toContainText("知识点、学习目的或时间要求");
   await expect(goalInput).toHaveValue("把这个再弄扎实一点");
+});
+
+test("学习路径作为右侧常驻导航并支持节点切换", async ({ page }) => {
+  const loaded = await page.request.post("/api/v1/demo-data/load");
+  expect(loaded.ok()).toBeTruthy();
+  await page.goto("/");
+
+  const learningPathStep = page.getByRole("button", { name: "学习路径", exact: true });
+  await learningPathStep.click();
+  await expect(learningPathStep).toHaveAttribute("aria-current", "page");
+  await expect(learningPathStep).toHaveCSS("background-image", "none");
+  await expect(learningPathStep).toHaveCSS("background-color", "rgb(243, 239, 221)");
+  const createPathButton = page.getByTestId("create-path-button");
+  await createPathButton.click();
+  await expect(createPathButton).toBeEnabled({ timeout: 60_000 });
+
+  const pathRail = page.getByTestId("persistent-path-rail");
+  await expect(pathRail).toBeVisible();
+  const nodes = pathRail.getByTestId("path-item-card");
+  await expect(nodes.first()).toHaveAttribute("aria-current", "step");
+  const completeCurrentNode = pathRail.getByTestId("complete-path-item-rail-button");
+  await expect(completeCurrentNode).toBeEnabled();
+  await completeCurrentNode.click();
+  await expect(completeCurrentNode).toBeDisabled();
+  await expect(completeCurrentNode).toContainText("当前节点已完成");
+  await expect(nodes.first().locator(".path-step-index")).toHaveText("✓");
+  await nodes.nth(1).click();
+  await expect(nodes.nth(1)).toHaveAttribute("aria-current", "step");
+  await expect(nodes.first().locator(".path-step-index")).toHaveText("✓");
+  await expect(nodes.nth(1).locator(".path-step-index")).toHaveText("02");
+
+  await page.getByRole("button", { name: "资源生成", exact: true }).click();
+  const resourceStep = page.getByRole("button", { name: "资源生成", exact: true });
+  await expect(resourceStep).toHaveCSS("background-image", "none");
+  await expect(resourceStep).toHaveCSS("background-color", "rgb(246, 236, 229)");
+  await expect(pathRail).toBeVisible();
+  await expect(nodes.nth(1)).toHaveAttribute("aria-current", "step");
+  await expect(page.locator(".current-learning-anchor")).toHaveCount(0);
 });

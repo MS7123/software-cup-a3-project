@@ -20,6 +20,7 @@ type BusyAction =
   | "reindex-document"
   | "search-knowledge"
   | "create-path"
+  | "complete-path-item"
   | "generate-resource"
   | "ask-tutor"
   | "generate-quiz"

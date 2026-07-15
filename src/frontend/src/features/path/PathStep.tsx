@@ -91,7 +91,7 @@ export default function PathStep({
       <PathIntentSummary path={flow?.learning_path ?? null} concepts={graph?.concepts ?? []} />
 
       <div className="path-detail-layout">
-        <section className="path-timeline-panel">
+        <section className="path-timeline-panel" data-testid="path-timeline-main">
           <div className="section-heading">
             <div>
               <p className="eyebrow">学习时间线</p>
@@ -111,7 +111,11 @@ export default function PathStep({
               disabled={selectedItem.status === "completed" || busy !== null}
               onClick={onCompleteItem}
             >
-              {selectedItem.status === "completed" ? "当前节点已完成" : "提交本节点学习结果"}
+              {selectedItem.status === "completed"
+                ? "当前节点已完成"
+                : busy === "complete-path-item"
+                  ? "正在提交学习结果"
+                  : "提交本节点学习结果"}
             </button>
           ) : null}
         </section>

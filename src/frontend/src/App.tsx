@@ -29,7 +29,7 @@ import { InlineAgentTrace } from "./components/AgentTrace";
 import type { TraceAction } from "./components/AgentTrace";
 import { ProfileDimensionList, ProfileHistoryPanel, ProfileSkeleton } from "./components/ProfilePanels";
 import HomeDashboard from "./components/HomeDashboard";
-import { CurrentLearningAnchor } from "./components/LearningPath";
+import { PersistentLearningPathRail } from "./components/LearningPath";
 import PathStep from "./features/path/PathStep";
 import ResourceStep from "./features/resource/ResourceStep";
 import TutorStep from "./features/tutor/TutorStep";
@@ -47,6 +47,7 @@ type BusyAction =
   | "reindex-document"
   | "search-knowledge"
   | "create-path"
+  | "complete-path-item"
   | "generate-resource"
   | "ask-tutor"
   | "generate-quiz"
@@ -182,7 +183,6 @@ export function App() {
   const canCreatePath = Boolean(selectedProfileId && status?.course_id);
   const canUseLoop = Boolean(selectedProfileId && status?.course_id && selectedConcept);
   const stepInfo = stepFlow.find((step) => step.key === activeStep) ?? stepFlow[0];
-  const shouldShowLearningAnchor = ["resource", "tutor", "quiz", "assess"].includes(activeStep);
   const profileQuickReplies = [
     "我这学期数据结构最吃力，图搜索和递归容易混淆，每天能学 1 小时。",
     "我想备考人工智能课程，希望多给我图解、例题和代码实操。",
@@ -427,6 +427,18 @@ export function App() {
     });
   }
 
+  function handleCompleteSelectedPathItem() {
+    if (!selectedItem) return;
+    void runTask("complete-path-item", async () => {
+      const nextPath = await api.completePathItem(selectedItem.id);
+      setFlow((current) => current ? { ...current, learning_path: nextPath } : current);
+      if (selectedProfileId) {
+        refreshSelectedProfile(await api.getProfile(selectedProfileId));
+        await refreshProfileHistory(selectedProfileId);
+      }
+    });
+  }
+
   const profileStep = (
     <div className="content-grid profile-content-grid">
       <Panel title="对话式学生画像" kicker="画像随学随新">
@@ -606,18 +618,7 @@ export function App() {
         })
       }
       onSelectPathItem={(item) => setSelectedPathItemId(item.id)}
-      onCompleteItem={() =>
-        selectedItem
-          ? void runTask("create-path", async () => {
-              const nextPath = await api.completePathItem(selectedItem.id);
-              setFlow((current) => current ? { ...current, learning_path: nextPath } : current);
-              if (selectedProfileId) {
-                refreshSelectedProfile(await api.getProfile(selectedProfileId));
-                await refreshProfileHistory(selectedProfileId);
-              }
-            })
-          : undefined
-      }
+      onCompleteItem={handleCompleteSelectedPathItem}
     />
   );
 
@@ -752,21 +753,20 @@ export function App() {
           </div>
         </div>
 
-        {shouldShowLearningAnchor ? (
-          <CurrentLearningAnchor
-            item={selectedItem}
-            concept={selectedConcept}
-            items={pathItems}
-            onSelectItem={(item) => setSelectedPathItemId(item.id)}
-            onOpenPath={() => setActiveStep("path")}
-          />
-        ) : null}
-
         <div className="step-body">{stepContent[activeStep]}</div>
       </section>
 
       <footer className="app-footer-badge">Powered by 科大讯飞星火大模型</footer>
       </div>
+      <PersistentLearningPathRail
+        items={pathItems}
+        concepts={graph?.concepts ?? []}
+        selectedId={selectedItem?.id ?? null}
+        onSelect={(item) => setSelectedPathItemId(item.id)}
+        onOpenPath={() => setActiveStep("path")}
+        busy={busy !== null}
+        onCompleteCurrent={handleCompleteSelectedPathItem}
+      />
       <DebugModal
         open={debugOpen}
         busy={busy}

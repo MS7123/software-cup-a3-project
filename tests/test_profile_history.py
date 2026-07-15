@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.db.session import get_engine, get_session_factory
 from app.main import create_app
-from app.models import StudentProfileHistory
+from app.models import LearningPath, StudentProfileHistory
 
 
 class ProfileHistoryApiTests(unittest.TestCase):
@@ -126,6 +126,31 @@ class ProfileHistoryApiTests(unittest.TestCase):
             self.assertEqual(completed.json()["items"][1]["status"], "in_progress")
             duplicate = client.post(f"/api/v1/learning-path-items/{item_id}/complete")
             self.assertEqual(duplicate.status_code, 409)
+
+    def test_path_item_completion_survives_legacy_goal_replanning_failure(self) -> None:
+        with TestClient(create_app()) as client:
+            demo = client.post("/api/v1/demo-data/load").json()["demo_data"]
+            profile = client.get("/api/v1/student-profiles").json()[0]
+            flow = client.post("/api/v1/learning-paths", json={
+                "student_profile_id": profile["id"], "course_id": demo["course_id"], "goal": "系统掌握整门课程"
+            }).json()
+            path_id = flow["learning_path"]["id"]
+            item_id = flow["learning_path"]["items"][0]["id"]
+
+            session = get_session_factory(self.database_url)()
+            try:
+                path = session.get(LearningPath, path_id)
+                path.goal = "把这个再弄扎实一点"
+                path.learning_intent = {}
+                path.target_concept_ids = []
+                session.commit()
+            finally:
+                session.close()
+
+            completed = client.post(f"/api/v1/learning-path-items/{item_id}/complete")
+            self.assertEqual(completed.status_code, 200)
+            self.assertEqual(completed.json()["items"][0]["status"], "completed")
+            self.assertEqual(completed.json()["items"][1]["status"], "in_progress")
 
 
 if __name__ == "__main__":

@@ -61,7 +61,7 @@ export function PathTimeline({
 }) {
   if (items.length === 0) return <EmptyState text="生成学习路径后，这里会展示按顺序排列的学习节点。" />;
   return (
-    <div className="path-timeline" data-testid="path-timeline">
+    <nav className="path-timeline" data-testid="path-timeline" aria-label="学习路径节点">
       {items.map((item) => (
         <PathItemCard
           key={item.id}
@@ -71,14 +71,22 @@ export function PathTimeline({
           onSelect={() => onSelect(item)}
         />
       ))}
-    </div>
+    </nav>
   );
 }
 
 export function PathItemCard({ item, concept, selected, onSelect }: { item: LearningPathItem; concept: Concept | null; selected: boolean; onSelect: () => void }) {
   return (
-    <button className={`path-card path-card-${item.node_role} path-card-${item.status} ${selected ? "path-card-active" : ""}`} data-testid="path-item-card" onClick={onSelect}>
-      <span className="path-step-index">{String(item.order_index).padStart(2, "0")}</span>
+    <button
+      className={`path-card path-card-${item.node_role} path-card-${item.status} ${selected ? "path-card-active" : ""}`}
+      data-testid="path-item-card"
+      type="button"
+      aria-current={selected ? "step" : undefined}
+      onClick={onSelect}
+    >
+      <span className="path-step-index" aria-hidden="true">
+        {item.status === "completed" ? "✓" : String(item.order_index).padStart(2, "0")}
+      </span>
       <div className="path-card-main">
         <div className="path-card-title-row">
           <strong>{item.title}</strong>
@@ -88,6 +96,59 @@ export function PathItemCard({ item, concept, selected, onSelect }: { item: Lear
         <small>{concept?.name ?? `概念 ${item.concept_id}`} · {activityTypeLabel(item.activity_type)} · {item.estimated_minutes} 分钟</small>
       </div>
     </button>
+  );
+}
+
+export function PersistentLearningPathRail({
+  items,
+  concepts,
+  selectedId,
+  onSelect,
+  onOpenPath,
+  busy,
+  onCompleteCurrent
+}: {
+  items: LearningPathItem[];
+  concepts: Concept[];
+  selectedId: number | null;
+  onSelect: (item: LearningPathItem) => void;
+  onOpenPath: () => void;
+  busy: boolean;
+  onCompleteCurrent: () => void;
+}) {
+  const completedCount = items.filter((item) => item.status === "completed").length;
+  const selectedItem = items.find((item) => item.id === selectedId) ?? items[0] ?? null;
+  const selectedItemComplete = selectedItem?.status === "completed";
+
+  return (
+    <aside className="learning-path-rail" data-testid="persistent-path-rail" aria-label="常驻学习路径">
+      <header className="learning-path-rail-header">
+        <div>
+          <p className="eyebrow">学习路径</p>
+          <h2>按节点推进</h2>
+          <span>{items.length ? `已完成 ${completedCount}/${items.length} 个节点` : "生成后可在这里切换节点"}</span>
+        </div>
+        <button className="rail-manage-button" type="button" onClick={onOpenPath}>
+          {items.length ? "管理" : "规划"}
+        </button>
+      </header>
+      <PathTimeline items={items} concepts={concepts} selectedId={selectedId} onSelect={onSelect} />
+      <footer className="learning-path-rail-action">
+        <div>
+          <span>当前节点</span>
+          <strong>{selectedItem?.title ?? "尚未生成学习路径"}</strong>
+        </div>
+        <button
+          className="primary-button"
+          data-testid="complete-path-item-rail-button"
+          type="button"
+          disabled={!selectedItem || selectedItemComplete || busy}
+          onClick={onCompleteCurrent}
+        >
+          {selectedItemComplete ? "当前节点已完成" : busy ? "正在更新节点" : "完成当前节点学习"}
+        </button>
+      </footer>
+    </aside>
   );
 }
 
@@ -220,7 +281,7 @@ function statusLabel(status: string): string {
 
 function purposeLabel(purpose: string): string {
   const labels: Record<string, string> = {
-    assessment_preparation: "测验准备",
+    assessment_preparation: "课程小测准备",
     concept_learning: "概念学习",
     project_application: "项目实践",
     interview_preparation: "面试准备",

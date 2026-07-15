@@ -10,7 +10,7 @@ from app.agents.planner_agents import (
 )
 from app.db.session import session_scope
 from app.db.schema_compat import ensure_learning_path_columns
-from app.domain.exceptions import ConflictError, NotFoundError
+from app.domain.exceptions import ConflictError, GoalResolutionError, NotFoundError
 from app.models import (
     Concept,
     ConceptRelation,
@@ -119,13 +119,16 @@ class LearningPathService:
             path_id = path.id
             profile_id = path.student_profile_id
             course_id = path.course_id
-            remaining = session.scalar(
-                select(LearningPathItem.id).where(
+            session.flush()
+            next_item = session.scalar(
+                select(LearningPathItem).where(
                     LearningPathItem.path_id == path.id,
                     LearningPathItem.status != "completed",
-                ).limit(1)
+                ).order_by(LearningPathItem.order_index).limit(1)
             )
-            path.status = "active" if remaining is not None else "completed"
+            if next_item is not None:
+                next_item.status = "in_progress"
+            path.status = "active" if next_item is not None else "completed"
             session.flush()
 
         ProfileUpdaterService(database_url=self.database_url).update_from_trace(
@@ -134,7 +137,12 @@ class LearningPathService:
             event_key=f"path_item:{item_id}:completed",
         )
         if self.get_path(path_id).status != "completed":
-            self.refresh_active_paths(profile_id, course_id, trigger=f"path_item:{item_id}:completed")
+            try:
+                self.refresh_active_paths(profile_id, course_id, trigger=f"path_item:{item_id}:completed")
+            except GoalResolutionError:
+                # Legacy paths may not have persisted intent metadata. Completion remains valid,
+                # and the next node has already advanced without requiring a successful replan.
+                pass
         return self.get_path(path_id)
 
     def refresh_active_paths(
