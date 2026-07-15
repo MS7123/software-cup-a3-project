@@ -152,6 +152,40 @@ class LearningLoopApiTests(unittest.TestCase):
                 self.assertTrue(body["source_refs"])
                 self.assertIsNotNone(body["agent_run_id"])
 
+    def test_teaching_video_returns_validated_animation_spec(self) -> None:
+        with TestClient(create_app()) as client:
+            demo = client.post("/api/v1/demo-data/load").json()["demo_data"]
+            profile = client.get("/api/v1/student-profiles").json()[0]
+            learning_flow = client.post(
+                "/api/v1/learning-paths",
+                json={
+                    "student_profile_id": profile["id"],
+                    "course_id": demo["course_id"],
+                    "goal": "掌握二叉树遍历并完成前序遍历练习",
+                },
+            ).json()
+            path_item = next(
+                item
+                for item in learning_flow["learning_path"]["items"]
+                if "二叉树遍历" in item["title"]
+            )
+
+            response = client.post(
+                "/api/v1/resources/generate",
+                json={"path_item_id": path_item["id"], "resource_type": "teaching_video"},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            body = response.json()
+            self.assertEqual(body["resource_type"], "teaching_video")
+            self.assertIn("动画脚本", body["content"])
+            self.assertEqual(body["animation_spec"]["template_id"], "binary_tree_traversal")
+            self.assertEqual(body["animation_spec"]["data"]["traversal_type"], "PRE_ORDER")
+            self.assertEqual(
+                [step["target"] for step in body["animation_spec"]["timeline"]],
+                ["A", "B", "D", "E", "C"],
+            )
+
     def test_deleting_user_profile_removes_related_learning_records_and_runs(self) -> None:
         with TestClient(create_app()) as client:
             demo = client.post("/api/v1/demo-data/load").json()["demo_data"]

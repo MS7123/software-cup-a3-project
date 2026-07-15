@@ -30,6 +30,10 @@ LEARNING_PATH_ITEM_COLUMN_DEFINITIONS = {
     "success_criterion": "TEXT NOT NULL DEFAULT '能够完成本节点学习目标。'",
 }
 
+GENERATED_RESOURCE_COLUMN_DEFINITIONS = {
+    "animation_spec": "JSON",
+}
+
 
 def ensure_document_columns(database_url: str | None = None) -> None:
     _ensure_columns("documents", DOCUMENT_COLUMN_DEFINITIONS, database_url)
@@ -42,6 +46,10 @@ def ensure_agent_run_step_columns(database_url: str | None = None) -> None:
 def ensure_learning_path_columns(database_url: str | None = None) -> None:
     _ensure_columns("learning_paths", LEARNING_PATH_COLUMN_DEFINITIONS, database_url)
     _ensure_columns("learning_path_items", LEARNING_PATH_ITEM_COLUMN_DEFINITIONS, database_url)
+
+
+def ensure_generated_resource_columns(database_url: str | None = None) -> None:
+    _ensure_columns("generated_resources", GENERATED_RESOURCE_COLUMN_DEFINITIONS, database_url)
 
 
 def _ensure_columns(table_name: str, definitions: dict[str, str], database_url: str | None = None) -> None:

@@ -82,6 +82,7 @@ class RuleBasedResourceAgent:
         "mind_map": "思维导图",
         "extended_reading": "拓展阅读",
         "coding_case": "代码实操案例",
+        "teaching_video": "教学动画脚本",
     }
 
     def generate(
@@ -128,6 +129,16 @@ class RuleBasedResourceAgent:
         weak_points: str,
     ) -> str:
         title = self.SUPPORTED_RESOURCE_TYPES[resource_type]
+        if resource_type == "teaching_video":
+            return (
+                f"【{title}】{concept_name}\n"
+                f"学习目标：{objective}\n"
+                f"资料依据：{evidence}\n"
+                "分镜 1：展示完整数据结构，说明本次动画的观察目标。\n"
+                "分镜 2：按照算法顺序逐步高亮当前节点，并保留已访问轨迹。\n"
+                "分镜 3：汇总访问顺序，提示学生暂停后自行复述。\n"
+                f"个性化提示：采用 {style} 节奏，每一步只解释一个状态变化。"
+            )
         if resource_type == "practice_questions":
             return (
                 f"【{title}】{concept_name}\n"

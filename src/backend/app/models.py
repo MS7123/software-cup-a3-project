@@ -193,6 +193,7 @@ class GeneratedResource(TimestampMixin, Base):
     resource_type: Mapped[str] = mapped_column(String(80), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     source_refs: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    animation_spec: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
 class Quiz(TimestampMixin, Base):

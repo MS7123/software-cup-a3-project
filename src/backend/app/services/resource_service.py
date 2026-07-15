@@ -7,10 +7,12 @@ from app.agents.router_agent import RuleBasedRouterAgent
 from app.agents.resource_factory import build_resource_agent
 from app.agents.rule_based_agents import RuleBasedResourceAgent
 from app.db.session import session_scope
+from app.db.schema_compat import ensure_generated_resource_columns
 from app.domain.exceptions import NotFoundError
 from app.models import Concept, GeneratedResource, LearningPath, LearningPathItem, StudentProfile
 from app.schemas import GeneratedResourceResponse
 from app.services.agent_run_service import AgentRunService
+from app.services.animation_spec_service import AnimationSpecService
 from app.services.agent_execution_metadata import build_execution_metadata
 from app.services.citation_service import source_ref_summary
 from app.services.content_safety_service import ContentSafetyService
@@ -22,6 +24,7 @@ from app.services.profile_postprocessing_service import ProfilePostprocessingSer
 class ResourceService:
     def __init__(self, database_url: str | None = None) -> None:
         self.database_url = database_url
+        ensure_generated_resource_columns(database_url)
         self.agent = build_resource_agent()
         self.router_agent = RuleBasedRouterAgent()
         self.critic_agent = RuleBasedCriticAgent()
@@ -112,6 +115,12 @@ class ResourceService:
                 execution_metadata=build_execution_metadata(source_refs=retrieval_safety.blocked_source_refs),
             )
         result = self.agent.generate(concept_name, objective, resource_type, chunks, profile_preferences)
+        animation_spec = AnimationSpecService().build(
+            concept_name=concept_name,
+            concept_slug=concept_slug,
+            objective=objective,
+            resource_type=resource_type,
+        )
         available_source_refs = {str(chunk.source_ref) for chunk in chunks if chunk.source_ref}
         run_service.record_step(
             run.id,
@@ -203,6 +212,7 @@ class ResourceService:
                 resource_type=resource_type,
                 content=result.content,
                 source_refs=result.source_refs,
+                animation_spec=animation_spec.model_dump() if animation_spec is not None else None,
             )
             session.add(resource)
             session.flush()

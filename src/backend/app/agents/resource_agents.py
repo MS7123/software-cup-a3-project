@@ -168,6 +168,11 @@ def _resource_format_contract(resource_type: str) -> str:
             "1. 实操目标\n2. 编程任务\n3. Python 代码块，必须使用 ```python fenced code block\n"
             "4. 输入样例\n5. 预期输出\n6. 边界条件\n7. 复杂度观察。"
         ),
+        "teaching_video": (
+            "输出教学动画脚本，不要输出普通讲义。必须包含：\n"
+            "1. 学习目标\n2. 三段以内分镜说明\n3. 每一步状态变化的讲解重点\n"
+            "4. 最终访问或操作顺序\n5. 暂停复述提示。"
+        ),
     }
     return contracts.get(resource_type, contracts["guided_note"])
 
