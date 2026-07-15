@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 
 from app.db.session import get_engine, get_session_factory
 from app.main import create_app
@@ -74,6 +74,28 @@ class DemoDataTests(unittest.TestCase):
             self.assertGreater(len(session.scalars(select(DocumentChunk)).all()), len(DEMO_CHUNKS))
         finally:
             session.close()
+
+    def test_status_upgrades_legacy_generated_resources_table_for_animation_specs(self) -> None:
+        engine = get_engine(self.database_url)
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE generated_resources ("
+                    "id INTEGER PRIMARY KEY, "
+                    "path_item_id INTEGER NOT NULL, "
+                    "resource_type VARCHAR(80) NOT NULL, "
+                    "content TEXT NOT NULL, "
+                    "source_refs JSON NOT NULL DEFAULT '[]', "
+                    "created_at DATETIME, "
+                    "updated_at DATETIME"
+                    ")"
+                )
+            )
+
+        DemoDataService(database_url=self.database_url).get_status()
+
+        columns = {column["name"] for column in inspect(engine).get_columns("generated_resources")}
+        self.assertIn("animation_spec", columns)
 
     def test_seed_relations_and_chunks_are_linked_to_concepts(self) -> None:
         DemoDataService(database_url=self.database_url).load_demo_data()

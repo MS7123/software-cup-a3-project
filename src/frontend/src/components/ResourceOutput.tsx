@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { GeneratedResource } from "../api/types";
 import { MarkdownBlock, SafetyStatusBanner, TypewriterMarkdown } from "./common";
+import AnimationRenderer from "./animation/AnimationRenderer";
 
 type MindMapBranch = {
   title: string;
@@ -39,7 +40,8 @@ export default function ResourceOutputBlock({ resource }: { resource: GeneratedR
     <article className="resource-card" data-testid="output-block">
       <ResourceHeader title={resourceLabel(resource.resource_type)} />
       <SafetyStatusBanner status={resource.safety_status} message={resource.safety_message} />
-      {resource.resource_type === "teaching_video" ? <VideoPlayerCard title="个性化教学动画讲解" /> : null}
+      {resource.resource_type === "teaching_video" && resource.animation_spec ? <AnimationRenderer spec={resource.animation_spec} /> : null}
+      {resource.resource_type === "teaching_video" && !resource.animation_spec ? <VideoPlayerCard title="个性化教学动画讲解" /> : null}
       {resource.resource_type === "mind_map" ? <MindMapDiagram text={resource.content} /> : null}
       {resource.resource_type === "coding_case" ? <CodeCaseCard code={extractFencedCode(resource.content) || resource.content} /> : null}
       {resource.resource_type !== "mind_map" && resource.resource_type !== "coding_case" && resource.resource_type !== "teaching_video" ? <TypewriterMarkdown text={resource.content} /> : null}

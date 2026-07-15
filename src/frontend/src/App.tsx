@@ -637,9 +637,8 @@ export function App() {
       onGenerate={() =>
         void runTask("generate-resource", async () => {
           if (!selectedItem) return;
-          const backendResourceType = resourceType === "teaching_video" ? "guided_note" : resourceType;
-          const nextResource = await api.generateResource(selectedItem.id, backendResourceType);
-          setResource(resourceType === "teaching_video" ? { ...nextResource, resource_type: "teaching_video" } : nextResource);
+          const nextResource = await api.generateResource(selectedItem.id, resourceType);
+          setResource(nextResource);
           await appendRun(nextResource.agent_run_id);
           if (nextResource.postprocessing_task_id !== null && selectedProfileId !== null) {
             void pollProfilePostprocessing(nextResource.postprocessing_task_id, selectedProfileId);

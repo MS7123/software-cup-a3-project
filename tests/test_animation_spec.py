@@ -38,6 +38,18 @@ class AnimationSpecServiceTests(unittest.TestCase):
         node_ids = {node.id for node in spec.data.nodes}
         self.assertTrue(all(step.target in node_ids for step in spec.timeline))
 
+    def test_defaults_to_preorder_when_objective_lists_multiple_traversals(self) -> None:
+        spec = self.service.build(
+            concept_name="二叉树遍历",
+            concept_slug="binary-tree-traversal",
+            objective="理解前序、中序、后序和层序遍历的差异",
+            resource_type="teaching_video",
+        )
+
+        assert spec is not None
+        self.assertEqual(spec.data.traversal_type, "PRE_ORDER")
+        self.assertEqual([step.target for step in spec.timeline], ["A", "B", "D", "E", "C"])
+
     def test_non_video_resource_does_not_receive_animation_spec(self) -> None:
         spec = self.service.build(
             concept_name="二叉树遍历",

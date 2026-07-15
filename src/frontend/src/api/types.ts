@@ -245,6 +245,40 @@ export interface GeneratedResource {
   safety_message: string | null;
   postprocessing_task_id: number | null;
   postprocessing_status: string;
+  animation_spec: AnimationSpec | null;
+}
+
+export interface AnimationNode {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+}
+
+export interface AnimationEdge {
+  source: string;
+  target: string;
+}
+
+export interface AnimationTimelineStep {
+  at_ms: number;
+  action: "visit" | "highlight";
+  target: string;
+  caption: string;
+}
+
+export interface AnimationSpec {
+  version: "1.0";
+  template_id: "binary_tree_traversal";
+  title: string;
+  description: string;
+  duration_ms: number;
+  data: {
+    traversal_type: "PRE_ORDER" | "IN_ORDER" | "POST_ORDER" | "LEVEL_ORDER";
+    nodes: AnimationNode[];
+    edges: AnimationEdge[];
+  };
+  timeline: AnimationTimelineStep[];
 }
 
 export interface TutorAnswer {

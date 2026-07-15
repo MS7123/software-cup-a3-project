@@ -93,7 +93,7 @@ function resourceTypeDescription(type: string): string {
     mind_map: "适合结构化复盘",
     extended_reading: "补充边界和拓展知识",
     coding_case: "用于代码实践和迁移",
-    teaching_video: "生成动画脚本和讲解结构"
+    teaching_video: "生成可交互 SVG 动画和讲解脚本"
   };
   return descriptions[type] ?? "个性化学习资源";
 }

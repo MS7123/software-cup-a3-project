@@ -76,10 +76,17 @@ class AnimationSpecService:
 
 
 def _traversal_order(topic: str) -> tuple[str, list[str]]:
-    if "中序" in topic or "in-order" in topic or "inorder" in topic:
-        return "IN_ORDER", ["D", "B", "E", "A", "C"]
-    if "后序" in topic or "post-order" in topic or "postorder" in topic:
-        return "POST_ORDER", ["D", "E", "B", "C", "A"]
-    if "层序" in topic or "level-order" in topic or "levelorder" in topic:
-        return "LEVEL_ORDER", ["A", "B", "C", "D", "E"]
-    return "PRE_ORDER", ["A", "B", "D", "E", "C"]
+    orders = {
+        "PRE_ORDER": (("前序", "pre-order", "preorder"), ["A", "B", "D", "E", "C"]),
+        "IN_ORDER": (("中序", "in-order", "inorder"), ["D", "B", "E", "A", "C"]),
+        "POST_ORDER": (("后序", "post-order", "postorder"), ["D", "E", "B", "C", "A"]),
+        "LEVEL_ORDER": (("层序", "level-order", "levelorder"), ["A", "B", "C", "D", "E"]),
+    }
+    matched = [
+        (name, order)
+        for name, (tokens, order) in orders.items()
+        if any(token in topic for token in tokens)
+    ]
+    if len(matched) == 1:
+        return matched[0]
+    return "PRE_ORDER", orders["PRE_ORDER"][1]

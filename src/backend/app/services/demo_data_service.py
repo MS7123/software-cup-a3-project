@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import ProcessingStatus, ProfileType
 from app.db.base import Base
-from app.db.schema_compat import ensure_agent_run_step_columns, ensure_document_columns, ensure_learning_path_columns
+from app.db.schema_compat import (
+    ensure_agent_run_step_columns,
+    ensure_document_columns,
+    ensure_generated_resource_columns,
+    ensure_learning_path_columns,
+)
 from app.db.session import get_engine, session_scope
 from app.models import (
     AgentRun,
@@ -106,6 +111,7 @@ class DemoDataService:
         ensure_document_columns(self.database_url)
         ensure_agent_run_step_columns(self.database_url)
         ensure_learning_path_columns(self.database_url)
+        ensure_generated_resource_columns(self.database_url)
 
     def _load_course_graph(self, session: Session) -> Course:
         course = session.scalar(

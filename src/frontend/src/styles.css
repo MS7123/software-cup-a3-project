@@ -2741,6 +2741,235 @@ button:disabled {
   font-size: 0.82rem;
 }
 
+.svg-animation-player {
+  overflow: hidden;
+  margin-top: 1rem;
+  border: 1px solid #d8e4dc;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgb(39 67 53 / 0.06);
+}
+
+.animation-player-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #e3ebe6;
+  padding: 1rem 1.1rem 0.9rem;
+}
+
+.animation-player-header > div {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.animation-player-header h4,
+.animation-player-header p {
+  margin: 0;
+}
+
+.animation-player-header h4 {
+  color: #172a21;
+  font-size: 1rem;
+}
+
+.animation-player-header p {
+  color: #66756d;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.animation-template-badge,
+.animation-duration {
+  width: fit-content;
+  border: 1px solid #cfe0d6;
+  border-radius: 999px;
+  background: #eef6f1;
+  color: #36705a;
+  padding: 0.2rem 0.52rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.animation-duration {
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
+  background: #ffffff;
+  color: #65736c;
+}
+
+.animation-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 20rem;
+  background: #f7faf8;
+}
+
+.animation-stage svg {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 20rem;
+  padding: 0.75rem;
+}
+
+.animation-edges line {
+  stroke: #cbd8d0;
+  stroke-width: 3;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.animation-node {
+  transition: filter 220ms ease;
+}
+
+.animation-node circle {
+  fill: #ffffff;
+  stroke: #c6d4cc;
+  stroke-width: 2;
+  transition: fill 220ms ease, stroke 220ms ease, stroke-width 220ms ease;
+}
+
+.animation-node text {
+  fill: #53635b;
+  font-size: 1rem;
+  font-weight: 800;
+  pointer-events: none;
+  transition: fill 220ms ease;
+}
+
+.animation-node-visited circle {
+  fill: #dff0e8;
+  stroke: #82b59f;
+}
+
+.animation-node-visited text {
+  fill: #28674f;
+}
+
+.animation-node-current {
+  filter: drop-shadow(0 5px 8px rgb(25 121 87 / 0.22));
+}
+
+.animation-node-current circle {
+  fill: #178565;
+  stroke: #ffffff;
+  stroke-width: 4;
+}
+
+.animation-node-current text {
+  fill: #ffffff;
+}
+
+.animation-caption {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.65rem;
+  border-top: 1px solid #e0e9e3;
+  background: #f1f6f2;
+  padding: 1.1rem;
+}
+
+.animation-caption span,
+.animation-visit-order span {
+  color: #7a8981;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.animation-caption strong {
+  color: #263a30;
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.animation-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid #e3ebe6;
+  padding: 0.8rem 1rem;
+}
+
+.animation-visit-order {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.animation-visit-order strong {
+  color: #275e49;
+  font-size: 0.86rem;
+}
+
+.animation-control-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.animation-control-buttons button {
+  min-height: 2.25rem;
+  border: 1px solid #cddbd3;
+  border-radius: 0.45rem;
+  background: #ffffff;
+  color: #2f5142;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.animation-control-buttons button:first-child {
+  border-color: #246e55;
+  background: #246e55;
+  color: #ffffff;
+}
+
+.animation-control-buttons button:hover:not(:disabled) {
+  border-color: #6c9b86;
+  transform: translateY(-1px);
+}
+
+.animation-control-buttons button:disabled {
+  opacity: 0.45;
+}
+
+.animation-fallback {
+  margin: 1rem 0 0;
+  border: 1px solid #e2e7e3;
+  border-radius: 0.65rem;
+  background: #f8faf8;
+  color: #69776f;
+  padding: 1rem;
+}
+
+@media (max-width: 720px) {
+  .animation-controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animation-node,
+  .animation-node circle,
+  .animation-node text,
+  .animation-control-buttons button {
+    transition: none;
+  }
+}
+
+@media (max-width: 1500px) {
+  .resource-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+}
+
 .video-script-block {
   margin-top: 1rem;
   border: 1px solid #eaeaea;
